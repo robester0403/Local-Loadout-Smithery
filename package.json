@@ -1,0 +1,42 @@
+{
+  "name": "local-skill-manager",
+  "version": "0.1.0",
+  "description": "The control panel for your Claude Code skill library",
+  "bin": {
+    "local-skill-manager": "./dist/server/src/index.js"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx watch server/src/index.ts",
+    "dev:client": "cd client && npm run dev",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "tsc --project tsconfig.server.json",
+    "build:client": "cd client && npm run build",
+    "start": "node dist/server/src/index.js",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "claude",
+    "skills",
+    "claude-code",
+    "ai-tools"
+  ],
+  "author": "Robert So",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}
