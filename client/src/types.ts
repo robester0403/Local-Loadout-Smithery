@@ -30,6 +30,7 @@ export interface Skill {
   frontmatter: Record<string, unknown>
   lastModified: string
   health: HealthResult
+  disabled: boolean
 }
 
 export interface Filters {

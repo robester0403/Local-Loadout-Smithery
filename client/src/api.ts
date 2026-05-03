@@ -10,3 +10,8 @@ export async function fetchInventory(): Promise<Skill[]> {
 export async function openSkill(id: string): Promise<void> {
   await fetch(`/api/skills/${encodeURIComponent(id)}/open`, { method: 'POST' })
 }
+
+export async function setSkillDisabled(id: string, disabled: boolean): Promise<void> {
+  const action = disabled ? 'disable' : 'enable'
+  await fetch(`/api/skills/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
+}

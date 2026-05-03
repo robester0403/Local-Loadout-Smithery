@@ -3,13 +3,13 @@ import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { discoverAllSkills } from './scanner'
+import { getDisabledIds, disableSkill, enableSkill } from './state'
 
 const app = express()
 const PORT = process.env.PORT || 3001
 
 app.use(express.json())
 
-// Serve built client in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../../client/dist')))
 }
@@ -21,7 +21,27 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/inventory', (_req, res) => {
   try {
     const skills = discoverAllSkills()
-    res.json({ skills })
+    const disabled = getDisabledIds()
+    const withState = skills.map(s => ({ ...s, disabled: disabled.has(s.id) }))
+    res.json({ skills: withState })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/skills/:id/disable', (req, res) => {
+  try {
+    disableSkill(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/skills/:id/enable', (req, res) => {
+  try {
+    enableSkill(req.params.id)
+    res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
   }

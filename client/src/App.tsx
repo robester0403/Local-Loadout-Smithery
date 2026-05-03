@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Skill, SortKey, SortDir, Filters } from './types'
-import { fetchInventory, openSkill } from './api'
+import { fetchInventory, openSkill, setSkillDisabled } from './api'
 import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
 import FilterBar from './components/FilterBar'
 import EmptyState from './components/EmptyState'
 import './App.css'
+
+const HEALTH_ORDER: Record<string, number> = { error: 0, warn: 1, ok: 2 }
 
 export default function App() {
   const [skills, setSkills] = useState<Skill[]>([])
@@ -32,29 +34,28 @@ export default function App() {
 
   useEffect(() => { load() }, [load])
 
-  // Silent background refresh — no spinner, errors swallowed quietly
   useEffect(() => {
     const id = setInterval(async () => {
-      try {
-        const data = await fetchInventory()
-        setSkills(data)
-      } catch {
-        // ignore transient errors; user can hit Refresh manually
-      }
+      try { setSkills(await fetchInventory()) } catch { /* ignore */ }
     }, 30_000)
     return () => clearInterval(id)
   }, [])
 
-  // Keep the detail drawer in sync when the background refresh updates skill content
   useEffect(() => {
     if (!selected) return
-    setSelected(prev => {
-      if (!prev) return null
-      return skills.find(s => s.id === prev.id) ?? null
-    })
+    setSelected(prev => prev ? (skills.find(s => s.id === prev.id) ?? null) : null)
   }, [skills])
 
-  const HEALTH_ORDER: Record<string, number> = { error: 0, warn: 1, ok: 2 }
+  async function handleToggle(skill: Skill, enabled: boolean) {
+    // Optimistic update
+    setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, disabled: !enabled } : s))
+    try {
+      await setSkillDisabled(skill.id, !enabled)
+    } catch {
+      // Revert on failure
+      setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, disabled: skill.disabled } : s))
+    }
+  }
 
   const filtered = skills
     .filter(s => {
@@ -68,6 +69,9 @@ export default function App() {
       return true
     })
     .sort((a, b) => {
+      // Disabled always floats to bottom regardless of sort column
+      if (a.disabled !== b.disabled) return a.disabled ? 1 : -1
+
       let cmp: number
       if (sortKey === 'health') {
         cmp = HEALTH_ORDER[a.health.status] - HEALTH_ORDER[b.health.status]
@@ -148,6 +152,7 @@ export default function App() {
             onSort={handleSort}
             selected={selected}
             onSelect={setSelected}
+            onToggle={handleToggle}
           />
         )}
       </main>

@@ -1,5 +1,6 @@
 import type { Skill, SortKey, SortDir } from '../types'
 import HealthBadge from './HealthBadge'
+import ToggleSwitch from './ToggleSwitch'
 
 interface Props {
   skills: Skill[]
@@ -8,6 +9,7 @@ interface Props {
   onSort: (key: SortKey) => void
   selected: Skill | null
   onSelect: (skill: Skill) => void
+  onToggle: (skill: Skill, enabled: boolean) => void
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -29,8 +31,6 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// projectId is the project path with '/' replaced by '-', e.g. '-Users-bob-Code-my-app'
-// The last hyphen-separated segment is the project directory name.
 function projectLabel(projectId: string): string {
   const parts = projectId.split('-').filter(Boolean)
   return parts[parts.length - 1] || projectId
@@ -49,12 +49,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 }
 
 export default function InventoryTable({
-  skills,
-  sortKey,
-  sortDir,
-  onSort,
-  selected,
-  onSelect,
+  skills, sortKey, sortDir, onSort, selected, onSelect, onToggle,
 }: Props) {
   return (
     <div className="table-wrap">
@@ -73,13 +68,17 @@ export default function InventoryTable({
                 )}
               </th>
             ))}
+            <th className="col-enabled">Enabled</th>
           </tr>
         </thead>
         <tbody>
           {skills.map(skill => (
             <tr
               key={skill.id}
-              className={selected?.id === skill.id ? 'selected' : ''}
+              className={[
+                selected?.id === skill.id ? 'selected' : '',
+                skill.disabled ? 'row-disabled' : '',
+              ].filter(Boolean).join(' ')}
               onClick={() => onSelect(skill)}
             >
               <td className="col-health">
@@ -100,6 +99,13 @@ export default function InventoryTable({
                 <ContextCell skill={skill} />
               </td>
               <td className="col-lastModified">{formatDate(skill.lastModified)}</td>
+              <td className="col-enabled" onClick={e => e.stopPropagation()}>
+                <ToggleSwitch
+                  checked={!skill.disabled}
+                  onChange={enabled => onToggle(skill, enabled)}
+                  title={skill.disabled ? 'Enable skill' : 'Disable skill'}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
