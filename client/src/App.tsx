@@ -32,6 +32,28 @@ export default function App() {
 
   useEffect(() => { load() }, [load])
 
+  // Silent background refresh — no spinner, errors swallowed quietly
+  useEffect(() => {
+    const id = setInterval(async () => {
+      try {
+        const data = await fetchInventory()
+        setSkills(data)
+      } catch {
+        // ignore transient errors; user can hit Refresh manually
+      }
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Keep the detail drawer in sync when the background refresh updates skill content
+  useEffect(() => {
+    if (!selected) return
+    setSelected(prev => {
+      if (!prev) return null
+      return skills.find(s => s.id === prev.id) ?? null
+    })
+  }, [skills])
+
   const filtered = skills
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
