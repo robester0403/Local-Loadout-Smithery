@@ -1,6 +1,7 @@
 import fs from 'fs'
 import { getPricing, toDollars } from './pricing'
 import { findSessionFiles } from './parser'
+import { discoverAllSkills } from '../scanner'
 
 export interface ActiveCostEntry {
   skillName: string
@@ -19,6 +20,7 @@ const CMD_ARGS_RE = /<command-args>([^<]*)<\/command-args>/
 function parseSessionActiveCost(
   filePath: string,
   acc: Map<string, ActiveCostEntry>,
+  validSkills: Set<string>,
 ): void {
   let raw: string
   try {
@@ -50,9 +52,15 @@ function parseSessionActiveCost(
       if (typeof content === 'string' && content.includes('<command-name>')) {
         const nameMatch = content.match(CMD_MSG_RE)
         if (nameMatch) {
-          currentSkill = nameMatch[1].trim()
-          currentSkillTs = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
-          newInvocation = true
+          const name = nameMatch[1].trim()
+          if (validSkills.has(name)) {
+            currentSkill = name
+            currentSkillTs = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
+            newInvocation = true
+          } else {
+            // Built-in or unknown command — stop attributing to any skill
+            currentSkill = null
+          }
         }
       }
       continue
@@ -110,10 +118,11 @@ function parseSessionActiveCost(
   }
 }
 
-export function computeActiveCost(): ActiveCostEntry[] {
+export function computeActiveCost(validSkills?: Set<string>): ActiveCostEntry[] {
+  const skills = validSkills ?? new Set(discoverAllSkills().map(s => s.name))
   const acc = new Map<string, ActiveCostEntry>()
   for (const file of findSessionFiles()) {
-    parseSessionActiveCost(file, acc)
+    parseSessionActiveCost(file, acc, skills)
   }
   return Array.from(acc.values()).sort((a, b) => b.totalDollars - a.totalDollars)
 }

@@ -5,6 +5,11 @@ import path from 'path'
 import { computeActiveCost } from '../usage/attributor'
 import { resetPricingCache } from '../usage/pricing'
 
+// Skill names used across tests — stands in for a real inventory
+const ALL_SKILLS = new Set([
+  'morning-plan', 'quiz', 'skill-a', 'skill-b', 'review', 'cheap', 'expensive',
+])
+
 let tmp: string
 
 function write(p: string, content: string) {
@@ -76,7 +81,7 @@ describe('computeActiveCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    const costs = computeActiveCost()
+    const costs = computeActiveCost(ALL_SKILLS)
     process.env['HOME'] = orig
 
     expect(costs).toHaveLength(1)
@@ -102,7 +107,7 @@ describe('computeActiveCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    const costs = computeActiveCost()
+    const costs = computeActiveCost(ALL_SKILLS)
     process.env['HOME'] = orig
 
     const quiz = costs.find(c => c.skillName === 'quiz')!
@@ -125,7 +130,7 @@ describe('computeActiveCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    const costs = computeActiveCost()
+    const costs = computeActiveCost(ALL_SKILLS)
     process.env['HOME'] = orig
 
     const a = costs.find(c => c.skillName === 'skill-a')!
@@ -147,7 +152,7 @@ describe('computeActiveCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    const costs = computeActiveCost()
+    const costs = computeActiveCost(ALL_SKILLS)
     process.env['HOME'] = orig
 
     expect(costs).toHaveLength(0)
@@ -167,7 +172,7 @@ describe('computeActiveCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    const costs = computeActiveCost()
+    const costs = computeActiveCost(ALL_SKILLS)
     process.env['HOME'] = orig
 
     const review = costs.find(c => c.skillName === 'review')!
@@ -189,10 +194,34 @@ describe('computeActiveCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    const costs = computeActiveCost()
+    const costs = computeActiveCost(ALL_SKILLS)
     process.env['HOME'] = orig
 
     expect(costs[0].skillName).toBe('expensive')
     expect(costs[1].skillName).toBe('cheap')
+  })
+
+  it('ignores built-in commands not in validSkills and stops attributing after them', () => {
+    const home = path.join(tmp, 'home-builtin')
+    write(path.join(home, '.claude', 'settings.json'), '{}')
+    write(
+      path.join(home, '.claude', 'projects', 'proj', 'sess7.jsonl'),
+      [
+        userWithSkill('morning-plan', '2026-05-01T10:00:00Z'),
+        assistantTurn('2026-05-01T10:00:05Z', 100, 50),
+        userWithSkill('model', '2026-05-01T10:01:00Z'),    // built-in — not in validSkills
+        assistantTurn('2026-05-01T10:01:05Z', 900, 900),   // must not be attributed
+      ].join('\n') + '\n',
+    )
+
+    const validSkills = new Set(['morning-plan']) // 'model' intentionally excluded
+    const orig = process.env['HOME']
+    process.env['HOME'] = home
+    const costs = computeActiveCost(validSkills)
+    process.env['HOME'] = orig
+
+    expect(costs).toHaveLength(1)
+    expect(costs[0].skillName).toBe('morning-plan')
+    expect(costs[0].inputTokens).toBe(100) // only the pre-model turns
   })
 })
