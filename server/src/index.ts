@@ -3,7 +3,7 @@ import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { discoverAllSkills } from './scanner'
-import { getDisabledIds, disableSkill, enableSkill } from './state'
+import { disableSkill, enableSkill } from './state'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -21,9 +21,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/inventory', (_req, res) => {
   try {
     const skills = discoverAllSkills()
-    const disabled = getDisabledIds()
-    const withState = skills.map(s => ({ ...s, disabled: disabled.has(s.id) }))
-    res.json({ skills: withState })
+    res.json({ skills })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
   }
@@ -69,10 +67,14 @@ app.post('/api/skills/:id/open', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`Local Skill Manager running at http://localhost:${PORT}`)
+  const line = '─'.repeat(44)
+  console.log(`\n\x1b[36m┌${line}┐\x1b[0m`)
+  console.log(`\x1b[36m│\x1b[0m  \x1b[1mLocal Skill Manager\x1b[0m                        \x1b[36m│\x1b[0m`)
+  console.log(`\x1b[36m│\x1b[0m  API server  →  http://localhost:${PORT}           \x1b[36m│\x1b[0m`)
   if (process.env.NODE_ENV !== 'production') {
-    console.log('Client dev server: http://localhost:5173')
+    console.log(`\x1b[36m│\x1b[0m  \x1b[1m\x1b[32mOpen in browser → http://localhost:5173\x1b[0m     \x1b[36m│\x1b[0m`)
   }
+  console.log(`\x1b[36m└${line}┘\x1b[0m\n`)
 })
 
 export default app

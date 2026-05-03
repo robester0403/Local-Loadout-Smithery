@@ -153,6 +153,50 @@ describe('discoverAllSkills (fixture)', () => {
     expect(matching.length).toBe(1)
   })
 
+  it('discovers .disabled files as disabled: true with stable id', () => {
+    const disabledHome = path.join(tmp, 'disabled-home')
+    write(path.join(disabledHome, '.claude', 'settings.json'), '{}')
+
+    // Disabled skill
+    write(
+      path.join(disabledHome, '.claude', 'skills', 'off-skill', 'SKILL.md.disabled'),
+      '---\nname: off-skill\ndescription: a disabled skill\n---\nBody.\n'
+    )
+    // Disabled command
+    write(
+      path.join(disabledHome, '.claude', 'commands', 'off-cmd.md.disabled'),
+      '---\nname: off-cmd\ndescription: a disabled command\n---\nBody.\n'
+    )
+    // Disabled agent
+    write(
+      path.join(disabledHome, '.claude', 'agents', 'off-agent.md.disabled'),
+      '---\nname: off-agent\ndescription: a disabled agent\n---\nBody.\n'
+    )
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = disabledHome
+    const skills = discoverAllSkills()
+    process.env['HOME'] = orig
+
+    const byName = Object.fromEntries(skills.map(s => [s.name, s]))
+
+    expect(byName['off-skill']).toBeDefined()
+    expect(byName['off-skill'].disabled).toBe(true)
+    expect(byName['off-skill'].path).not.toContain('.disabled')
+
+    expect(byName['off-cmd']).toBeDefined()
+    expect(byName['off-cmd'].disabled).toBe(true)
+    expect(byName['off-cmd'].path).not.toContain('.disabled')
+
+    expect(byName['off-agent']).toBeDefined()
+    expect(byName['off-agent'].disabled).toBe(true)
+    expect(byName['off-agent'].path).not.toContain('.disabled')
+
+    // ID must be stable — same as what the enabled file would produce
+    const expectedSkillPath = path.join(disabledHome, '.claude', 'skills', 'off-skill', 'SKILL.md')
+    expect(byName['off-skill'].id).toBe(Buffer.from(expectedSkillPath).toString('base64'))
+  })
+
   it('returns empty array when account has no skills', () => {
     const emptyHome = path.join(tmp, 'empty-home')
     write(path.join(emptyHome, '.claude', 'settings.json'), '{}')

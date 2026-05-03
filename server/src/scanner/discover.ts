@@ -67,15 +67,20 @@ function buildSkill(
   account: string,
   overrideName?: string,
   projectId?: string,
+  disabled = false,
 ): Skill | null {
   try {
     const { meta, body } = parseFrontmatter(filePath)
 
-    let realpath = filePath
+    // For disabled files (e.g. SKILL.md.disabled), strip the suffix so the ID
+    // is stable across enable/disable cycles.
+    const logicalPath = disabled ? filePath.replace(/\.disabled$/, '') : filePath
+
+    let realpath = logicalPath
     let isSymlink = false
     try {
-      isSymlink = fs.lstatSync(filePath).isSymbolicLink()
-      realpath = fs.realpathSync(filePath)
+      isSymlink = fs.lstatSync(logicalPath).isSymbolicLink()
+      realpath = disabled ? logicalPath : fs.realpathSync(logicalPath)
     } catch {
       // keep defaults
     }
@@ -86,9 +91,9 @@ function buildSkill(
       overrideName ||
       (meta['name'] as string | undefined) ||
       path.basename(path.dirname(filePath)) ||
-      path.basename(filePath, '.md')
+      path.basename(logicalPath, '.md')
 
-    const base: Omit<Skill, 'health'> = {
+    const base: Omit<Skill, 'health' | 'disabled'> = {
       id: Buffer.from(realpath).toString('base64'),
       name,
       description: (meta['description'] as string | undefined) || '',
@@ -97,7 +102,7 @@ function buildSkill(
       scope,
       account,
       ...(projectId ? { projectId } : {}),
-      path: filePath,
+      path: logicalPath,
       realpath,
       isSymlink,
       body,
@@ -105,7 +110,7 @@ function buildSkill(
       lastModified: stat.mtime.toISOString(),
     }
     const health: HealthResult = computeHealth(base)
-    return { ...base, health }
+    return { ...base, health, disabled }
   } catch {
     return null
   }
@@ -120,8 +125,12 @@ function discoverSkillsDir(
   const results: Skill[] = []
   for (const entry of listDir(skillsDir)) {
     const skillFile = path.join(skillsDir, entry, 'SKILL.md')
+    const disabledFile = skillFile + '.disabled'
     if (fileExists(skillFile)) {
       const skill = buildSkill(skillFile, 'skill', scope, account, undefined, projectId)
+      if (skill) results.push(skill)
+    } else if (fileExists(disabledFile)) {
+      const skill = buildSkill(disabledFile, 'skill', scope, account, undefined, projectId, true)
       if (skill) results.push(skill)
     }
   }
@@ -137,18 +146,28 @@ function discoverCommandsDir(
   const results: Skill[] = []
   for (const entry of listDir(commandsDir)) {
     const full = path.join(commandsDir, entry)
-    if (entry.endsWith('.md')) {
+    if (entry.endsWith('.md.disabled')) {
+      const name = path.basename(entry, '.md.disabled')
+      const skill = buildSkill(full, 'command', scope, account, name, projectId, true)
+      if (skill) results.push(skill)
+    } else if (entry.endsWith('.md')) {
       const name = path.basename(entry, '.md')
       const skill = buildSkill(full, 'command', scope, account, name, projectId)
       if (skill) results.push(skill)
     } else if (isDir(full)) {
       // Namespaced commands: commands/{namespace}/*.md → name = "namespace:command"
       for (const sub of listDir(full)) {
-        if (!sub.endsWith('.md')) continue
-        const subFile = path.join(full, sub)
-        const name = `${entry}:${path.basename(sub, '.md')}`
-        const skill = buildSkill(subFile, 'command', scope, account, name, projectId)
-        if (skill) results.push(skill)
+        if (sub.endsWith('.md.disabled')) {
+          const subFile = path.join(full, sub)
+          const name = `${entry}:${path.basename(sub, '.md.disabled')}`
+          const skill = buildSkill(subFile, 'command', scope, account, name, projectId, true)
+          if (skill) results.push(skill)
+        } else if (sub.endsWith('.md')) {
+          const subFile = path.join(full, sub)
+          const name = `${entry}:${path.basename(sub, '.md')}`
+          const skill = buildSkill(subFile, 'command', scope, account, name, projectId)
+          if (skill) results.push(skill)
+        }
       }
     }
   }
@@ -163,11 +182,17 @@ function discoverAgentsDir(
 ): Skill[] {
   const results: Skill[] = []
   for (const entry of listDir(agentsDir)) {
-    if (!entry.endsWith('.md')) continue
-    const agentFile = path.join(agentsDir, entry)
-    const name = path.basename(entry, '.md')
-    const skill = buildSkill(agentFile, 'agent', scope, account, name, projectId)
-    if (skill) results.push(skill)
+    if (entry.endsWith('.md.disabled')) {
+      const agentFile = path.join(agentsDir, entry)
+      const name = path.basename(entry, '.md.disabled')
+      const skill = buildSkill(agentFile, 'agent', scope, account, name, projectId, true)
+      if (skill) results.push(skill)
+    } else if (entry.endsWith('.md')) {
+      const agentFile = path.join(agentsDir, entry)
+      const name = path.basename(entry, '.md')
+      const skill = buildSkill(agentFile, 'agent', scope, account, name, projectId)
+      if (skill) results.push(skill)
+    }
   }
   return results
 }

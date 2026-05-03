@@ -1,43 +1,30 @@
 import fs from 'fs'
 import os from 'os'
-import path from 'path'
 
-const STATE_DIR = path.join(os.homedir(), '.local-skill-manager')
-const STATE_FILE = path.join(STATE_DIR, 'state.json')
-
-interface State {
-  disabled: string[]
-}
-
-function readState(): State {
-  try {
-    const raw = fs.readFileSync(STATE_FILE, 'utf-8')
-    const parsed = JSON.parse(raw) as Partial<State>
-    return { disabled: Array.isArray(parsed.disabled) ? parsed.disabled : [] }
-  } catch {
-    return { disabled: [] }
+function decodePath(id: string): string {
+  const filePath = Buffer.from(id, 'base64').toString('utf-8')
+  if (!filePath.startsWith(os.homedir())) {
+    throw new Error('Path outside home directory')
   }
-}
-
-function writeState(state: State): void {
-  fs.mkdirSync(STATE_DIR, { recursive: true })
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf-8')
-}
-
-export function getDisabledIds(): Set<string> {
-  return new Set(readState().disabled)
+  return filePath
 }
 
 export function disableSkill(id: string): void {
-  const state = readState()
-  if (!state.disabled.includes(id)) {
-    state.disabled.push(id)
-    writeState(state)
+  const filePath = decodePath(id)
+  const disabledPath = filePath + '.disabled'
+  if (!fs.existsSync(filePath)) {
+    if (fs.existsSync(disabledPath)) return // already disabled
+    throw new Error(`Skill file not found: ${filePath}`)
   }
+  fs.renameSync(filePath, disabledPath)
 }
 
 export function enableSkill(id: string): void {
-  const state = readState()
-  state.disabled = state.disabled.filter(d => d !== id)
-  writeState(state)
+  const filePath = decodePath(id)
+  const disabledPath = filePath + '.disabled'
+  if (!fs.existsSync(disabledPath)) {
+    if (fs.existsSync(filePath)) return // already enabled
+    throw new Error(`Disabled skill file not found: ${disabledPath}`)
+  }
+  fs.renameSync(disabledPath, filePath)
 }
