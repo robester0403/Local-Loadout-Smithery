@@ -1,5 +1,7 @@
 import express from 'express'
 import path from 'path'
+import os from 'os'
+import { exec } from 'child_process'
 import { discoverAllSkills } from './scanner'
 
 const app = express()
@@ -23,6 +25,27 @@ app.get('/api/inventory', (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
   }
+})
+
+app.post('/api/skills/:id/open', (req, res) => {
+  let filePath: string
+  try {
+    filePath = Buffer.from(req.params.id, 'base64').toString('utf-8')
+  } catch {
+    res.status(400).json({ error: 'Invalid id' })
+    return
+  }
+
+  if (!filePath.startsWith(os.homedir())) {
+    res.status(403).json({ error: 'Path outside home directory' })
+    return
+  }
+
+  const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open'
+  exec(`${cmd} ${JSON.stringify(filePath)}`, (err) => {
+    if (err) { res.status(500).json({ error: err.message }); return }
+    res.json({ ok: true })
+  })
 })
 
 app.listen(PORT, () => {

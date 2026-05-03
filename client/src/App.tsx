@@ -1,122 +1,137 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useState, useEffect, useCallback } from 'react'
+import type { Skill, SortKey, SortDir, Filters } from './types'
+import { fetchInventory, openSkill } from './api'
+import InventoryTable from './components/InventoryTable'
+import DetailDrawer from './components/DetailDrawer'
+import FilterBar from './components/FilterBar'
+import EmptyState from './components/EmptyState'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [skills, setSkills] = useState<Skill[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState<Filters>({ type: '', scope: '', account: '' })
+  const [sortKey, setSortKey] = useState<SortKey>('name')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [selected, setSelected] = useState<Skill | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await fetchInventory()
+      setSkills(data)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const filtered = skills
+    .filter(s => {
+      if (filters.type && s.type !== filters.type) return false
+      if (filters.scope && s.scope !== filters.scope) return false
+      if (filters.account && s.account !== filters.account) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
+      }
+      return true
+    })
+    .sort((a, b) => {
+      const av = a[sortKey] ?? ''
+      const bv = b[sortKey] ?? ''
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+
+  const accounts = [...new Set(skills.map(s => s.account))]
+
+  function handleSort(key: SortKey) {
+    if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const counts = {
+    skill: skills.filter(s => s.type === 'skill').length,
+    command: skills.filter(s => s.type === 'command').length,
+    agent: skills.filter(s => s.type === 'agent').length,
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="app">
+      <header className="header">
+        <div className="header-left">
+          <span className="header-title">Local Skill Manager</span>
+          <span className="header-count">{skills.length} total</span>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
+        <div className="header-right">
+          <button className="btn btn-sm" onClick={load} disabled={loading}>
+            {loading ? '…' : '↺'} Refresh
+          </button>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+      <aside className="sidebar">
+        <div className="search-wrap">
+          <input
+            className="search-input"
+            type="search"
+            placeholder="Search name or description…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+        <FilterBar filters={filters} setFilters={setFilters} accounts={accounts} />
+
+        <div className="sidebar-stats">
+          <div className="stat-row">
+            <span className="type-badge type-skill">skill</span>
+            <span>{counts.skill}</span>
+          </div>
+          <div className="stat-row">
+            <span className="type-badge type-command">cmd</span>
+            <span>{counts.command}</span>
+          </div>
+          <div className="stat-row">
+            <span className="type-badge type-agent">agent</span>
+            <span>{counts.agent}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main className="main">
+        {loading ? (
+          <EmptyState variant="loading" />
+        ) : error ? (
+          <EmptyState variant="error" message={error} onRetry={load} />
+        ) : filtered.length === 0 ? (
+          <EmptyState variant="empty" />
+        ) : (
+          <InventoryTable
+            skills={filtered}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={handleSort}
+            selected={selected}
+            onSelect={setSelected}
+          />
+        )}
+      </main>
+
+      {selected && (
+        <DetailDrawer
+          skill={selected}
+          onClose={() => setSelected(null)}
+          onOpen={async (skill) => { await openSkill(skill.id) }}
+        />
+      )}
+    </div>
   )
 }
-
-export default App
