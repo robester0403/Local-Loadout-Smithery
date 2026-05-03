@@ -1,6 +1,6 @@
 export type SkillType = 'skill' | 'command' | 'agent'
 export type SkillScope = 'global' | 'project'
-export type SortKey = 'name' | 'type' | 'scope' | 'account' | 'lastModified'
+export type SortKey = 'name' | 'type' | 'scope' | 'lastModified'
 export type SortDir = 'asc' | 'desc'
 
 export interface Skill {
@@ -21,7 +21,6 @@ export interface Skill {
 }
 
 export interface Filters {
-  type: string
-  scope: string
-  account: string
+  type: string[]
+  scope: string[]
 }

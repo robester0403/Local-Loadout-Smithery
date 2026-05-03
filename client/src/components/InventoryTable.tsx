@@ -18,14 +18,32 @@ const TYPE_LABELS: Record<string, string> = {
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
   { key: 'type', label: 'Type' },
-  { key: 'scope', label: 'Scope' },
-  { key: 'account', label: 'Account' },
+  { key: 'scope', label: 'Context' },
   { key: 'lastModified', label: 'Modified' },
 ]
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// projectId is the project path with '/' replaced by '-', e.g. '-Users-bob-Code-my-app'
+// The last hyphen-separated segment is the project directory name.
+function projectLabel(projectId: string): string {
+  const parts = projectId.split('-').filter(Boolean)
+  return parts[parts.length - 1] || projectId
+}
+
+function ContextCell({ skill }: { skill: Skill }) {
+  if (skill.scope === 'global') {
+    return <span className="scope-badge scope-global">global</span>
+  }
+  const label = skill.projectId ? projectLabel(skill.projectId) : 'project'
+  return (
+    <span className="scope-badge scope-project" title={skill.projectId}>
+      {label}
+    </span>
+  )
 }
 
 export default function InventoryTable({
@@ -74,11 +92,8 @@ export default function InventoryTable({
                 </span>
               </td>
               <td className="col-scope">
-                <span className={`scope-badge scope-${skill.scope}`}>
-                  {skill.scope}
-                </span>
+                <ContextCell skill={skill} />
               </td>
-              <td className="col-account">{skill.account}</td>
               <td className="col-lastModified">{formatDate(skill.lastModified)}</td>
             </tr>
           ))}

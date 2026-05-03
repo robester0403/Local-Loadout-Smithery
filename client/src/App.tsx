@@ -12,7 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState<Filters>({ type: '', scope: '', account: '' })
+  const [filters, setFilters] = useState<Filters>({ type: [], scope: [] })
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [selected, setSelected] = useState<Skill | null>(null)
@@ -34,9 +34,8 @@ export default function App() {
 
   const filtered = skills
     .filter(s => {
-      if (filters.type && s.type !== filters.type) return false
-      if (filters.scope && s.scope !== filters.scope) return false
-      if (filters.account && s.account !== filters.account) return false
+      if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
+      if (filters.scope.length > 0 && !filters.scope.includes(s.scope)) return false
       if (search) {
         const q = search.toLowerCase()
         return s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
@@ -49,8 +48,6 @@ export default function App() {
       const cmp = av < bv ? -1 : av > bv ? 1 : 0
       return sortDir === 'asc' ? cmp : -cmp
     })
-
-  const accounts = [...new Set(skills.map(s => s.account))]
 
   function handleSort(key: SortKey) {
     if (key === sortKey) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -88,7 +85,7 @@ export default function App() {
           />
         </div>
 
-        <FilterBar filters={filters} setFilters={setFilters} accounts={accounts} />
+        <FilterBar filters={filters} setFilters={setFilters} />
 
         <div className="sidebar-stats">
           <div className="stat-row">

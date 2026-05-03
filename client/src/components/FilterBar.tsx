@@ -3,7 +3,6 @@ import type { Filters } from '../types'
 interface Props {
   filters: Filters
   setFilters: (f: Filters) => void
-  accounts: string[]
 }
 
 type FilterGroup = {
@@ -12,22 +11,25 @@ type FilterGroup = {
   options: string[]
 }
 
-export default function FilterBar({ filters, setFilters, accounts }: Props) {
+export default function FilterBar({ filters, setFilters }: Props) {
   const groups: FilterGroup[] = [
     { label: 'Type', key: 'type', options: ['skill', 'command', 'agent'] },
-    { label: 'Scope', key: 'scope', options: ['global', 'project'] },
-    { label: 'Account', key: 'account', options: accounts },
+    { label: 'Context', key: 'scope', options: ['global', 'project'] },
   ]
 
   function toggle(key: keyof Filters, value: string) {
-    setFilters({ ...filters, [key]: filters[key] === value ? '' : value })
+    const current = filters[key]
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value]
+    setFilters({ ...filters, [key]: next })
   }
 
   function clearAll() {
-    setFilters({ type: '', scope: '', account: '' })
+    setFilters({ type: [], scope: [] })
   }
 
-  const hasActive = filters.type || filters.scope || filters.account
+  const hasActive = filters.type.length > 0 || filters.scope.length > 0
 
   return (
     <div className="filter-bar">
@@ -38,7 +40,7 @@ export default function FilterBar({ filters, setFilters, accounts }: Props) {
             {g.options.map(opt => (
               <button
                 key={opt}
-                className={`pill ${filters[g.key] === opt ? 'active' : ''}`}
+                className={`pill ${filters[g.key].includes(opt) ? 'active' : ''}`}
                 onClick={() => toggle(g.key, opt)}
               >
                 {opt}
