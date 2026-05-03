@@ -2,7 +2,8 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { parseFrontmatter } from '../parser/frontmatter'
-import type { Skill, SkillType, SkillScope } from './types'
+import { computeHealth } from './health'
+import type { Skill, SkillType, SkillScope, HealthResult } from './types'
 
 function listDir(dir: string): string[] {
   try {
@@ -87,7 +88,7 @@ function buildSkill(
       path.basename(path.dirname(filePath)) ||
       path.basename(filePath, '.md')
 
-    return {
+    const base: Omit<Skill, 'health'> = {
       id: Buffer.from(realpath).toString('base64'),
       name,
       description: (meta['description'] as string | undefined) || '',
@@ -103,6 +104,8 @@ function buildSkill(
       frontmatter: meta,
       lastModified: stat.mtime.toISOString(),
     }
+    const health: HealthResult = computeHealth(base)
+    return { ...base, health }
   } catch {
     return null
   }

@@ -1,5 +1,16 @@
 export type SkillType = 'skill' | 'command' | 'agent'
 export type SkillScope = 'global' | 'project'
+export type HealthStatus = 'ok' | 'warn' | 'error'
+
+export interface HealthIssue {
+  severity: 'warn' | 'error'
+  message: string
+}
+
+export interface HealthResult {
+  status: HealthStatus
+  issues: HealthIssue[]
+}
 
 export interface Skill {
   id: string
@@ -16,4 +27,5 @@ export interface Skill {
   body: string
   frontmatter: Record<string, unknown>
   lastModified: string
+  health: HealthResult
 }

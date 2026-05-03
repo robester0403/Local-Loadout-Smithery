@@ -7,17 +7,17 @@ interface Props {
 
 type FilterGroup = {
   label: string
-  key: keyof Filters
+  key: 'type' | 'scope'
   options: string[]
 }
 
-export default function FilterBar({ filters, setFilters }: Props) {
-  const groups: FilterGroup[] = [
-    { label: 'Type', key: 'type', options: ['skill', 'command', 'agent'] },
-    { label: 'Context', key: 'scope', options: ['global', 'project'] },
-  ]
+const GROUPS: FilterGroup[] = [
+  { label: 'Type', key: 'type', options: ['skill', 'command', 'agent'] },
+  { label: 'Context', key: 'scope', options: ['global', 'project'] },
+]
 
-  function toggle(key: keyof Filters, value: string) {
+export default function FilterBar({ filters, setFilters }: Props) {
+  function toggle(key: 'type' | 'scope', value: string) {
     const current = filters[key]
     const next = current.includes(value)
       ? current.filter(v => v !== value)
@@ -26,14 +26,14 @@ export default function FilterBar({ filters, setFilters }: Props) {
   }
 
   function clearAll() {
-    setFilters({ type: [], scope: [] })
+    setFilters({ type: [], scope: [], issuesOnly: false })
   }
 
-  const hasActive = filters.type.length > 0 || filters.scope.length > 0
+  const hasActive = filters.type.length > 0 || filters.scope.length > 0 || filters.issuesOnly
 
   return (
     <div className="filter-bar">
-      {groups.map(g => (
+      {GROUPS.map(g => (
         <div key={g.key} className="filter-group">
           <span className="filter-label">{g.label}</span>
           <div className="filter-pills">
@@ -49,6 +49,19 @@ export default function FilterBar({ filters, setFilters }: Props) {
           </div>
         </div>
       ))}
+
+      <div className="filter-group">
+        <span className="filter-label">Health</span>
+        <div className="filter-pills">
+          <button
+            className={`pill pill-issues ${filters.issuesOnly ? 'active' : ''}`}
+            onClick={() => setFilters({ ...filters, issuesOnly: !filters.issuesOnly })}
+          >
+            ⚠ Issues only
+          </button>
+        </div>
+      </div>
+
       {hasActive && (
         <button className="clear-filters" onClick={clearAll}>
           × Clear filters

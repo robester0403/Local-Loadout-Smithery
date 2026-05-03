@@ -1,7 +1,18 @@
 export type SkillType = 'skill' | 'command' | 'agent'
 export type SkillScope = 'global' | 'project'
-export type SortKey = 'name' | 'type' | 'scope' | 'lastModified'
+export type HealthStatus = 'ok' | 'warn' | 'error'
+export type SortKey = 'name' | 'type' | 'scope' | 'lastModified' | 'health'
 export type SortDir = 'asc' | 'desc'
+
+export interface HealthIssue {
+  severity: 'warn' | 'error'
+  message: string
+}
+
+export interface HealthResult {
+  status: HealthStatus
+  issues: HealthIssue[]
+}
 
 export interface Skill {
   id: string
@@ -18,9 +29,11 @@ export interface Skill {
   body: string
   frontmatter: Record<string, unknown>
   lastModified: string
+  health: HealthResult
 }
 
 export interface Filters {
   type: string[]
   scope: string[]
+  issuesOnly: boolean
 }

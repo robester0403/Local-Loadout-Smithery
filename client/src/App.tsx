@@ -12,7 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState<Filters>({ type: [], scope: [] })
+  const [filters, setFilters] = useState<Filters>({ type: [], scope: [], issuesOnly: false })
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [selected, setSelected] = useState<Skill | null>(null)
@@ -54,10 +54,13 @@ export default function App() {
     })
   }, [skills])
 
+  const HEALTH_ORDER: Record<string, number> = { error: 0, warn: 1, ok: 2 }
+
   const filtered = skills
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
       if (filters.scope.length > 0 && !filters.scope.includes(s.scope)) return false
+      if (filters.issuesOnly && s.health.status === 'ok') return false
       if (search) {
         const q = search.toLowerCase()
         return s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
@@ -65,9 +68,14 @@ export default function App() {
       return true
     })
     .sort((a, b) => {
-      const av = a[sortKey] ?? ''
-      const bv = b[sortKey] ?? ''
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      let cmp: number
+      if (sortKey === 'health') {
+        cmp = HEALTH_ORDER[a.health.status] - HEALTH_ORDER[b.health.status]
+      } else {
+        const av = a[sortKey] ?? ''
+        const bv = b[sortKey] ?? ''
+        cmp = av < bv ? -1 : av > bv ? 1 : 0
+      }
       return sortDir === 'asc' ? cmp : -cmp
     })
 

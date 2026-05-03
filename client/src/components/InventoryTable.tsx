@@ -1,4 +1,5 @@
 import type { Skill, SortKey, SortDir } from '../types'
+import HealthBadge from './HealthBadge'
 
 interface Props {
   skills: Skill[]
@@ -16,6 +17,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const COLUMNS: { key: SortKey; label: string }[] = [
+  { key: 'health', label: '' },
   { key: 'name', label: 'Name' },
   { key: 'type', label: 'Type' },
   { key: 'scope', label: 'Context' },
@@ -80,6 +82,9 @@ export default function InventoryTable({
               className={selected?.id === skill.id ? 'selected' : ''}
               onClick={() => onSelect(skill)}
             >
+              <td className="col-health">
+                <HealthBadge health={skill.health} />
+              </td>
               <td className="col-name">
                 <span className="skill-name">{skill.name}</span>
                 {skill.description && (
