@@ -1,5 +1,6 @@
 import express from 'express'
 import path from 'path'
+import { discoverAllSkills } from './scanner'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -15,9 +16,13 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: '0.1.0' })
 })
 
-// Placeholder — inventory endpoint added in P2.8
 app.get('/api/inventory', (_req, res) => {
-  res.json({ skills: [], message: 'Scanner not yet implemented' })
+  try {
+    const skills = discoverAllSkills()
+    res.json({ skills })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
 })
 
 app.listen(PORT, () => {
