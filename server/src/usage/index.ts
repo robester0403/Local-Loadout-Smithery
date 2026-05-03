@@ -1,4 +1,6 @@
 export { parseAllSessions, parseSessionFile, findSessionFiles } from './parser'
 export { getPricing, toDollars, writePricingTemplate, resetPricingCache } from './pricing'
+export { computeActiveCost } from './attributor'
 export type { ModelPricing } from './pricing'
+export type { ActiveCostEntry } from './attributor'
 export type { UsageTurn, ParseWarning } from './types'
