@@ -95,7 +95,7 @@ app.get('/api/usage/breakdown/:skillId', (req, res) => {
   }
 
   try {
-    const breakdown = breakdownForSkill(skill.name, skill.body, skill.type)
+    const breakdown = breakdownForSkill(skill.name, skill.description, skill.type)
     res.json({ breakdown })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })

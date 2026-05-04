@@ -39,10 +39,11 @@ export default function CostExplainerModal({ onClose }: Props) {
             invocation counts toward that skill. This is the cost the skill <em>caused</em>.
           </p>
           <p style={{ marginTop: 8 }}>
-            <strong>Loaded cost</strong> is a context tax every skill pays on every turn, simply
-            by existing in your context window. Even if you never invoke a skill in a session, its
-            body occupies tokens that the model has to process. You pay a proportional share of
-            every input-side token cost, every turn, for every loaded skill.
+            <strong>Loaded cost</strong> is a context tax every skill pays on every turn. Claude
+            Code lazy-loads skill bodies — at startup, only the skill's name and description
+            metadata (~30–50 tokens) is pre-loaded into context. The full body is only injected
+            when the skill becomes directly relevant. You pay a proportional share of every
+            input-side token cost, every turn, based on each skill's metadata size.
           </p>
         </div>
 
@@ -60,12 +61,12 @@ export default function CostExplainerModal({ onClose }: Props) {
               <tr>
                 <td><span className="type-badge type-skill">skill</span></td>
                 <td>Yes</td>
-                <td>Yes</td>
+                <td>Yes — metadata always in context</td>
               </tr>
               <tr>
                 <td><span className="type-badge type-subagent">subagent</span></td>
                 <td>Yes</td>
-                <td>Yes</td>
+                <td>Yes — metadata always in context</td>
               </tr>
               <tr>
                 <td><span className="type-badge type-command">cmd</span></td>
@@ -80,7 +81,7 @@ export default function CostExplainerModal({ onClose }: Props) {
           <div className="modal-section-title">The math</div>
           <p>
             Loaded cost is computed as:{' '}
-            <code>(skill bytes ÷ total loaded bytes) × turn input-side tokens</code>.
+            <code>(skill name+description bytes ÷ total metadata bytes) × turn input-side tokens</code>.
             Input-side means regular input tokens + cache creation tokens + cache read tokens.
           </p>
           {sample === 'loading' && (

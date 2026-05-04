@@ -26,18 +26,18 @@ const CMD_MSG_RE = /<command-message>([^<]+)<\/command-message>/
 
 export function breakdownForSkill(
   skillName: string,
-  skillBody: string,
+  skillDescription: string,
   skillType: SkillType,
   maxTurns = 100,
 ): BreakdownSession[] {
   const allSkills = discoverAllSkills()
   const nonCommandSkills = allSkills
     .filter(s => s.type !== 'command')
-    .map(s => ({ name: s.name, bodyBytes: Buffer.byteLength(s.body ?? '', 'utf-8') }))
+    .map(s => ({ name: s.name, bodyBytes: Buffer.byteLength(`${s.name} ${s.description ?? ''}`, 'utf-8') }))
     .filter(s => s.bodyBytes > 0)
 
   const totalBytes = nonCommandSkills.reduce((sum, s) => sum + s.bodyBytes, 0)
-  const skillBodyBytes = Buffer.byteLength(skillBody ?? '', 'utf-8')
+  const skillBodyBytes = Buffer.byteLength(`${skillName} ${skillDescription ?? ''}`, 'utf-8')
   const loadedShare = totalBytes > 0 ? skillBodyBytes / totalBytes : 0
 
   const validSkills = new Set(allSkills.map(s => s.name))

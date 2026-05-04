@@ -21,7 +21,11 @@ export function getSampleTurn(): SampleTurnResult | null {
   const allSkills = discoverAllSkills()
   const nonCommandSkills = allSkills
     .filter(s => s.type !== 'command')
-    .map(s => ({ name: s.name, bodyBytes: Buffer.byteLength(s.body ?? '', 'utf-8') }))
+    .map(s => ({
+      name: s.name,
+      bodyBytes: Buffer.byteLength(`${s.name} ${s.description ?? ''}`, 'utf-8'),
+      description: s.description ?? '',
+    }))
     .filter(s => s.bodyBytes > 0)
 
   if (nonCommandSkills.length === 0) return null
@@ -84,7 +88,7 @@ export function getSampleTurn(): SampleTurnResult | null {
         : 0
 
       const formula =
-        `(${topSkill.bodyBytes.toLocaleString()} bytes ÷ ${totalBodyBytes.toLocaleString()} total bytes) × ` +
+        `(${topSkill.bodyBytes.toLocaleString()} metadata bytes ÷ ${totalBodyBytes.toLocaleString()} total metadata bytes) × ` +
         `${totalTurnInputSide.toLocaleString()} tokens = ${attributedTokens.toLocaleString()} attributed tokens`
 
       return {
