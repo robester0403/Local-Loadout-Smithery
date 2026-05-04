@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react'
 import { fetchCostBreakdown } from '../api'
 import type { BreakdownSession, BreakdownTurn } from '../api'
-import type { Skill } from '../types'
+import type { Skill, Timeframe } from '../types'
+
+const TF_LABELS: Record<Timeframe, string> = {
+  day: 'last 24h',
+  week: 'last 7d',
+  month: 'last 30d',
+  quarter: 'last 90d',
+  year: 'last 1y',
+  all: 'all time',
+}
 
 interface Props {
   skill: Skill
   onClose: () => void
+  timeframe?: Timeframe
 }
 
 function formatTurnDate(iso: string): string {
@@ -37,13 +47,16 @@ function TurnRow({ turn }: { turn: BreakdownTurn }) {
   )
 }
 
-export default function CostBreakdownPanel({ skill, onClose }: Props) {
+export default function CostBreakdownPanel({ skill, onClose, timeframe }: Props) {
   const [sessions, setSessions] = useState<BreakdownSession[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchCostBreakdown(skill.id)
+    setLoading(true)
+    setSessions(null)
+    setError(null)
+    fetchCostBreakdown(skill.id, timeframe)
       .then(breakdown => {
         setSessions(breakdown)
         setLoading(false)
@@ -52,7 +65,7 @@ export default function CostBreakdownPanel({ skill, onClose }: Props) {
         setError((e as Error).message)
         setLoading(false)
       })
-  }, [skill.id])
+  }, [skill.id, timeframe])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -74,7 +87,9 @@ export default function CostBreakdownPanel({ skill, onClose }: Props) {
         <div className="modal-header">
           <div>
             <h2 className="modal-title">{skill.name}</h2>
-            <div className="modal-subtitle">Cost breakdown</div>
+            <div className="modal-subtitle">
+              Cost breakdown{timeframe ? ` · ${TF_LABELS[timeframe]}` : ''}
+            </div>
           </div>
           <button className="modal-close btn btn-sm" onClick={onClose} aria-label="Close">✕</button>
         </div>

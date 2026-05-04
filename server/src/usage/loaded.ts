@@ -33,6 +33,7 @@ function processSession(
   loaded: PreparedSkill[],
   totalBytes: number,
   acc: Map<string, LoadedCostEntry>,
+  since?: Date,
 ): void {
   let raw: string
   try {
@@ -53,6 +54,11 @@ function processSession(
     }
 
     if (obj['type'] !== 'assistant') continue
+
+    if (since) {
+      const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
+      if (ts && new Date(ts) < since) continue
+    }
     const msg = obj['message'] as Record<string, unknown> | undefined
     if (!msg || msg['role'] !== 'assistant') continue
     const usage = msg['usage'] as Record<string, unknown> | undefined
@@ -108,7 +114,7 @@ function processSession(
   }
 }
 
-export function computeLoadedCost(skills?: LoadedSkillInput[]): LoadedCostEntry[] {
+export function computeLoadedCost(skills?: LoadedSkillInput[], since?: Date): LoadedCostEntry[] {
   const list =
     skills ?? discoverAllSkills().map(s => ({ name: s.name, description: s.description, type: s.type }))
 
@@ -127,7 +133,7 @@ export function computeLoadedCost(skills?: LoadedSkillInput[]): LoadedCostEntry[
 
   const acc = new Map<string, LoadedCostEntry>()
   for (const file of findSessionFiles()) {
-    processSession(file, prepared, totalBytes, acc)
+    processSession(file, prepared, totalBytes, acc, since)
   }
   return Array.from(acc.values()).sort((a, b) => b.totalDollars - a.totalDollars)
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Skill, SkillUsageSummary, Insight, SortKey, SortDir, Filters } from './types'
+import type { Skill, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe } from './types'
 import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled } from './api'
 import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
@@ -7,6 +7,7 @@ import FilterBar from './components/FilterBar'
 import EmptyState from './components/EmptyState'
 import CostExplainerModal from './components/CostExplainerModal'
 import CostBreakdownPanel from './components/CostBreakdownPanel'
+import TimeframePicker from './components/TimeframePicker'
 import './App.css'
 
 // Thresholds for diagnostic insights.
@@ -61,11 +62,18 @@ export default function App() {
   const [selected, setSelected] = useState<Skill | null>(null)
   const [showCostModal, setShowCostModal] = useState(false)
   const [breakdownSkill, setBreakdownSkill] = useState<Skill | null>(null)
+  const [timeframe, setTimeframe] = useState<Timeframe>(
+    () => (localStorage.getItem('lsm-timeframe') as Timeframe) ?? 'all'
+  )
 
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3500)
   }
+
+  useEffect(() => {
+    localStorage.setItem('lsm-timeframe', timeframe)
+  }, [timeframe])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,14 +81,14 @@ export default function App() {
     try {
       const rawSkills = await fetchInventory()
       let summaries: SkillUsageSummary[] = []
-      try { summaries = await fetchUsageAggregate() } catch { /* cost data unavailable */ }
+      try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
       setSkills(mergeWithCost(rawSkills, summaries))
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [timeframe])
 
   useEffect(() => { load() }, [load])
 
@@ -89,12 +97,12 @@ export default function App() {
       try {
         const rawSkills = await fetchInventory()
         let summaries: SkillUsageSummary[] = []
-        try { summaries = await fetchUsageAggregate() } catch { /* ignore */ }
+        try { summaries = await fetchUsageAggregate(timeframe) } catch { /* ignore */ }
         setSkills(mergeWithCost(rawSkills, summaries))
       } catch { /* ignore */ }
     }, 30_000)
     return () => clearInterval(id)
-  }, [])
+  }, [timeframe])
 
   useEffect(() => {
     if (!selected) return
@@ -173,6 +181,7 @@ export default function App() {
           <span className="header-count">{skills.length} total</span>
         </div>
         <div className="header-right">
+          <TimeframePicker value={timeframe} onChange={setTimeframe} />
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             ? How costs work
           </button>
@@ -255,6 +264,7 @@ export default function App() {
             onSelect={setSelected}
             onToggle={handleToggle}
             onBreakdown={setBreakdownSkill}
+            timeframe={timeframe}
           />
         )}
       </main>
@@ -269,13 +279,14 @@ export default function App() {
       )}
 
       {showCostModal && (
-        <CostExplainerModal onClose={() => setShowCostModal(false)} />
+        <CostExplainerModal onClose={() => setShowCostModal(false)} timeframe={timeframe} />
       )}
 
       {breakdownSkill && (
         <CostBreakdownPanel
           skill={breakdownSkill}
           onClose={() => setBreakdownSkill(null)}
+          timeframe={timeframe}
         />
       )}
     </div>

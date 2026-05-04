@@ -1,19 +1,22 @@
 import { useEffect, useState } from 'react'
 import { fetchSampleTurn } from '../api'
 import type { SampleTurn } from '../api'
+import type { Timeframe } from '../types'
 
 interface Props {
   onClose: () => void
+  timeframe?: Timeframe
 }
 
-export default function CostExplainerModal({ onClose }: Props) {
+export default function CostExplainerModal({ onClose, timeframe }: Props) {
   const [sample, setSample] = useState<SampleTurn | null | 'loading'>('loading')
 
   useEffect(() => {
-    fetchSampleTurn()
+    setSample('loading')
+    fetchSampleTurn(timeframe)
       .then(s => setSample(s))
       .catch(() => setSample(null))
-  }, [])
+  }, [timeframe])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

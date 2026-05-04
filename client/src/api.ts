@@ -1,4 +1,4 @@
-import type { Skill, SkillUsageSummary } from './types'
+import type { Skill, SkillUsageSummary, Timeframe } from './types'
 
 export interface SampleTurn {
   skillName: string
@@ -50,8 +50,9 @@ export async function fetchInventory(): Promise<Skill[]> {
   return data.skills
 }
 
-export async function fetchUsageAggregate(): Promise<SkillUsageSummary[]> {
-  const res = await fetch('/api/usage/aggregate')
+export async function fetchUsageAggregate(timeframe?: Timeframe): Promise<SkillUsageSummary[]> {
+  const qs = timeframe && timeframe !== 'all' ? `?timeframe=${timeframe}` : ''
+  const res = await fetch(`/api/usage/aggregate${qs}`)
   const data = await parseResponse<{ summaries: SkillUsageSummary[] }>(res)
   return data.summaries
 }
@@ -67,14 +68,16 @@ export async function setSkillDisabled(id: string, disabled: boolean): Promise<v
   await parseResponse<{ ok: boolean }>(res)
 }
 
-export async function fetchSampleTurn(): Promise<SampleTurn | null> {
-  const res = await fetch('/api/usage/sample-turn')
+export async function fetchSampleTurn(timeframe?: Timeframe): Promise<SampleTurn | null> {
+  const qs = timeframe && timeframe !== 'all' ? `?timeframe=${timeframe}` : ''
+  const res = await fetch(`/api/usage/sample-turn${qs}`)
   const data = await parseResponse<{ sample: SampleTurn | null }>(res)
   return data.sample
 }
 
-export async function fetchCostBreakdown(skillId: string): Promise<BreakdownSession[]> {
-  const res = await fetch(`/api/usage/breakdown/${encodeURIComponent(skillId)}`)
+export async function fetchCostBreakdown(skillId: string, timeframe?: Timeframe): Promise<BreakdownSession[]> {
+  const qs = timeframe && timeframe !== 'all' ? `?timeframe=${timeframe}` : ''
+  const res = await fetch(`/api/usage/breakdown/${encodeURIComponent(skillId)}${qs}`)
   const data = await parseResponse<{ breakdown: BreakdownSession[] }>(res)
   return data.breakdown
 }

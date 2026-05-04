@@ -18,12 +18,12 @@ export interface SkillCostSummary {
   total: SkillCostAxes
 }
 
-export function computeSkillAggregate(skills?: LoadedSkillInput[]): SkillCostSummary[] {
+export function computeSkillAggregate(skills?: LoadedSkillInput[], since?: Date): SkillCostSummary[] {
   const list = skills ?? discoverAllSkills().map(s => ({ name: s.name, description: s.description, type: s.type }))
   const validSkills = new Set(list.map(s => s.name))
 
-  const activeEntries = computeActiveCost(validSkills)
-  const loadedEntries = computeLoadedCost(list)
+  const activeEntries = computeActiveCost(validSkills, since)
+  const loadedEntries = computeLoadedCost(list, since)
 
   const summaries = new Map<string, SkillCostSummary>()
 

@@ -21,6 +21,7 @@ function parseSessionActiveCost(
   filePath: string,
   acc: Map<string, ActiveCostEntry>,
   validSkills: Set<string>,
+  since?: Date,
 ): void {
   let raw: string
   try {
@@ -74,6 +75,11 @@ function parseSessionActiveCost(
     if (!usage) continue
     if (!currentSkill) continue
 
+    if (since) {
+      const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
+      if (ts && new Date(ts) < since) continue
+    }
+
     const model = typeof msg['model'] === 'string' ? msg['model'] : ''
     const pricing = getPricing(model)
 
@@ -118,11 +124,11 @@ function parseSessionActiveCost(
   }
 }
 
-export function computeActiveCost(validSkills?: Set<string>): ActiveCostEntry[] {
+export function computeActiveCost(validSkills?: Set<string>, since?: Date): ActiveCostEntry[] {
   const skills = validSkills ?? new Set(discoverAllSkills().map(s => s.name))
   const acc = new Map<string, ActiveCostEntry>()
   for (const file of findSessionFiles()) {
-    parseSessionActiveCost(file, acc, skills)
+    parseSessionActiveCost(file, acc, skills, since)
   }
   return Array.from(acc.values()).sort((a, b) => b.totalDollars - a.totalDollars)
 }

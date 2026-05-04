@@ -29,6 +29,7 @@ export function breakdownForSkill(
   skillDescription: string,
   skillType: SkillType,
   maxTurns = 100,
+  since?: Date,
 ): BreakdownSession[] {
   const allSkills = discoverAllSkills()
   const nonCommandSkills = allSkills
@@ -91,6 +92,11 @@ export function breakdownForSkill(
       if (!msg || msg['role'] !== 'assistant') continue
       const usage = msg['usage'] as Record<string, unknown> | undefined
       if (!usage) continue
+
+      if (since) {
+        const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
+        if (ts && new Date(ts) < since) continue
+      }
 
       const input = typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0
       const output = typeof usage['output_tokens'] === 'number' ? usage['output_tokens'] : 0

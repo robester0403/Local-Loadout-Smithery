@@ -1,4 +1,4 @@
-import type { Skill, SortKey, SortDir } from '../types'
+import type { Skill, SortKey, SortDir, Timeframe } from '../types'
 import HealthBadge from './HealthBadge'
 import InsightBadge from './InsightBadge'
 import ToggleSwitch from './ToggleSwitch'
@@ -12,6 +12,14 @@ interface Props {
   onSelect: (skill: Skill) => void
   onToggle: (skill: Skill, enabled: boolean) => void
   onBreakdown: (skill: Skill) => void
+  timeframe?: Timeframe
+}
+
+function tfLabel(tf: Timeframe): string {
+  const labels: Record<Timeframe, string> = {
+    day: '24h', week: '7d', month: '30d', quarter: '90d', year: '1y', all: '',
+  }
+  return labels[tf]
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -20,16 +28,16 @@ const TYPE_LABELS: Record<string, string> = {
   subagent: 'subagent',
 }
 
-const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
-  { key: 'health', label: 'Health' },
-  { key: 'insight', label: 'Diag' },
-  { key: 'name', label: 'Name' },
-  { key: 'type', label: 'Type' },
-  { key: 'scope', label: 'Context' },
-  { key: 'lastModified', label: 'Modified' },
-  { key: 'activeDollars', label: 'Active $', numeric: true },
-  { key: 'loadedDollars', label: 'Loaded $', numeric: true },
-  { key: 'totalDollars', label: 'Total $', numeric: true },
+const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean }[] = [
+  { key: 'health', labelBase: 'Health' },
+  { key: 'insight', labelBase: 'Diag' },
+  { key: 'name', labelBase: 'Name' },
+  { key: 'type', labelBase: 'Type' },
+  { key: 'scope', labelBase: 'Context' },
+  { key: 'lastModified', labelBase: 'Modified' },
+  { key: 'activeDollars', labelBase: 'Active $', numeric: true },
+  { key: 'loadedDollars', labelBase: 'Loaded $', numeric: true },
+  { key: 'totalDollars', labelBase: 'Total $', numeric: true },
 ]
 
 function fmtDollars(n: number): string {
@@ -60,8 +68,15 @@ function ContextCell({ skill }: { skill: Skill }) {
 }
 
 export default function InventoryTable({
-  skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown,
+  skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
 }: Props) {
+  const suffix = timeframe ? tfLabel(timeframe) : ''
+  const COLUMNS = BASE_COLUMNS.map(col => {
+    const isDollar = col.key === 'activeDollars' || col.key === 'loadedDollars' || col.key === 'totalDollars'
+    const label = isDollar && suffix ? `${col.labelBase} (${suffix})` : col.labelBase
+    return { ...col, label }
+  })
+
   return (
     <div className="table-wrap">
       <table className="inventory-table">

@@ -7,6 +7,7 @@ import { disableSkill, enableSkill } from './state'
 import { computeSkillAggregate } from './usage'
 import { getSampleTurn } from './usage/sampleTurn'
 import { breakdownForSkill } from './usage/breakdown'
+import { parseTimeframe, sinceDate } from './usage/timeframe'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -30,9 +31,11 @@ app.get('/api/inventory', (_req, res) => {
   }
 })
 
-app.get('/api/usage/aggregate', (_req, res) => {
+app.get('/api/usage/aggregate', (req, res) => {
   try {
-    const summaries = computeSkillAggregate()
+    const tf = parseTimeframe(req.query['timeframe'])
+    const since = sinceDate(tf) ?? undefined
+    const summaries = computeSkillAggregate(undefined, since)
     res.json({ summaries })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
@@ -57,9 +60,11 @@ app.post('/api/skills/:id/enable', (req, res) => {
   }
 })
 
-app.get('/api/usage/sample-turn', (_req, res) => {
+app.get('/api/usage/sample-turn', (req, res) => {
   try {
-    const sample = getSampleTurn()
+    const tf = parseTimeframe(req.query['timeframe'])
+    const since = sinceDate(tf) ?? undefined
+    const sample = getSampleTurn(since)
     res.json({ sample })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
@@ -95,7 +100,9 @@ app.get('/api/usage/breakdown/:skillId', (req, res) => {
   }
 
   try {
-    const breakdown = breakdownForSkill(skill.name, skill.description, skill.type)
+    const tf = parseTimeframe(req.query['timeframe'])
+    const since = sinceDate(tf) ?? undefined
+    const breakdown = breakdownForSkill(skill.name, skill.description, skill.type, 100, since)
     res.json({ breakdown })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })

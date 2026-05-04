@@ -17,7 +17,7 @@ export interface SampleTurnResult {
   formula: string
 }
 
-export function getSampleTurn(): SampleTurnResult | null {
+export function getSampleTurn(since?: Date): SampleTurnResult | null {
   const allSkills = discoverAllSkills()
   const nonCommandSkills = allSkills
     .filter(s => s.type !== 'command')
@@ -61,6 +61,11 @@ export function getSampleTurn(): SampleTurnResult | null {
       if (!msg || msg['role'] !== 'assistant') continue
       const usage = msg['usage'] as Record<string, unknown> | undefined
       if (!usage) continue
+
+      if (since) {
+        const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
+        if (ts && new Date(ts) < since) continue
+      }
 
       const input = typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0
       const cacheCreate =
