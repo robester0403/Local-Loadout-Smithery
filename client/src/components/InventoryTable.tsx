@@ -1,5 +1,6 @@
 import type { Skill, SortKey, SortDir } from '../types'
 import HealthBadge from './HealthBadge'
+import InsightBadge from './InsightBadge'
 import ToggleSwitch from './ToggleSwitch'
 
 interface Props {
@@ -10,21 +11,30 @@ interface Props {
   selected: Skill | null
   onSelect: (skill: Skill) => void
   onToggle: (skill: Skill, enabled: boolean) => void
+  onBreakdown: (skill: Skill) => void
 }
 
 const TYPE_LABELS: Record<string, string> = {
   skill: 'skill',
   command: 'cmd',
-  agent: 'agent',
+  subagent: 'subagent',
 }
 
-const COLUMNS: { key: SortKey; label: string }[] = [
-  { key: 'health', label: '' },
+const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
+  { key: 'health', label: 'Health' },
+  { key: 'insight', label: 'Diag' },
   { key: 'name', label: 'Name' },
   { key: 'type', label: 'Type' },
   { key: 'scope', label: 'Context' },
   { key: 'lastModified', label: 'Modified' },
+  { key: 'activeDollars', label: 'Active $', numeric: true },
+  { key: 'loadedDollars', label: 'Loaded $', numeric: true },
+  { key: 'totalDollars', label: 'Total $', numeric: true },
 ]
+
+function fmtDollars(n: number): string {
+  return '$' + n.toFixed(4)
+}
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
@@ -32,8 +42,9 @@ function formatDate(iso: string): string {
 }
 
 function projectLabel(projectId: string): string {
-  const parts = projectId.split('-').filter(Boolean)
-  return parts[parts.length - 1] || projectId
+  // projectId is now the cwd path (/Users/foo/myproject) — grab the last segment.
+  // Falls back gracefully for the old dash-encoded hash format.
+  return projectId.split('/').filter(Boolean).pop() ?? projectId
 }
 
 function ContextCell({ skill }: { skill: Skill }) {
@@ -49,7 +60,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 }
 
 export default function InventoryTable({
-  skills, sortKey, sortDir, onSort, selected, onSelect, onToggle,
+  skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown,
 }: Props) {
   return (
     <div className="table-wrap">
@@ -59,7 +70,11 @@ export default function InventoryTable({
             {COLUMNS.map(col => (
               <th
                 key={col.key}
-                className={`col-${col.key} ${sortKey === col.key ? 'sorted' : ''}`}
+                className={[
+                  `col-${col.key}`,
+                  sortKey === col.key ? 'sorted' : '',
+                  col.numeric ? 'col-numeric' : '',
+                ].filter(Boolean).join(' ')}
                 onClick={() => onSort(col.key)}
               >
                 {col.label}
@@ -84,6 +99,15 @@ export default function InventoryTable({
               <td className="col-health">
                 <HealthBadge health={skill.health} />
               </td>
+              <td className="col-insight">
+                <InsightBadge
+                  insight={skill.insight}
+                  dormant={skill.dormant}
+                  activeDollars={skill.activeDollars}
+                  loadedDollars={skill.loadedDollars}
+                  lastInvoked={skill.lastInvoked}
+                />
+              </td>
               <td className="col-name">
                 <span className="skill-name">{skill.name}</span>
                 {skill.description && (
@@ -99,6 +123,33 @@ export default function InventoryTable({
                 <ContextCell skill={skill} />
               </td>
               <td className="col-lastModified">{formatDate(skill.lastModified)}</td>
+              <td className="col-activeDollars col-numeric">
+                <span
+                  className="dollar-link"
+                  onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                  title="Show cost breakdown"
+                >
+                  {fmtDollars(skill.activeDollars)}
+                </span>
+              </td>
+              <td className="col-loadedDollars col-numeric">
+                <span
+                  className="dollar-link"
+                  onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                  title="Show cost breakdown"
+                >
+                  {fmtDollars(skill.loadedDollars)}
+                </span>
+              </td>
+              <td className="col-totalDollars col-numeric">
+                <span
+                  className="dollar-link"
+                  onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                  title="Show cost breakdown"
+                >
+                  {fmtDollars(skill.totalDollars)}
+                </span>
+              </td>
               <td className="col-enabled" onClick={e => e.stopPropagation()}>
                 <ToggleSwitch
                   checked={!skill.disabled}

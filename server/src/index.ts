@@ -1,9 +1,12 @@
-import express from 'express'
+import express, { type Request, type Response, type NextFunction } from 'express'
 import path from 'path'
 import os from 'os'
 import { exec } from 'child_process'
 import { discoverAllSkills } from './scanner'
 import { disableSkill, enableSkill } from './state'
+import { computeSkillAggregate } from './usage'
+import { getSampleTurn } from './usage/sampleTurn'
+import { breakdownForSkill } from './usage/breakdown'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -27,6 +30,15 @@ app.get('/api/inventory', (_req, res) => {
   }
 })
 
+app.get('/api/usage/aggregate', (_req, res) => {
+  try {
+    const summaries = computeSkillAggregate()
+    res.json({ summaries })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
 app.post('/api/skills/:id/disable', (req, res) => {
   try {
     disableSkill(req.params.id)
@@ -45,6 +57,51 @@ app.post('/api/skills/:id/enable', (req, res) => {
   }
 })
 
+app.get('/api/usage/sample-turn', (_req, res) => {
+  try {
+    const sample = getSampleTurn()
+    res.json({ sample })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.get('/api/usage/breakdown/:skillId', (req, res) => {
+  let filePath: string
+  try {
+    filePath = Buffer.from(req.params.skillId, 'base64').toString('utf-8')
+  } catch {
+    res.status(400).json({ error: 'Invalid skillId' })
+    return
+  }
+
+  const home = os.homedir()
+  const normalized = path.resolve(filePath)
+  if (normalized !== home && !normalized.startsWith(home + path.sep)) {
+    res.status(403).json({ error: 'Path outside home directory' })
+    return
+  }
+
+  const allSkills = discoverAllSkills()
+  const skill =
+    allSkills.find(s => s.path === filePath) ||
+    allSkills.find(s => s.path === filePath + '.disabled') ||
+    allSkills.find(s => s.path.replace(/\.disabled$/, '') === filePath) ||
+    allSkills.find(s => s.realpath === normalized)
+
+  if (!skill) {
+    res.status(404).json({ error: 'Skill not found' })
+    return
+  }
+
+  try {
+    const breakdown = breakdownForSkill(skill.name, skill.body, skill.type)
+    res.json({ breakdown })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
 app.post('/api/skills/:id/open', (req, res) => {
   let filePath: string
   try {
@@ -54,16 +111,41 @@ app.post('/api/skills/:id/open', (req, res) => {
     return
   }
 
-  if (!filePath.startsWith(os.homedir())) {
+  const home = os.homedir()
+  const normalized = path.resolve(filePath)
+  if (normalized !== home && !normalized.startsWith(home + path.sep)) {
     res.status(403).json({ error: 'Path outside home directory' })
     return
   }
 
-  const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open'
+  let cmd: string
+  if (process.platform === 'darwin') cmd = 'open'
+  else if (process.platform === 'win32') cmd = 'start ""'
+  else cmd = 'xdg-open'
+
   exec(`${cmd} ${JSON.stringify(filePath)}`, (err) => {
     if (err) { res.status(500).json({ error: err.message }); return }
     res.json({ ok: true })
   })
+})
+
+// 404 for unknown API routes (must be before static fallback)
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Not found' })
+})
+
+// In production, serve the SPA for any non-API route
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(__dirname, '../../client/dist/index.html'))
+  })
+}
+
+// Global error handler — catches anything thrown by middleware/routes
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[LSM]', err.message)
+  res.status(500).json({ error: err.message })
 })
 
 app.listen(PORT, () => {

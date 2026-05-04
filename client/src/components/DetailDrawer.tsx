@@ -6,6 +6,7 @@ interface Props {
   skill: Skill
   onClose: () => void
   onOpen: (skill: Skill) => void
+  onBreakdown: (skill: Skill) => void
 }
 
 function formatDate(iso: string): string {
@@ -26,7 +27,7 @@ const META_ROWS: { label: string; getValue: (s: Skill) => string }[] = [
   { label: 'Project', getValue: s => s.projectId ?? '—' },
 ]
 
-export default function DetailDrawer({ skill, onClose, onOpen }: Props) {
+export default function DetailDrawer({ skill, onClose, onOpen, onBreakdown }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -54,6 +55,9 @@ export default function DetailDrawer({ skill, onClose, onOpen }: Props) {
           <div className="drawer-actions">
             <button className="btn btn-primary" onClick={() => onOpen(skill)}>
               Open in editor
+            </button>
+            <button className="btn" onClick={() => onBreakdown(skill)}>
+              Show breakdown
             </button>
             <button className="btn" onClick={onClose}>Close</button>
           </div>
