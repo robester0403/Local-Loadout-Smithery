@@ -1,4 +1,7 @@
-export type SkillType = 'skill' | 'command' | 'agent'
+import type { SkillReference } from './references'
+export type { SkillReference } from './references'
+
+export type SkillType = 'skill' | 'command' | 'subagent'
 export type SkillScope = 'global' | 'project'
 export type HealthStatus = 'ok' | 'warn' | 'error'
 
@@ -28,4 +31,6 @@ export interface Skill {
   frontmatter: Record<string, unknown>
   lastModified: string
   health: HealthResult
+  disabled: boolean
+  references: SkillReference[]
 }

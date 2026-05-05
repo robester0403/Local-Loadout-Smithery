@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import { parseFrontmatter } from '../parser/frontmatter'
 import { computeHealth } from './health'
+import { extractReferences } from './references'
 import type { Skill, SkillType, SkillScope, HealthResult } from './types'
 
 function listDir(dir: string): string[] {
@@ -108,6 +109,7 @@ function buildSkill(
       body,
       frontmatter: meta,
       lastModified: stat.mtime.toISOString(),
+      references: [],
     }
     const health: HealthResult = computeHealth(base)
     return { ...base, health, disabled }
@@ -273,10 +275,12 @@ export function discoverAllSkills(): Skill[] {
     descriptionCounts.set(key, (descriptionCounts.get(key) ?? 0) + 1)
   }
 
+  const allNames = new Set(deduped.map(s => s.name))
   return deduped.map(skill => {
     // Strip 'health' out so we can rebuild the base object for computeHealth
     const { health: _health, ...base } = skill
     const health = computeHealth(base, { descriptionCounts })
-    return { ...skill, health }
+    const references = extractReferences(skill, allNames)
+    return { ...skill, health, references }
   })
 }

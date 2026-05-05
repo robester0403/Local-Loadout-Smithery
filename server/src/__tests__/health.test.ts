@@ -28,6 +28,7 @@ function base(overrides: Partial<Skill> = {}): Omit<Skill, 'health'> {
     frontmatter: { 'allowed-tools': 'Bash,Read' },
     lastModified: new Date().toISOString(),
     disabled: false,
+    references: [],
     ...overrides,
   }
 }

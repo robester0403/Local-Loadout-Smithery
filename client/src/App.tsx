@@ -275,9 +275,11 @@ export default function App() {
       {selected && (
         <DetailDrawer
           skill={selected}
+          allSkills={skills}
           onClose={() => setSelected(null)}
           onOpen={handleOpen}
           onBreakdown={setBreakdownSkill}
+          onSelect={setSelected}
         />
       )}
 

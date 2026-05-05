@@ -47,6 +47,7 @@ export interface Skill {
   lastModified: string
   health: HealthResult
   disabled: boolean
+  references: { name: string; source: 'body' | 'command' | 'frontmatter' }[]
   activeDollars: number
   loadedDollars: number
   totalDollars: number
