@@ -1,5 +1,5 @@
 import fs from 'fs'
-import type { Skill, HealthResult, HealthIssue } from './types'
+import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
 const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
@@ -97,9 +97,55 @@ export function computeHealth(
     issues.push({ severity: 'warn', message: 'Uses tools but missing allowed-tools' })
   }
 
+  // Scope mismatch detection
+  if (skill.body) {
+    const scopeIssue = detectScopeMismatch(skill.scope, skill.body)
+    if (scopeIssue) issues.push(scopeIssue)
+  }
+
   const hasError = issues.some(i => i.severity === 'error')
   const hasWarn = issues.some(i => i.severity === 'warn')
   const status = hasError ? 'error' : hasWarn ? 'warn' : 'ok'
 
   return { status, issues }
+}
+
+const GLOBAL_PATH_RE = /\/Users\/([^\s"')\]]+)/
+const ENV_RE = /\.env\b/i
+const PROJECT_PHRASES = ['this project', 'this repo', 'in our codebase']
+const GENERIC_PHRASES = ['any codebase', 'across projects', 'regardless of stack']
+
+function detectScopeMismatch(scope: SkillScope, body: string): HealthIssue | null {
+  const lower = body.toLowerCase()
+
+  if (scope === 'global') {
+    const pathMatch = GLOBAL_PATH_RE.exec(body)
+    if (pathMatch) {
+      return { severity: 'warn', message: `Global skill references project-specific path: ${pathMatch[0]}` }
+    }
+    if (ENV_RE.test(body)) {
+      return { severity: 'warn', message: 'Global skill references .env — consider making this project-scoped' }
+    }
+    for (const phrase of PROJECT_PHRASES) {
+      if (lower.includes(phrase)) {
+        return { severity: 'warn', message: `Global skill contains project-specific phrase: "${phrase}"` }
+      }
+    }
+  }
+
+  if (scope === 'project') {
+    const hasAnchor =
+      GLOBAL_PATH_RE.test(body) ||
+      ENV_RE.test(body) ||
+      PROJECT_PHRASES.some(p => lower.includes(p))
+    if (!hasAnchor) {
+      for (const phrase of GENERIC_PHRASES) {
+        if (lower.includes(phrase)) {
+          return { severity: 'warn', message: `Project skill uses generic phrasing ("${phrase}") with no project-specific anchors` }
+        }
+      }
+    }
+  }
+
+  return null
 }

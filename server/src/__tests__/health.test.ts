@@ -142,3 +142,59 @@ describe('computeHealth — description quality checks', () => {
     expect(result.issues.every(i => !/identical to another skill/i.test(i.message))).toBe(true)
   })
 })
+
+describe('scope mismatch detection', () => {
+  it('warns global skill with /Users/ path in body', () => {
+    const result = computeHealth(base({
+      scope: 'global',
+      body: 'Run this from /Users/robertso/Code/foo to build.',
+      frontmatter: { 'allowed-tools': 'Bash' },
+    }))
+    expect(result.issues.some(i => /Global skill references project-specific path/.test(i.message) && /\/Users\/robertso\/Code\/foo/.test(i.message))).toBe(true)
+  })
+
+  it('warns global skill with .env reference in body', () => {
+    const result = computeHealth(base({
+      scope: 'global',
+      body: 'Load variables from the .env file before running.',
+      frontmatter: { 'allowed-tools': 'Bash' },
+    }))
+    expect(result.issues.some(i => /Global skill references \.env/.test(i.message))).toBe(true)
+  })
+
+  it('warns global skill with "this project" phrase in body', () => {
+    const result = computeHealth(base({
+      scope: 'global',
+      body: 'Use this skill to manage this project dependencies.',
+      frontmatter: { 'allowed-tools': 'Bash' },
+    }))
+    expect(result.issues.some(i => /Global skill contains project-specific phrase: "this project"/.test(i.message))).toBe(true)
+  })
+
+  it('does not warn global skill with no project-specific content', () => {
+    const result = computeHealth(base({
+      scope: 'global',
+      body: 'Runs a build pipeline and outputs results.',
+      frontmatter: { 'allowed-tools': 'Bash' },
+    }))
+    expect(result.issues.every(i => !/scope/i.test(i.message) && !/project-specific/.test(i.message) && !/generic phrasing/.test(i.message))).toBe(true)
+  })
+
+  it('warns project skill with "any codebase" and no anchors', () => {
+    const result = computeHealth(base({
+      scope: 'project',
+      body: 'Works with any codebase to generate documentation.',
+      frontmatter: { 'allowed-tools': 'Bash' },
+    }))
+    expect(result.issues.some(i => /Project skill uses generic phrasing \("any codebase"\)/.test(i.message))).toBe(true)
+  })
+
+  it('does not warn project skill with "any codebase" when "this project" anchor is present', () => {
+    const result = computeHealth(base({
+      scope: 'project',
+      body: 'Works with any codebase but specifically for this project setup.',
+      frontmatter: { 'allowed-tools': 'Bash' },
+    }))
+    expect(result.issues.every(i => !/generic phrasing/.test(i.message))).toBe(true)
+  })
+})
