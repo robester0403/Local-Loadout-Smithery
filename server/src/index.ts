@@ -10,6 +10,14 @@ import { computeSkillAggregate } from './usage'
 import { getSampleTurn } from './usage/sampleTurn'
 import { breakdownForSkill } from './usage/breakdown'
 import { parseTimeframe, sinceDate } from './usage/timeframe'
+import {
+  loadState, saveState, createGroup, updateGroup, deleteGroup,
+  addMember, removeMember, setGlobalEnabled, setUseHook,
+} from './superrouter/store'
+import { writeGroupFile, deleteGroupFile } from './superrouter/routingFile'
+import { updateGlobalClaude, updateProjectClaude } from './superrouter/claudeMdWriter'
+import { installHook, uninstallHook, isHookInstalled } from './superrouter/hookGenerator'
+import { computeDrift } from './superrouter/drift'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -299,6 +307,150 @@ app.post('/api/skills/:id/open', (req, res) => {
     res.json({ ok: true })
   })
 })
+
+// ── SuperRouter ──────────────────────────────────────────────────────────────
+
+function syncClaudeMd(allGroups: ReturnType<typeof loadState>['groups']) {
+  // Global CLAUDE.md: include all enabled global groups
+  const enabledGlobal = allGroups.filter(g => g.enabled && g.scope === 'global')
+  updateGlobalClaude(enabledGlobal)
+  // Project CLAUDE.md: group by projectPath, update each
+  const projectPaths = new Set(
+    allGroups.filter(g => g.enabled && g.scope === 'project' && g.projectPath).map(g => g.projectPath!)
+  )
+  for (const projectPath of projectPaths) {
+    const groups = allGroups.filter(g => g.enabled && g.scope === 'project' && g.projectPath === projectPath)
+    updateProjectClaude(projectPath, groups)
+  }
+}
+
+app.get('/api/superrouter/state', (_req, res) => {
+  try {
+    const state = loadState()
+    const inventory = discoverAllSkills()
+    const enriched = computeDrift(
+      state.groups,
+      inventory.map(s => ({ id: s.id, name: s.name, description: s.description })),
+    )
+    res.json({ ...state, groups: enriched, hookInstalled: isHookInstalled() })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/superrouter/groups', (req, res) => {
+  const { name, description, keywords, scope, projectPath } = req.body as {
+    name?: string; description?: string; keywords?: string[]
+    scope?: string; projectPath?: string
+  }
+  if (!name || !description || !Array.isArray(keywords) || !scope) {
+    res.status(400).json({ error: 'name, description, keywords, scope are required' })
+    return
+  }
+  if (scope !== 'global' && scope !== 'project') {
+    res.status(400).json({ error: 'scope must be global or project' })
+    return
+  }
+  try {
+    const group = createGroup({ name, description, keywords, scope, projectPath })
+    res.json({ group })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.put('/api/superrouter/groups/:id', (req, res) => {
+  const { name, description, keywords, scope, projectPath, enabled } = req.body as Partial<{
+    name: string; description: string; keywords: string[]
+    scope: 'global' | 'project'; projectPath: string; enabled: boolean
+  }>
+  try {
+    const group = updateGroup(req.params.id, { name, description, keywords, scope, projectPath, enabled })
+    const state = loadState()
+    // Regenerate routing file if group has members
+    if (group.members.length > 0) {
+      const inventory = discoverAllSkills()
+      const skillMap = new Map(inventory.map(s => [s.id, { name: s.name, description: s.description }]))
+      writeGroupFile(group, skillMap)
+    }
+    syncClaudeMd(state.groups)
+    res.json({ group })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.delete('/api/superrouter/groups/:id', (req, res) => {
+  try {
+    const state = loadState()
+    const group = state.groups.find(g => g.id === req.params.id)
+    if (!group) { res.status(404).json({ error: 'Group not found' }); return }
+    deleteGroup(req.params.id)
+    deleteGroupFile(req.params.id)
+    const updated = loadState()
+    syncClaudeMd(updated.groups)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/superrouter/groups/:id/members/:skillId', (req, res) => {
+  const { name, description } = req.body as { name?: string; description?: string }
+  if (!name || description === undefined) {
+    res.status(400).json({ error: 'name and description are required' })
+    return
+  }
+  try {
+    const member = addMember(req.params.id, req.params.skillId, name, description)
+    const state = loadState()
+    const group = state.groups.find(g => g.id === req.params.id)!
+    const inventory = discoverAllSkills()
+    const skillMap = new Map(inventory.map(s => [s.id, { name: s.name, description: s.description }]))
+    writeGroupFile(group, skillMap)
+    syncClaudeMd(state.groups)
+    res.json({ member })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.delete('/api/superrouter/groups/:id/members/:skillId', (req, res) => {
+  try {
+    removeMember(req.params.id, req.params.skillId)
+    const state = loadState()
+    const group = state.groups.find(g => g.id === req.params.id)!
+    const inventory = discoverAllSkills()
+    const skillMap = new Map(inventory.map(s => [s.id, { name: s.name, description: s.description }]))
+    writeGroupFile(group, skillMap)
+    syncClaudeMd(state.groups)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/superrouter/global-toggle', (req, res) => {
+  const { enabled, useHook } = req.body as { enabled?: boolean; useHook?: boolean }
+  try {
+    if (typeof enabled === 'boolean') setGlobalEnabled(enabled)
+    if (typeof useHook === 'boolean') {
+      setUseHook(useHook)
+      if (useHook) {
+        installHook()
+      } else {
+        uninstallHook()
+      }
+    }
+    const state = loadState()
+    syncClaudeMd(state.groups)
+    res.json({ ok: true, hookInstalled: isHookInstalled() })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // 404 for unknown API routes (must be before static fallback)
 app.use('/api', (_req, res) => {
