@@ -4,6 +4,7 @@ import os from 'os'
 import { exec } from 'child_process'
 import { discoverAllSkills } from './scanner'
 import { disableSkill, enableSkill } from './state'
+import { listProfiles, createProfile, deleteProfile, activateProfile } from './state/profiles'
 import { computeSkillAggregate } from './usage'
 import { getSampleTurn } from './usage/sampleTurn'
 import { breakdownForSkill } from './usage/breakdown'
@@ -54,6 +55,48 @@ app.post('/api/skills/:id/disable', (req, res) => {
 app.post('/api/skills/:id/enable', (req, res) => {
   try {
     enableSkill(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.get('/api/profiles', (_req, res) => {
+  try {
+    res.json(listProfiles())
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/profiles', (req: Request, res: Response) => {
+  const { name, skillIds } = req.body as { name?: string; skillIds?: string[] }
+  if (!name || typeof name !== 'string' || !Array.isArray(skillIds)) {
+    res.status(400).json({ error: 'name and skillIds are required' })
+    return
+  }
+  try {
+    createProfile(name.trim(), skillIds)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.delete('/api/profiles/:name', (req, res) => {
+  try {
+    deleteProfile(req.params.name)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/profiles/:name/activate', (req, res) => {
+  const name = req.params.name === '__all__' ? null : req.params.name
+  try {
+    const skills = discoverAllSkills()
+    activateProfile(name, skills.map(s => ({ id: s.id, disabled: s.disabled })))
     res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })

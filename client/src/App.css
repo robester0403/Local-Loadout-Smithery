@@ -59,6 +59,45 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 }
 .header-right { display: flex; gap: 8px; align-items: center; }
 
+/* ─── Profile switcher ──────────────────────────────────────────────────── */
+.profile-switcher { position: relative; }
+.profile-btn { display: flex; align-items: center; gap: 5px; }
+.profile-btn-active { border-color: rgba(99,179,237,.5); color: #63b3ed; background: rgba(99,179,237,.1); }
+.profile-chevron { font-size: 9px; color: var(--text-dim); }
+.profile-dropdown {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; min-width: 220px; box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  padding: 4px 0;
+}
+.profile-option {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px; cursor: pointer; font-size: 13px;
+  color: var(--text); user-select: none;
+}
+.profile-option:hover { background: var(--surface-hover); }
+.profile-option-current { color: #63b3ed; }
+.profile-option-name { flex: 1; }
+.profile-option-count { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+.profile-check { font-size: 11px; color: #63b3ed; margin-left: 4px; }
+.profile-delete-btn {
+  background: none; border: none; cursor: pointer; padding: 0 2px;
+  color: var(--text-dim); font-size: 11px; line-height: 1; opacity: 0;
+  transition: opacity .1s;
+}
+.profile-option:hover .profile-delete-btn { opacity: 1; }
+.profile-delete-btn:hover { color: #f55b5b; }
+.profile-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.profile-new-btn { color: var(--text-dim); font-size: 12px; }
+.profile-new-btn:hover { color: var(--text); }
+.profile-create-row { display: flex; gap: 6px; padding: 6px 10px; }
+.profile-create-input {
+  flex: 1; background: var(--surface-hover); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 8px; font-size: 12px; color: var(--text);
+  outline: none;
+}
+.profile-create-input:focus { border-color: var(--accent); }
+
 /* ─── Timeframe picker ──────────────────────────────────────────────────── */
 .timeframe-picker { display: flex; gap: 3px; }
 .tf-pill {

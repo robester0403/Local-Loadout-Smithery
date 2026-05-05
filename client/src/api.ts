@@ -81,3 +81,33 @@ export async function fetchCostBreakdown(skillId: string, timeframe?: Timeframe)
   const data = await parseResponse<{ breakdown: BreakdownSession[] }>(res)
   return data.breakdown
 }
+
+export interface ProfilesData {
+  profiles: Record<string, string[]>
+  activeProfile: string | null
+}
+
+export async function fetchProfiles(): Promise<ProfilesData> {
+  const res = await fetch('/api/profiles')
+  return parseResponse<ProfilesData>(res)
+}
+
+export async function createProfile(name: string, skillIds: string[]): Promise<void> {
+  const res = await fetch('/api/profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, skillIds }),
+  })
+  await parseResponse<{ ok: boolean }>(res)
+}
+
+export async function deleteProfile(name: string): Promise<void> {
+  const res = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  await parseResponse<{ ok: boolean }>(res)
+}
+
+export async function activateProfile(name: string | null): Promise<void> {
+  const slug = name === null ? '__all__' : encodeURIComponent(name)
+  const res = await fetch(`/api/profiles/${slug}/activate`, { method: 'POST' })
+  await parseResponse<{ ok: boolean }>(res)
+}

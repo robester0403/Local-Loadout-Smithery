@@ -113,6 +113,22 @@ export default function CostExplainerModal({ onClose, timeframe }: Props) {
             <strong>removal candidate</strong> diagnostic flags.
           </p>
         </div>
+
+        <div className="modal-section">
+          <div className="modal-section-title">Activation profiles</div>
+          <p>
+            Claude Code already filters skills by description match before loading. Profiles let
+            you go further by <em>physically disabling</em> skills you don't need for the current
+            task — they disappear from Claude's context entirely until you switch back.
+          </p>
+          <p style={{ marginTop: 8 }}>
+            Use profiles for sharp context separation (e.g. <em>work</em> vs. <em>personal</em>);
+            rely on description quality for everything else. The <strong>⚡ profile switcher</strong>{' '}
+            in the header activates a profile and bulk-disables everything outside it. Switching
+            back to <em>All skills</em> restores exactly what it disabled — without touching skills
+            you had manually disabled beforehand.
+          </p>
+        </div>
       </div>
     </div>
   )

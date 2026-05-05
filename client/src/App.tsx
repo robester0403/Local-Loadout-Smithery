@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Skill, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe } from './types'
-import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled } from './api'
+import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile } from './api'
+import type { ProfilesData } from './api'
 import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
 import FilterBar from './components/FilterBar'
 import EmptyState from './components/EmptyState'
 import CostExplainerModal from './components/CostExplainerModal'
+import ProfileSwitcher from './components/ProfileSwitcher'
 import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
 import './App.css'
@@ -69,6 +71,7 @@ export default function App() {
     () => (localStorage.getItem('lsm-timeframe') as Timeframe) ?? 'all'
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [profilesData, setProfilesData] = useState<ProfilesData>({ profiles: {}, activeProfile: null })
 
   function showToast(msg: string) {
     setToast(msg)
@@ -83,10 +86,14 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const rawSkills = await fetchInventory()
+      const [rawSkills, pd] = await Promise.all([
+        fetchInventory(),
+        fetchProfiles().catch(() => ({ profiles: {}, activeProfile: null })),
+      ])
       let summaries: SkillUsageSummary[] = []
       try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
       setSkills(mergeWithCost(rawSkills, summaries))
+      setProfilesData(pd)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -99,10 +106,14 @@ export default function App() {
   useEffect(() => {
     const id = setInterval(async () => {
       try {
-        const rawSkills = await fetchInventory()
+        const [rawSkills, pd] = await Promise.all([
+          fetchInventory(),
+          fetchProfiles().catch(() => null),
+        ])
         let summaries: SkillUsageSummary[] = []
         try { summaries = await fetchUsageAggregate(timeframe) } catch { /* ignore */ }
         setSkills(mergeWithCost(rawSkills, summaries))
+        if (pd) setProfilesData(pd)
       } catch { /* ignore */ }
     }, 30_000)
     return () => clearInterval(id)
@@ -152,6 +163,36 @@ export default function App() {
     if (errors.length > 0) {
       showToast(`Failed to disable: ${errors.join(', ')}`)
       await load()
+    }
+  }
+
+  async function handleActivateProfile(name: string | null) {
+    try {
+      await activateProfile(name)
+      await load()
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
+  async function handleCreateProfile(name: string, skillIds: string[]) {
+    try {
+      await createProfile(name, skillIds)
+      const pd = await fetchProfiles()
+      setProfilesData(pd)
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
+  async function handleDeleteProfile(name: string) {
+    try {
+      await deleteProfile(name)
+      const pd = await fetchProfiles()
+      setProfilesData(pd)
+      await load()
+    } catch (e) {
+      showToast((e as Error).message)
     }
   }
 
@@ -217,6 +258,13 @@ export default function App() {
           <span className="header-count">{skills.length} total</span>
         </div>
         <div className="header-right">
+          <ProfileSwitcher
+            profilesData={profilesData}
+            allSkillIds={skills.map(s => s.id)}
+            onActivate={handleActivateProfile}
+            onCreate={handleCreateProfile}
+            onDelete={handleDeleteProfile}
+          />
           <TimeframePicker value={timeframe} onChange={setTimeframe} />
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             ? How costs work
