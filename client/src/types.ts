@@ -54,6 +54,7 @@ export interface Skill {
   dormant: boolean
   lastInvoked: string
   bloat: boolean
+  descLen: number
 }
 
 export interface Filters {

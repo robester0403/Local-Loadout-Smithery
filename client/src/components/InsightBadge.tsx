@@ -7,6 +7,7 @@ interface Props {
   loadedDollars: number
   lastInvoked: string
   bloat: boolean
+  descLen: number
 }
 
 function fmt(n: number): string {
@@ -17,13 +18,14 @@ function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat }: Props) {
+export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen }: Props) {
   const bloatBadge = bloat ? (
     <span className="insight-badge insight-has-tooltip">
       📦
       <span className="insight-tooltip">
-        <span className="insight-tooltip-title insight-tooltip-bloat">Body bloat</span>
-        <span className="insight-tooltip-hint">Large file, rarely invoked. Consider trimming.</span>
+        <span className="insight-tooltip-title insight-tooltip-bloat">Description bloat</span>
+        <span className="insight-tooltip-row">Description: <b>{descLen} chars</b> (limit: 150)</span>
+        <span className="insight-tooltip-hint">Long descriptions cost tokens every turn. Trim to under 150 chars.</span>
       </span>
     </span>
   ) : null
