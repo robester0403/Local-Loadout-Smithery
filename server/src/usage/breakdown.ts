@@ -162,8 +162,8 @@ export function breakdownForSkill(
     }
   }
 
-  // Sort by dollars descending and cap
-  allMatchingTurns.sort((a, b) => b.dollars - a.dollars)
+  // Sort by timestamp descending and cap
+  allMatchingTurns.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
   const capped = allMatchingTurns.slice(0, maxTurns)
 
   // Group by session
@@ -175,8 +175,10 @@ export function breakdownForSkill(
     sessionMap.get(turn.sessionFile)!.push(turn)
   }
 
-  return Array.from(sessionMap.entries()).map(([sessionFile, turns]) => ({
-    sessionFile,
-    turns,
-  }))
+  return Array.from(sessionMap.entries())
+    .map(([sessionFile, turns]) => ({
+      sessionFile,
+      turns,
+    }))
+    .sort((a, b) => new Date(b.turns[0].ts).getTime() - new Date(a.turns[0].ts).getTime())
 }
