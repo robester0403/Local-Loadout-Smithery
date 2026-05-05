@@ -1,4 +1,7 @@
-import type { Insight, ClassificationResult } from '../types'
+import type { Insight, ClassificationResult, Skill } from '../types'
+import CopyPromptButton from './CopyPromptButton'
+import { generateFixRemovalCandidatePrompt } from '../prompts/fixRemovalCandidatePrompt'
+import { generateFixDormantPrompt } from '../prompts/fixDormantPrompt'
 
 interface Props {
   insight: Insight
@@ -9,6 +12,7 @@ interface Props {
   bloat: boolean
   descLen: number
   suggestedType?: ClassificationResult | null
+  skill?: Skill
 }
 
 function fmt(n: number): string {
@@ -19,7 +23,7 @@ function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType }: Props) {
+export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType, skill }: Props) {
   const mismatchBadge = suggestedType ? (
     <span className="insight-badge insight-has-tooltip">
       🔀
@@ -55,6 +59,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
             <span className="insight-tooltip-row">Loaded cost: <b>{fmt(loadedDollars)}</b></span>
             <span className="insight-tooltip-row">Active cost: <b>{fmt(activeDollars)}</b> — never invoked</span>
             <span className="insight-tooltip-hint">Paying context tax every turn with no return</span>
+            {skill && <CopyPromptButton getPrompt={() => generateFixRemovalCandidatePrompt(skill)} />}
           </span>
         </span>
         {bloatBadge}
@@ -94,6 +99,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
             )}
             <span className="insight-tooltip-row">Loaded cost: <b>{fmt(loadedDollars)}</b></span>
             <span className="insight-tooltip-hint">Not invoked in 90+ days</span>
+            {skill && <CopyPromptButton getPrompt={() => generateFixDormantPrompt(skill)} />}
           </span>
         </span>
         {bloatBadge}

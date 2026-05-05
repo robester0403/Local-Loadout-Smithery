@@ -136,7 +136,7 @@ export default function InventoryTable({
                 />
               </td>
               <td className="col-health">
-                <HealthBadge health={skill.health} />
+                <HealthBadge health={skill.health} skill={skill} />
               </td>
               <td className="col-insight">
                 <InsightBadge
@@ -148,6 +148,7 @@ export default function InventoryTable({
                   bloat={skill.bloat}
                   descLen={skill.descLen}
                   suggestedType={skill.suggestedType}
+                  skill={skill}
                 />
               </td>
               <td className="col-name">

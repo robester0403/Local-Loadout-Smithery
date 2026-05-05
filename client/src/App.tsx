@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Skill, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe } from './types'
-import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile } from './api'
+import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude } from './api'
 import type { ProfilesData } from './api'
+import { getBundledPrompt } from './prompts'
 import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
 import FilterBar from './components/FilterBar'
@@ -335,6 +336,21 @@ export default function App() {
         {selectedIds.size > 0 && (
           <div className="bulk-bar">
             <span className="bulk-count">{selectedIds.size} selected</span>
+            <button className="btn btn-sm" onClick={async () => {
+              const targets = filtered.filter(s => selectedIds.has(s.id))
+              const prompt = getBundledPrompt(targets)
+              try {
+                const result = await launchClaude(prompt)
+                showToast(result.platform === 'unsupported'
+                  ? 'Prompt copied — open Claude Code manually'
+                  : 'Prompt copied + Claude Code launched')
+              } catch {
+                await navigator.clipboard.writeText(prompt)
+                showToast('Prompt copied to clipboard')
+              }
+            }}>
+              Generate combined prompt
+            </button>
             <button className="btn btn-sm btn-warn" onClick={handleBulkDisable}>
               Disable selected
             </button>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
+import CopyPromptButton from './CopyPromptButton'
+import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 
 interface Props {
   skill: Skill
@@ -106,6 +108,9 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                     <span className="accordion-issue-msg">{issue.message}</span>
                   </li>
                 ))}
+                <li className="accordion-issue accordion-issue-action">
+                  <CopyPromptButton getPrompt={() => generateFixHealthPrompt(skill)} label="Fix with Claude Code" />
+                </li>
               </ul>
             )}
           </div>

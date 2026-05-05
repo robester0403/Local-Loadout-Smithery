@@ -111,3 +111,12 @@ export async function activateProfile(name: string | null): Promise<void> {
   const res = await fetch(`/api/profiles/${slug}/activate`, { method: 'POST' })
   await parseResponse<{ ok: boolean }>(res)
 }
+
+export async function launchClaude(prompt: string): Promise<{ platform: string; launched?: boolean }> {
+  const res = await fetch('/api/launch-claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  })
+  return parseResponse<{ ok: boolean; platform: string; launched?: boolean }>(res)
+}

@@ -1,7 +1,7 @@
 import express, { type Request, type Response, type NextFunction } from 'express'
 import path from 'path'
 import os from 'os'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { discoverAllSkills } from './scanner'
 import { disableSkill, enableSkill } from './state'
 import { listProfiles, createProfile, deleteProfile, activateProfile } from './state/profiles'
@@ -101,6 +101,30 @@ app.post('/api/profiles/:name/activate', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
   }
+})
+
+app.post('/api/launch-claude', (req: Request, res: Response) => {
+  const { prompt } = req.body as { prompt?: string }
+  if (!prompt || typeof prompt !== 'string') {
+    res.status(400).json({ error: 'prompt is required' })
+    return
+  }
+  if (process.platform !== 'darwin') {
+    res.json({ ok: true, platform: 'unsupported' })
+    return
+  }
+  const pbcopy = spawn('pbcopy')
+  pbcopy.stdin.write(prompt, 'utf-8')
+  pbcopy.stdin.end()
+  pbcopy.on('close', (copyCode) => {
+    if (copyCode !== 0) {
+      res.status(500).json({ error: 'Failed to copy to clipboard' })
+      return
+    }
+    exec(`osascript -e 'tell application "Terminal" to do script "claude"'`, (launchErr) => {
+      res.json({ ok: true, platform: 'darwin', launched: !launchErr })
+    })
+  })
 })
 
 app.get('/api/usage/sample-turn', (req, res) => {

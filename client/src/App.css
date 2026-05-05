@@ -544,6 +544,22 @@ td.col-totalDollars { color: var(--text); }
 
 .accordion-issue-icon { flex-shrink: 0; font-weight: 700; margin-top: 1px; }
 .accordion-issue-msg  { color: var(--text); word-break: break-word; }
+.accordion-issue-action { margin-top: 4px; }
+
+/* ─── Prompt action buttons ─────────────────────────────────────────────── */
+.prompt-actions {
+  display: inline-flex; gap: 4px; margin-top: 6px; flex-wrap: wrap;
+}
+.prompt-btn {
+  font-size: 11px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+  background: rgba(99,179,237,.12); border: 1px solid rgba(99,179,237,.3);
+  color: #63b3ed; white-space: nowrap; transition: background .1s;
+}
+.prompt-btn:hover { background: rgba(99,179,237,.22); }
+.prompt-btn-launch {
+  background: rgba(154,117,234,.12); border-color: rgba(154,117,234,.3); color: #9a75ea;
+}
+.prompt-btn-launch:hover { background: rgba(154,117,234,.22); }
 
 /* ─── Drawer relationships ───────────────────────────────────────────────── */
 .drawer-relationships {
