@@ -12,7 +12,7 @@ type FilterGroup = {
 }
 
 const GROUPS: FilterGroup[] = [
-  { label: 'Type', key: 'type', options: ['skill', 'command', 'agent'] },
+  { label: 'Type', key: 'type', options: ['skill', 'command', 'subagent'] },
   { label: 'Context', key: 'scope', options: ['global', 'project'] },
 ]
 
@@ -26,10 +26,10 @@ export default function FilterBar({ filters, setFilters }: Props) {
   }
 
   function clearAll() {
-    setFilters({ type: [], scope: [], issuesOnly: false })
+    setFilters({ type: [], scope: [], issuesOnly: false, reviewOnly: false })
   }
 
-  const hasActive = filters.type.length > 0 || filters.scope.length > 0 || filters.issuesOnly
+  const hasActive = filters.type.length > 0 || filters.scope.length > 0 || filters.issuesOnly || filters.reviewOnly
 
   return (
     <div className="filter-bar">
@@ -58,6 +58,18 @@ export default function FilterBar({ filters, setFilters }: Props) {
             onClick={() => setFilters({ ...filters, issuesOnly: !filters.issuesOnly })}
           >
             ⚠ Issues only
+          </button>
+        </div>
+      </div>
+
+      <div className="filter-group">
+        <span className="filter-label">Diagnose</span>
+        <div className="filter-pills">
+          <button
+            className={`pill pill-review ${filters.reviewOnly ? 'active' : ''}`}
+            onClick={() => setFilters({ ...filters, reviewOnly: !filters.reviewOnly })}
+          >
+            🚨 Needs review
           </button>
         </div>
       </div>

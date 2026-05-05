@@ -16,6 +16,7 @@ interface Props {
   selectedIds?: Set<string>
   onSelectId?: (id: string, checked: boolean) => void
   onSelectAll?: (checked: boolean) => void
+  onReclassify?: (skill: Skill) => void
 }
 
 function tfLabel(tf: Timeframe): string {
@@ -72,7 +73,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 
 export default function InventoryTable({
   skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
-  selectedIds, onSelectId, onSelectAll,
+  selectedIds, onSelectId, onSelectAll, onReclassify,
 }: Props) {
   const suffix = timeframe ? tfLabel(timeframe) : ''
   const COLUMNS = BASE_COLUMNS.map(col => {
@@ -149,6 +150,7 @@ export default function InventoryTable({
                   descLen={skill.descLen}
                   suggestedType={skill.suggestedType}
                   skill={skill}
+                  onReclassify={onReclassify}
                 />
               </td>
               <td className="col-name">

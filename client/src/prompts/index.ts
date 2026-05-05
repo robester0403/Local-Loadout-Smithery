@@ -4,6 +4,7 @@ import { generateFixRemovalCandidatePrompt } from './fixRemovalCandidatePrompt'
 import { generateFixDormantPrompt } from './fixDormantPrompt'
 import { generateFixDescriptionQualityPrompt } from './fixDescriptionQualityPrompt'
 import { generateFixScopeMismatchPrompt } from './fixScopeMismatchPrompt'
+export { generateReclassifyPrompt } from './reclassifyPrompt'
 
 export type PromptKey = 'health' | 'removal-candidate' | 'dormant' | 'description-quality' | 'scope-mismatch'
 

@@ -1,9 +1,16 @@
 import fs from 'fs'
 import os from 'os'
+import path from 'path'
+
+function isUnderHome(filePath: string): boolean {
+  const home = os.homedir()
+  const normalized = path.resolve(filePath)
+  return normalized === home || normalized.startsWith(home + path.sep)
+}
 
 function decodePath(id: string): string {
   const filePath = Buffer.from(id, 'base64').toString('utf-8')
-  if (!filePath.startsWith(os.homedir())) {
+  if (!isUnderHome(filePath)) {
     throw new Error('Path outside home directory')
   }
   return filePath

@@ -45,7 +45,7 @@ const COMMON_VERBS = new Set([
 ])
 
 export function computeHealth(
-  skill: Omit<Skill, 'health' | 'disabled'>,
+  skill: Omit<Skill, 'health' | 'disabled' | 'suggestedType'>,
   context?: { descriptionCounts: Map<string, number> }
 ): HealthResult {
   const issues: HealthIssue[] = []

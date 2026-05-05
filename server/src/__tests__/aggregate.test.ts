@@ -112,7 +112,10 @@ describe('computeSkillAggregate', () => {
     expect(result).toHaveLength(1)
     expect(result[0].active.tokens).toBe(0)
     expect(result[0].active.dollars).toBe(0)
-    expect(result[0].loaded.tokens).toBe(1000)
+    // Loaded tokens = listing tokens for this skill (capped, 4 bytes/token).
+    // 'passive always here' = 19 bytes → 4.75 tokens
+    const expectedLoadedTokens = Buffer.byteLength('passive always here', 'utf-8') / 4
+    expect(result[0].loaded.tokens).toBeCloseTo(expectedLoadedTokens)
     expect(result[0].invocations).toBe(0)
   })
 

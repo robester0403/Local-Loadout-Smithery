@@ -3,6 +3,7 @@ import { marked } from 'marked'
 import type { Skill } from '../types'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
+import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
 
 interface Props {
   skill: Skill
@@ -11,6 +12,7 @@ interface Props {
   onOpen: (skill: Skill) => void
   onBreakdown: (skill: Skill) => void
   onSelect: (skill: Skill) => void
+  onReclassify?: (skill: Skill) => void
 }
 
 function formatDate(iso: string): string {
@@ -33,7 +35,7 @@ const META_ROWS: { label: string; getValue: (s: Skill) => string }[] = [
 
 const SEVERITY_ICON: Record<string, string> = { error: '✗', warn: '⚠' }
 
-export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect }: Props) {
+export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify }: Props) {
   const [issuesOpen, setIssuesOpen] = useState(skill.health.status !== 'ok')
 
   useEffect(() => {
@@ -84,6 +86,19 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             <button className="btn" onClick={() => onBreakdown(skill)}>
               Show breakdown
             </button>
+            {skill.suggestedType && (
+              <>
+                <CopyPromptButton
+                  getPrompt={() => generateReclassifyPrompt(skill)}
+                  label="Reclassify with AI"
+                />
+                {onReclassify && !skill.name.includes(':') && (
+                  <button className="btn btn-warn" onClick={() => onReclassify(skill)}>
+                    Move to {skill.suggestedType.suggested}s
+                  </button>
+                )}
+              </>
+            )}
             <button className="btn" onClick={onClose}>Close</button>
           </div>
         </div>

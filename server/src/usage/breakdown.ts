@@ -3,6 +3,11 @@ import path from 'path'
 import { discoverAllSkills } from '../scanner'
 import { findSessionFiles } from './parser'
 import { getPricing, toDollars } from './pricing'
+import {
+  listingBytesFor,
+  LISTING_BUDGET_BYTES,
+  BYTES_PER_TOKEN,
+} from './loaded'
 import type { SkillType } from '../scanner/types'
 
 export interface BreakdownTurn {
@@ -34,12 +39,14 @@ export function breakdownForSkill(
   const allSkills = discoverAllSkills()
   const nonCommandSkills = allSkills
     .filter(s => s.type !== 'command')
-    .map(s => ({ name: s.name, bodyBytes: Buffer.byteLength(`${s.name} ${s.description ?? ''}`, 'utf-8') }))
+    .map(s => ({ name: s.name, bodyBytes: listingBytesFor(s.name, s.description) }))
     .filter(s => s.bodyBytes > 0)
 
-  const totalBytes = nonCommandSkills.reduce((sum, s) => sum + s.bodyBytes, 0)
-  const skillBodyBytes = Buffer.byteLength(`${skillName} ${skillDescription ?? ''}`, 'utf-8')
-  const loadedShare = totalBytes > 0 ? skillBodyBytes / totalBytes : 0
+  const rawTotalBytes = nonCommandSkills.reduce((sum, s) => sum + s.bodyBytes, 0)
+  const effectiveScale = rawTotalBytes > 0 ? Math.min(1, LISTING_BUDGET_BYTES / rawTotalBytes) : 0
+  const skillBodyBytes = listingBytesFor(skillName, skillDescription)
+  // Tokens this skill contributes to the listing after caps + budget scaling.
+  const skillListingTokens = (skillBodyBytes * effectiveScale) / BYTES_PER_TOKEN
 
   const validSkills = new Set(allSkills.map(s => s.name))
 
@@ -138,10 +145,12 @@ export function breakdownForSkill(
 
       // Loaded attribution — only for non-command skills
       if (skillType !== 'command' && (input > 0 || cacheCreate > 0 || cacheRead > 0)) {
+        const totalBilled = input + cacheCreate + cacheRead
+        const turnShare = totalBilled > 0 ? Math.min(skillListingTokens / totalBilled, 1) : 0
         const dollars = pricing
-          ? toDollars(input * loadedShare, pricing.inputPerM) +
-            toDollars(cacheCreate * loadedShare, pricing.cacheWritePerM) +
-            toDollars(cacheRead * loadedShare, pricing.cacheReadPerM)
+          ? toDollars(input * turnShare, pricing.inputPerM) +
+            toDollars(cacheCreate * turnShare, pricing.cacheWritePerM) +
+            toDollars(cacheRead * turnShare, pricing.cacheReadPerM)
           : 0
 
         // Skip negligible loaded turns
@@ -150,10 +159,10 @@ export function breakdownForSkill(
         allMatchingTurns.push({
           sessionFile,
           ts,
-          inputTokens: Math.round(input * loadedShare),
+          inputTokens: Math.round(input * turnShare),
           outputTokens: 0,
-          cacheCreationTokens: Math.round(cacheCreate * loadedShare),
-          cacheReadTokens: Math.round(cacheRead * loadedShare),
+          cacheCreationTokens: Math.round(cacheCreate * turnShare),
+          cacheReadTokens: Math.round(cacheRead * turnShare),
           dollars,
           attribution: 'loaded',
           model,

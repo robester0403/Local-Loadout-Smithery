@@ -5,6 +5,7 @@
   "bin": {
     "local-skill-manager": "./dist/server/src/index.js"
   },
+  "main": "./dist/server/src/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "tsx watch server/src/index.ts",

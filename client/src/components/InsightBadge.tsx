@@ -2,6 +2,7 @@ import type { Insight, ClassificationResult, Skill } from '../types'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixRemovalCandidatePrompt } from '../prompts/fixRemovalCandidatePrompt'
 import { generateFixDormantPrompt } from '../prompts/fixDormantPrompt'
+import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
 
 interface Props {
   insight: Insight
@@ -13,6 +14,7 @@ interface Props {
   descLen: number
   suggestedType?: ClassificationResult | null
   skill?: Skill
+  onReclassify?: (skill: Skill) => void
 }
 
 function fmt(n: number): string {
@@ -23,8 +25,8 @@ function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType, skill }: Props) {
-  const mismatchBadge = suggestedType ? (
+export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType, skill, onReclassify }: Props) {
+  const mismatchBadge = suggestedType && skill ? (
     <span className="insight-badge insight-has-tooltip">
       🔀
       <span className="insight-tooltip">
@@ -33,7 +35,15 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
         {suggestedType.cues.map((cue, i) => (
           <span key={i} className="insight-tooltip-row">{cue}</span>
         ))}
-        <span className="insight-tooltip-hint">Check the drawer to review or reclassify.</span>
+        <CopyPromptButton getPrompt={() => generateReclassifyPrompt(skill)} label="Reclassify with AI" />
+        {onReclassify && !skill.name.includes(':') && (
+          <button
+            className="prompt-btn"
+            onClick={e => { e.stopPropagation(); onReclassify(skill) }}
+          >
+            Apply: move to {suggestedType.suggested}s
+          </button>
+        )}
       </span>
     </span>
   ) : null

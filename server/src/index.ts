@@ -1,4 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from 'express'
+import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { exec, spawn } from 'child_process'
@@ -171,6 +172,102 @@ app.get('/api/usage/breakdown/:skillId', (req, res) => {
     const since = sinceDate(tf) ?? undefined
     const breakdown = breakdownForSkill(skill.name, skill.description, skill.type, 100, since)
     res.json({ breakdown })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/skills/:id/reclassify', (req, res) => {
+  const { newType } = req.body as { newType?: string }
+  if (!newType || !['skill', 'command', 'subagent'].includes(newType)) {
+    res.status(400).json({ error: 'newType must be skill, command, or subagent' })
+    return
+  }
+
+  let logicalPath: string
+  try {
+    logicalPath = Buffer.from(req.params.id, 'base64').toString('utf-8')
+  } catch {
+    res.status(400).json({ error: 'Invalid id' })
+    return
+  }
+
+  const home = os.homedir()
+  if (!path.resolve(logicalPath).startsWith(home + path.sep)) {
+    res.status(403).json({ error: 'Path outside home directory' })
+    return
+  }
+
+  const isDisabled = !fs.existsSync(logicalPath) && fs.existsSync(logicalPath + '.disabled')
+  const sourcePath = isDisabled ? logicalPath + '.disabled' : logicalPath
+  if (!fs.existsSync(sourcePath)) {
+    res.status(404).json({ error: 'Skill file not found' })
+    return
+  }
+
+  // Derive type + name + accountDir from path structure
+  const fileName = path.basename(logicalPath)
+  let currentType: string
+  let skillName: string
+  let accountDir: string
+
+  if (fileName === 'SKILL.md') {
+    // skills/<name>/SKILL.md
+    currentType = 'skill'
+    skillName = path.basename(path.dirname(logicalPath))
+    accountDir = path.dirname(path.dirname(path.dirname(logicalPath)))
+  } else {
+    const parentFolder = path.basename(path.dirname(logicalPath))
+    if (parentFolder === 'commands') {
+      currentType = 'command'
+    } else if (parentFolder === 'agents') {
+      currentType = 'subagent'
+    } else {
+      res.status(400).json({ error: 'Namespaced commands are not supported for reclassify' })
+      return
+    }
+    skillName = path.basename(logicalPath, '.md')
+    accountDir = path.dirname(path.dirname(logicalPath))
+  }
+
+  if (currentType === newType) {
+    res.status(400).json({ error: 'Skill is already this type' })
+    return
+  }
+
+  let destLogical: string
+  if (newType === 'skill') {
+    destLogical = path.join(accountDir, 'skills', skillName, 'SKILL.md')
+  } else if (newType === 'command') {
+    destLogical = path.join(accountDir, 'commands', skillName + '.md')
+  } else {
+    destLogical = path.join(accountDir, 'agents', skillName + '.md')
+  }
+
+  if (!path.resolve(destLogical).startsWith(home + path.sep)) {
+    res.status(403).json({ error: 'Destination outside home directory' })
+    return
+  }
+
+  const destPath = isDisabled ? destLogical + '.disabled' : destLogical
+  if (fs.existsSync(destPath)) {
+    res.status(409).json({ error: `Destination already exists: ${destPath}` })
+    return
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(destPath), { recursive: true })
+    fs.renameSync(sourcePath, destPath)
+
+    const logDir = path.join(home, '.local-skill-manager')
+    fs.mkdirSync(logDir, { recursive: true })
+    fs.appendFileSync(
+      path.join(logDir, 'move-log.jsonl'),
+      JSON.stringify({ from: sourcePath, to: destPath, timestamp: new Date().toISOString(), id: req.params.id }) + '\n',
+    )
+
+    const newId = Buffer.from(destLogical).toString('base64')
+    res.json({ ok: true, from: sourcePath, to: destPath, newId })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
   }

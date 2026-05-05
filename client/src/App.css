@@ -52,11 +52,25 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 }
 .header-left { display: flex; align-items: center; gap: 12px; }
 .header-title { font-weight: 600; font-size: 15px; color: var(--text-head); letter-spacing: .2px; }
+.header-motto { font-size: 11px; color: var(--text-dim); font-style: italic; letter-spacing: .3px; }
 .header-count {
   font-size: 12px; color: var(--text-dim);
   background: var(--bg); border: 1px solid var(--border);
   padding: 2px 8px; border-radius: 99px;
 }
+.header-cost {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px;
+  background: var(--bg); border: 1px solid var(--border);
+  padding: 2px 10px; border-radius: 99px;
+}
+.header-cost-label { color: var(--text-dim); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
+.header-cost-value { color: var(--text-head); font-weight: 600; font-variant-numeric: tabular-nums; }
+.header-cost-split { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.header-cost-active { color: #6ee7b7; }
+.header-cost-loaded { color: #fbbf24; }
+.header-cost-pct { color: var(--text-dim); font-size: 11px; margin-left: 2px; }
+.header-cost-sep { color: var(--border); }
 .header-right { display: flex; gap: 8px; align-items: center; }
 
 /* ─── Profile switcher ──────────────────────────────────────────────────── */

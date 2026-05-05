@@ -112,6 +112,21 @@ export async function activateProfile(name: string | null): Promise<void> {
   await parseResponse<{ ok: boolean }>(res)
 }
 
+export interface ReclassifyResult {
+  from: string
+  to: string
+  newId: string
+}
+
+export async function reclassifySkill(id: string, newType: string): Promise<ReclassifyResult> {
+  const res = await fetch(`/api/skills/${encodeURIComponent(id)}/reclassify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newType }),
+  })
+  return parseResponse<ReclassifyResult>(res)
+}
+
 export async function launchClaude(prompt: string): Promise<{ platform: string; launched?: boolean }> {
   const res = await fetch('/api/launch-claude', {
     method: 'POST',

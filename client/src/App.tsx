@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import type { Skill, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe } from './types'
-import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude } from './api'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import type { Skill, SkillType, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe } from './types'
+import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude, reclassifySkill } from './api'
 import type { ProfilesData } from './api'
 import { getBundledPrompt } from './prompts'
 import InventoryTable from './components/InventoryTable'
@@ -73,6 +73,8 @@ export default function App() {
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [profilesData, setProfilesData] = useState<ProfilesData>({ profiles: {}, activeProfile: null })
+  const [lastMove, setLastMove] = useState<{ newId: string; originalType: SkillType; skillName: string } | null>(null)
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -205,6 +207,37 @@ export default function App() {
     }
   }
 
+  async function handleReclassify(skill: Skill) {
+    if (!skill.suggestedType) return
+    const { suggested } = skill.suggestedType
+    if (!window.confirm(
+      `Move "${skill.name}" from ${skill.type} → ${suggested}?\n\nThe file will be moved to the ${suggested}s directory. You can undo this for 60 seconds.`,
+    )) return
+    try {
+      const result = await reclassifySkill(skill.id, suggested)
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+      setLastMove({ newId: result.newId, originalType: skill.type, skillName: skill.name })
+      undoTimerRef.current = setTimeout(() => setLastMove(null), 60_000)
+      showToast(`${skill.name} moved to ${suggested}s`)
+      await load()
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
+  async function handleUndoMove() {
+    if (!lastMove) return
+    try {
+      await reclassifySkill(lastMove.newId, lastMove.originalType)
+      if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
+      setLastMove(null)
+      showToast(`${lastMove.skillName} move undone`)
+      await load()
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
   const filtered = skills
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
@@ -246,6 +279,16 @@ export default function App() {
     subagent: skills.filter(s => s.type === 'subagent').length,
   }
 
+  const totals = skills.reduce(
+    (acc, s) => ({
+      active: acc.active + s.activeDollars,
+      loaded: acc.loaded + s.loadedDollars,
+    }),
+    { active: 0, loaded: 0 },
+  )
+  const totalDollars = totals.active + totals.loaded
+  const fmt = (n: number) => n >= 0.01 ? `$${n.toFixed(2)}` : n > 0 ? `$${n.toFixed(4)}` : '$0.00'
+
   const removalCount = skills.filter(s => s.insight === 'removal-candidate').length
   const dormantCount = skills.filter(s => s.dormant && s.insight !== 'removal-candidate').length
   const reviewCount = removalCount + dormantCount
@@ -256,7 +299,22 @@ export default function App() {
       <header className="header">
         <div className="header-left">
           <span className="header-title">Local Skill Manager</span>
+          <span className="header-motto">Win little and win big</span>
           <span className="header-count">{skills.length} total</span>
+          <span className="header-cost" title={`Active ${fmt(totals.active)} · Loaded ${fmt(totals.loaded)} (${totalDollars > 0 ? Math.round((totals.loaded / totalDollars) * 100) : 0}% of total)`}>
+            <span className="header-cost-label">Total</span>
+            <span className="header-cost-value">{fmt(totalDollars)}</span>
+            <span className="header-cost-split">
+              <span className="header-cost-active">A {fmt(totals.active)}</span>
+              <span className="header-cost-sep">·</span>
+              <span className="header-cost-loaded">
+                L {fmt(totals.loaded)}
+                {totalDollars > 0 && (
+                  <span className="header-cost-pct"> ({Math.round((totals.loaded / totalDollars) * 100)}%)</span>
+                )}
+              </span>
+            </span>
+          </span>
         </div>
         <div className="header-right">
           <ProfileSwitcher
@@ -270,6 +328,11 @@ export default function App() {
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             ? How costs work
           </button>
+          {lastMove && (
+            <button className="btn btn-sm btn-warn" onClick={handleUndoMove} title={`Undo move of ${lastMove.skillName}`}>
+              ↩ Undo: {lastMove.skillName}
+            </button>
+          )}
           <button className="btn btn-sm" onClick={load} disabled={loading}>
             {loading ? '…' : '↺'} Refresh
           </button>
@@ -380,6 +443,7 @@ export default function App() {
             selectedIds={selectedIds}
             onSelectId={handleSelectId}
             onSelectAll={handleSelectAll}
+            onReclassify={handleReclassify}
           />
         )}
       </main>
@@ -392,6 +456,7 @@ export default function App() {
           onOpen={handleOpen}
           onBreakdown={setBreakdownSkill}
           onSelect={setSelected}
+          onReclassify={handleReclassify}
         />
       )}
 

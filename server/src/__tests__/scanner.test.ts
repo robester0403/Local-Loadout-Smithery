@@ -85,10 +85,17 @@ describe('discoverAllSkills (fixture)', () => {
       '---\nname: my-agent\ndescription: an agent\n---\nAgent body.\n'
     )
 
-    // Project-local skill
+    // Project-local skill — lives in the project's actual working directory under .claude/
+    // The scanner finds the cwd by reading it from a session JSONL file.
+    const projWorkdir = path.join(fixtureHome, 'workdir', 'proj-abc')
     write(
-      path.join(fixtureHome, '.claude', 'projects', 'proj-abc', 'skills', 'proj-skill', 'SKILL.md'),
+      path.join(projWorkdir, '.claude', 'skills', 'proj-skill', 'SKILL.md'),
       '---\nname: proj-skill\ndescription: project skill\n---\nProj body.\n'
+    )
+    // Session file that tells the scanner where this project lives
+    write(
+      path.join(fixtureHome, '.claude', 'projects', 'proj-abc', 'session-abc.jsonl'),
+      JSON.stringify({ type: 'user', cwd: projWorkdir, timestamp: '2025-01-01T00:00:00Z' }) + '\n'
     )
   })
 
@@ -112,11 +119,12 @@ describe('discoverAllSkills (fixture)', () => {
     expect(byName['ns:sub-cmd'].type).toBe('command')
 
     expect(byName['my-agent']).toBeDefined()
-    expect(byName['my-agent'].type).toBe('agent')
+    expect(byName['my-agent'].type).toBe('subagent')
 
     expect(byName['proj-skill']).toBeDefined()
     expect(byName['proj-skill'].scope).toBe('project')
-    expect(byName['proj-skill'].projectId).toBe('proj-abc')
+    // projectId is now the real cwd path, not the hash
+    expect(byName['proj-skill'].projectId).toContain('proj-abc')
   })
 
   it('deduplicates symlinked skills', () => {
