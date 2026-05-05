@@ -185,16 +185,37 @@ function discoverAgentsDir(
     if (entry.endsWith('.md.disabled')) {
       const agentFile = path.join(agentsDir, entry)
       const name = path.basename(entry, '.md.disabled')
-      const skill = buildSkill(agentFile, 'agent', scope, account, name, projectId, true)
+      const skill = buildSkill(agentFile, 'subagent', scope, account, name, projectId, true)
       if (skill) results.push(skill)
     } else if (entry.endsWith('.md')) {
       const agentFile = path.join(agentsDir, entry)
       const name = path.basename(entry, '.md')
-      const skill = buildSkill(agentFile, 'agent', scope, account, name, projectId)
+      const skill = buildSkill(agentFile, 'subagent', scope, account, name, projectId)
       if (skill) results.push(skill)
     }
   }
   return results
+}
+
+// Read the cwd from the first parseable session file in a project dir.
+// This is more reliable than decoding the hash (where / and spaces both become -).
+function findProjectCwd(projectDir: string): string | null {
+  for (const file of listDir(projectDir)) {
+    if (!file.endsWith('.jsonl') || file === 'history.jsonl') continue
+    try {
+      const filePath = path.join(projectDir, file)
+      const content = fs.readFileSync(filePath, 'utf-8')
+      for (const line of content.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        const obj = JSON.parse(trimmed) as Record<string, unknown>
+        if (typeof obj['cwd'] === 'string' && obj['cwd']) return obj['cwd'] as string
+      }
+    } catch {
+      continue
+    }
+  }
+  return null
 }
 
 function discoverInAccount(accountDir: string, account: string): Skill[] {
@@ -204,14 +225,24 @@ function discoverInAccount(accountDir: string, account: string): Skill[] {
   skills.push(...discoverCommandsDir(path.join(accountDir, 'commands'), 'global', account))
   skills.push(...discoverAgentsDir(path.join(accountDir, 'agents'), 'global', account))
 
-  // Project-local discovery: scan {account}/projects/*/
+  // Project-local discovery.
+  // Claude Code stores project-local commands/skills in {cwd}/.claude/ — not in the
+  // account's projects/ dir. We resolve the real path via the cwd field in session files.
   const projectsDir = path.join(accountDir, 'projects')
   for (const projectHash of listDir(projectsDir)) {
     const projectDir = path.join(projectsDir, projectHash)
     if (!isDir(projectDir)) continue
-    skills.push(...discoverSkillsDir(path.join(projectDir, 'skills'), 'project', account, projectHash))
-    skills.push(...discoverCommandsDir(path.join(projectDir, 'commands'), 'project', account, projectHash))
-    skills.push(...discoverAgentsDir(path.join(projectDir, 'agents'), 'project', account, projectHash))
+
+    const cwd = findProjectCwd(projectDir)
+    // Use the real cwd as the projectId when available so the UI can show the actual name.
+    const projectId = cwd ?? projectHash
+
+    if (cwd) {
+      const dotClaude = path.join(cwd, '.claude')
+      skills.push(...discoverSkillsDir(path.join(dotClaude, 'skills'), 'project', account, projectId))
+      skills.push(...discoverCommandsDir(path.join(dotClaude, 'commands'), 'project', account, projectId))
+      skills.push(...discoverAgentsDir(path.join(dotClaude, 'agents'), 'project', account, projectId))
+    }
   }
 
   return skills
@@ -234,5 +265,18 @@ export function discoverAllSkills(): Skill[] {
     deduped.push(skill)
   }
 
-  return deduped
+  // Two-pass: build description counts, then recompute health with duplicate context.
+  const descriptionCounts = new Map<string, number>()
+  for (const skill of deduped) {
+    if (!skill.description) continue
+    const key = skill.description.toLowerCase().trim()
+    descriptionCounts.set(key, (descriptionCounts.get(key) ?? 0) + 1)
+  }
+
+  return deduped.map(skill => {
+    // Strip 'health' out so we can rebuild the base object for computeHealth
+    const { health: _health, ...base } = skill
+    const health = computeHealth(base, { descriptionCounts })
+    return { ...skill, health }
+  })
 }

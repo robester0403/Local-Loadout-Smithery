@@ -16,7 +16,7 @@ function base(overrides: Partial<Skill> = {}): Omit<Skill, 'health'> {
   return {
     id: 'test-id',
     name: 'my-skill',
-    description: 'Does something useful',
+    description: 'Runs something useful every day',
     version: '',
     type: 'skill',
     scope: 'global',
@@ -27,6 +27,7 @@ function base(overrides: Partial<Skill> = {}): Omit<Skill, 'health'> {
     body: '',
     frontmatter: { 'allowed-tools': 'Bash,Read' },
     lastModified: new Date().toISOString(),
+    disabled: false,
     ...overrides,
   }
 }
@@ -53,20 +54,34 @@ describe('computeHealth', () => {
     expect(result.issues.some(i => /description/i.test(i.message))).toBe(true)
   })
 
-  it('flags short description as warn', () => {
+  it('flags short description (< 10 chars) as warn with new message', () => {
     const result = computeHealth(base({ description: 'Too short' }))
     expect(result.status).toBe('warn')
-    expect(result.issues.some(i => /short/i.test(i.message))).toBe(true)
+    expect(result.issues.some(i => /too short/i.test(i.message))).toBe(true)
+    expect(result.issues.some(i => /progressive disclosure/i.test(i.message))).toBe(true)
   })
 
-  it('flags missing allowed-tools for skills as warn', () => {
-    const result = computeHealth(base({ frontmatter: {} }))
+  it('flags description < 20 chars (but >= 10) as warn with new message', () => {
+    // "Short desc." is 11 chars — between 10 and 20
+    const result = computeHealth(base({ description: 'Short desc.' }))
+    expect(result.status).toBe('warn')
+    expect(result.issues.some(i => /too short/i.test(i.message))).toBe(true)
+    expect(result.issues.some(i => /progressive disclosure/i.test(i.message))).toBe(true)
+  })
+
+  it('flags missing allowed-tools for skills that use tools', () => {
+    const result = computeHealth(base({ frontmatter: {}, body: 'Uses Bash to run commands' }))
     expect(result.status).toBe('warn')
     expect(result.issues.some(i => /allowed-tools/i.test(i.message))).toBe(true)
   })
 
+  it('does not flag missing allowed-tools for documentation-only skills', () => {
+    const result = computeHealth(base({ frontmatter: {}, body: 'A conceptual guide with no tool calls' }))
+    expect(result.issues.every(i => !/allowed-tools/i.test(i.message))).toBe(true)
+  })
+
   it('does not flag missing allowed-tools for commands', () => {
-    const result = computeHealth(base({ type: 'command', frontmatter: {} }))
+    const result = computeHealth(base({ type: 'command', frontmatter: {}, body: 'Uses Bash' }))
     expect(result.issues.every(i => !/allowed-tools/i.test(i.message))).toBe(true)
   })
 
@@ -91,5 +106,39 @@ describe('computeHealth', () => {
     }))
     expect(result.status).toBe('error')
     expect(result.issues.some(i => /symlink/i.test(i.message))).toBe(true)
+  })
+})
+
+describe('computeHealth — description quality checks', () => {
+  it('warns when description has no verb in first 10 words', () => {
+    // >= 20 chars, no verb in the first 10 words
+    const result = computeHealth(base({ description: 'A helpful utility for daily workflow automation' }))
+    expect(result.issues.some(i => /action verb/i.test(i.message))).toBe(true)
+  })
+
+  it('does not warn about verb when description starts with a clear verb', () => {
+    const result = computeHealth(base({ description: 'Generates a commit message for staged changes' }))
+    expect(result.issues.every(i => !/action verb/i.test(i.message))).toBe(true)
+  })
+
+  it('does not warn about verb for a valid description with verb', () => {
+    // base() description is "Does something useful here" — "Does" is not in COMMON_VERBS
+    // Use a description that definitely has a verb
+    const result = computeHealth(base({ description: 'Runs a health check on all installed skills' }))
+    expect(result.issues.every(i => !/action verb/i.test(i.message))).toBe(true)
+  })
+
+  it('warns when descriptionCounts has count >= 2 for this skill', () => {
+    const desc = 'Generates a commit message for staged changes'
+    const descriptionCounts = new Map([[ desc.toLowerCase().trim(), 2 ]])
+    const result = computeHealth(base({ description: desc }), { descriptionCounts })
+    expect(result.issues.some(i => /identical to another skill/i.test(i.message))).toBe(true)
+  })
+
+  it('does not warn about duplicate when descriptionCounts has count 1', () => {
+    const desc = 'Generates a commit message for staged changes'
+    const descriptionCounts = new Map([[ desc.toLowerCase().trim(), 1 ]])
+    const result = computeHealth(base({ description: desc }), { descriptionCounts })
+    expect(result.issues.every(i => !/identical to another skill/i.test(i.message))).toBe(true)
   })
 })

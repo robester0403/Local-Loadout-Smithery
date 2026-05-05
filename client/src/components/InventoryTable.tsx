@@ -121,6 +121,7 @@ export default function InventoryTable({
                   activeDollars={skill.activeDollars}
                   loadedDollars={skill.loadedDollars}
                   lastInvoked={skill.lastInvoked}
+                  bloat={skill.bloat}
                 />
               </td>
               <td className="col-name">

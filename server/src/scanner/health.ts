@@ -1,7 +1,53 @@
 import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue } from './types'
 
-export function computeHealth(skill: Omit<Skill, 'health'>): HealthResult {
+// Tool names that indicate a skill actually executes things and should declare allowed-tools.
+const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
+
+const COMMON_VERBS = new Set([
+  'run','runs','running','execute','executes','executing',
+  'generate','generates','generating','create','creates','creating',
+  'build','builds','building','analyze','analyzes','analyzing',
+  'manage','manages','managing','handle','handles','handling',
+  'process','processes','processing','parse','parses','parsing',
+  'search','searches','searching','find','finds','finding',
+  'update','updates','updating','fetch','fetches','fetching',
+  'transform','transforms','transforming','validate','validates','validating',
+  'check','checks','checking','detect','detects','detecting',
+  'scan','scans','scanning','read','reads','reading',
+  'write','writes','writing','list','lists','listing',
+  'show','shows','showing','display','displays','displaying',
+  'summarize','summarizes','summarizing','review','reviews','reviewing',
+  'test','tests','testing','debug','debugs','debugging',
+  'deploy','deploys','deploying','install','installs','installing',
+  'configure','configures','configuring','setup','set','sets',
+  'enable','enables','enabling','disable','disables','disabling',
+  'help','helps','helping','assist','assists','assisting',
+  'monitor','monitors','monitoring','track','tracks','tracking',
+  'convert','converts','converting','format','formats','formatting',
+  'send','sends','sending','push','pushes','pushing',
+  'sync','syncs','syncing','merge','merges','merging',
+  'plan','plans','planning','implement','implements','implementing',
+  'research','researches','researching','investigate','investigates','investigating',
+  'audit','audits','auditing','report','reports','reporting',
+  'launch','launches','launching','start','starts','starting',
+  'stop','stops','stopping','restart','restarts','restarting',
+  'open','opens','opening','close','closes','closing',
+  'load','loads','loading','save','saves','saving',
+  'export','exports','exporting','import','imports','importing',
+  'draft','drafts','drafting',
+  'explain','explains','explaining','describe','describes','describing',
+  'guide','guides','guiding','teach','teaches','teaching',
+  'iterate','iterates','iterating','orchestrate','orchestrates','orchestrating',
+  'coordinate','coordinates','coordinating','delegate','delegates','delegating',
+  'infer','infers','inferring','suggest','suggests','suggesting',
+  'recommend','recommends','recommending','propose','proposes','proposing',
+])
+
+export function computeHealth(
+  skill: Omit<Skill, 'health' | 'disabled'>,
+  context?: { descriptionCounts: Map<string, number> }
+): HealthResult {
   const issues: HealthIssue[] = []
 
   // Broken symlink — non-functional, hard error
@@ -18,16 +64,37 @@ export function computeHealth(skill: Omit<Skill, 'health'>): HealthResult {
     issues.push({ severity: 'error', message: 'Missing name' })
   }
 
-  // Missing description
+  // Missing or very short description
   if (!skill.description) {
     issues.push({ severity: 'warn', message: 'Missing description' })
-  } else if (skill.description.length < 10) {
-    issues.push({ severity: 'warn', message: 'Description too short (< 10 chars)' })
+  } else if (skill.description.length < 20) {
+    issues.push({ severity: 'warn', message: "Description too short — Claude can't match it for progressive disclosure" })
+  } else {
+    // No verb in first 10 words
+    const first10 = skill.description.split(/\s+/).slice(0, 10).map(w => w.toLowerCase().replace(/[^a-z]/g, ''))
+    const hasVerb = first10.some(w => COMMON_VERBS.has(w))
+    if (!hasVerb) {
+      issues.push({ severity: 'warn', message: 'Description has no clear action verb — add one so Claude knows when to use this skill' })
+    }
+
+    // Duplicate description
+    if (context) {
+      const key = skill.description.toLowerCase().trim()
+      const count = context.descriptionCounts.get(key) ?? 0
+      if (count >= 2) {
+        issues.push({ severity: 'warn', message: 'Description is identical to another skill — Claude may load the wrong one' })
+      }
+    }
   }
 
-  // Missing allowed-tools (skills and agents benefit from this; commands rarely have it)
-  if (skill.type !== 'command' && !skill.frontmatter['allowed-tools']) {
-    issues.push({ severity: 'warn', message: 'Missing allowed-tools' })
+  // Missing allowed-tools — only flag if the body actually references tool calls.
+  // Documentation-only skills without tool use don't need allowed-tools.
+  if (
+    skill.type !== 'command' &&
+    !skill.frontmatter['allowed-tools'] &&
+    TOOL_PATTERN.test(skill.body)
+  ) {
+    issues.push({ severity: 'warn', message: 'Uses tools but missing allowed-tools' })
   }
 
   const hasError = issues.some(i => i.severity === 'error')

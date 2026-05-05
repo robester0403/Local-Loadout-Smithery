@@ -46,7 +46,12 @@ function mergeWithCost(skills: Skill[], summaries: SkillUsageSummary[]): Skill[]
       (now - new Date(c.lastInvoked).getTime()) / 86_400_000 > DORMANT_DAYS
     )
 
-    return { ...s, activeDollars, loadedDollars, totalDollars, insight, dormant, lastInvoked: c?.lastInvoked ?? '' }
+    const invocations = c?.invocations ?? 0
+    const bodyBytes = s.body.length  // byte-approximate, fine for heuristic
+    const bloatScore = bodyBytes / Math.max(invocations, 1)
+    const bloat = bloatScore > 5000 && bodyBytes > 2000
+
+    return { ...s, activeDollars, loadedDollars, totalDollars, insight, dormant, lastInvoked: c?.lastInvoked ?? '', bloat }
   })
 }
 

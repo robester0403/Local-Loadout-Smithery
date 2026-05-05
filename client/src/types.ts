@@ -53,6 +53,7 @@ export interface Skill {
   insight: Insight
   dormant: boolean
   lastInvoked: string
+  bloat: boolean
 }
 
 export interface Filters {

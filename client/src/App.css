@@ -314,6 +314,7 @@ td.col-totalDollars { color: var(--text); }
 .insight-tooltip-removal { color: #f55b5b; }
 .insight-tooltip-winner  { color: var(--c-global); }
 .insight-tooltip-dormant { color: #f5c45b; }
+.insight-tooltip-bloat   { color: #a0a0c0; }
 
 .insight-tooltip-row {
   font-size: 11px; font-family: var(--mono); color: var(--text);
