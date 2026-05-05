@@ -1,4 +1,10 @@
 export type SkillType = 'skill' | 'command' | 'subagent'
+
+export interface ClassificationResult {
+  suggested: SkillType
+  confidence: 'high' | 'low'
+  cues: string[]
+}
 export type Timeframe = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all'
 export type SkillScope = 'global' | 'project'
 export type HealthStatus = 'ok' | 'warn' | 'error'
@@ -56,6 +62,7 @@ export interface Skill {
   lastInvoked: string
   bloat: boolean
   descLen: number
+  suggestedType?: ClassificationResult | null
 }
 
 export interface Filters {

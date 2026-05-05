@@ -2,6 +2,12 @@ import type { SkillReference } from './references'
 export type { SkillReference } from './references'
 
 export type SkillType = 'skill' | 'command' | 'subagent'
+
+export interface ClassificationResult {
+  suggested: SkillType
+  confidence: 'high' | 'low'
+  cues: string[]
+}
 export type SkillScope = 'global' | 'project'
 export type HealthStatus = 'ok' | 'warn' | 'error'
 
@@ -33,4 +39,5 @@ export interface Skill {
   health: HealthResult
   disabled: boolean
   references: SkillReference[]
+  suggestedType?: ClassificationResult | null
 }

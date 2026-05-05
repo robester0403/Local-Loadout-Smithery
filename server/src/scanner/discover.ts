@@ -4,6 +4,7 @@ import path from 'path'
 import { parseFrontmatter } from '../parser/frontmatter'
 import { computeHealth } from './health'
 import { extractReferences } from './references'
+import { inferType } from './classification'
 import type { Skill, SkillType, SkillScope, HealthResult } from './types'
 
 function listDir(dir: string): string[] {
@@ -94,7 +95,7 @@ function buildSkill(
       path.basename(path.dirname(filePath)) ||
       path.basename(logicalPath, '.md')
 
-    const base: Omit<Skill, 'health' | 'disabled'> = {
+    const base: Omit<Skill, 'health' | 'disabled' | 'suggestedType'> = {
       id: Buffer.from(realpath).toString('base64'),
       name,
       description: (meta['description'] as string | undefined) || '',
@@ -112,7 +113,7 @@ function buildSkill(
       references: [],
     }
     const health: HealthResult = computeHealth(base)
-    return { ...base, health, disabled }
+    return { ...base, health, disabled, suggestedType: null }
   } catch {
     return null
   }
@@ -281,6 +282,7 @@ export function discoverAllSkills(): Skill[] {
     const { health: _health, ...base } = skill
     const health = computeHealth(base, { descriptionCounts })
     const references = extractReferences(skill, allNames)
-    return { ...skill, health, references }
+    const suggestedType = inferType(skill)
+    return { ...skill, health, references, suggestedType }
   })
 }

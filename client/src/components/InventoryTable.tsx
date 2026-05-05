@@ -123,6 +123,7 @@ export default function InventoryTable({
                   lastInvoked={skill.lastInvoked}
                   bloat={skill.bloat}
                   descLen={skill.descLen}
+                  suggestedType={skill.suggestedType}
                 />
               </td>
               <td className="col-name">

@@ -1,4 +1,4 @@
-import type { Insight } from '../types'
+import type { Insight, ClassificationResult } from '../types'
 
 interface Props {
   insight: Insight
@@ -8,6 +8,7 @@ interface Props {
   lastInvoked: string
   bloat: boolean
   descLen: number
+  suggestedType?: ClassificationResult | null
 }
 
 function fmt(n: number): string {
@@ -18,7 +19,21 @@ function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen }: Props) {
+export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType }: Props) {
+  const mismatchBadge = suggestedType ? (
+    <span className="insight-badge insight-has-tooltip">
+      🔀
+      <span className="insight-tooltip">
+        <span className="insight-tooltip-title insight-tooltip-mismatch">Possible misclassification</span>
+        <span className="insight-tooltip-row">Looks like a <b>{suggestedType.suggested}</b></span>
+        {suggestedType.cues.map((cue, i) => (
+          <span key={i} className="insight-tooltip-row">{cue}</span>
+        ))}
+        <span className="insight-tooltip-hint">Check the drawer to review or reclassify.</span>
+      </span>
+    </span>
+  ) : null
+
   const bloatBadge = bloat ? (
     <span className="insight-badge insight-has-tooltip">
       📦
@@ -43,6 +58,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
           </span>
         </span>
         {bloatBadge}
+        {mismatchBadge}
       </>
     )
   }
@@ -60,6 +76,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
           </span>
         </span>
         {bloatBadge}
+        {mismatchBadge}
       </>
     )
   }
@@ -80,12 +97,13 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
           </span>
         </span>
         {bloatBadge}
+        {mismatchBadge}
       </>
     )
   }
 
-  if (bloat) {
-    return bloatBadge
+  if (bloat || mismatchBadge) {
+    return <>{bloatBadge}{mismatchBadge}</>
   }
 
   return null
