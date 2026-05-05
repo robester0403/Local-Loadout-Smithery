@@ -13,6 +13,9 @@ interface Props {
   onToggle: (skill: Skill, enabled: boolean) => void
   onBreakdown: (skill: Skill) => void
   timeframe?: Timeframe
+  selectedIds?: Set<string>
+  onSelectId?: (id: string, checked: boolean) => void
+  onSelectAll?: (checked: boolean) => void
 }
 
 function tfLabel(tf: Timeframe): string {
@@ -69,6 +72,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 
 export default function InventoryTable({
   skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
+  selectedIds, onSelectId, onSelectAll,
 }: Props) {
   const suffix = timeframe ? tfLabel(timeframe) : ''
   const COLUMNS = BASE_COLUMNS.map(col => {
@@ -77,11 +81,23 @@ export default function InventoryTable({
     return { ...col, label }
   })
 
+  const allChecked = skills.length > 0 && skills.every(s => selectedIds?.has(s.id))
+  const someChecked = !allChecked && skills.some(s => selectedIds?.has(s.id))
+
   return (
     <div className="table-wrap">
       <table className="inventory-table">
         <thead>
           <tr>
+            <th className="col-check" onClick={e => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={allChecked}
+                ref={el => { if (el) el.indeterminate = someChecked }}
+                onChange={e => onSelectAll?.(e.target.checked)}
+                title="Select all"
+              />
+            </th>
             {COLUMNS.map(col => (
               <th
                 key={col.key}
@@ -108,9 +124,17 @@ export default function InventoryTable({
               className={[
                 selected?.id === skill.id ? 'selected' : '',
                 skill.disabled ? 'row-disabled' : '',
+                selectedIds?.has(skill.id) ? 'row-checked' : '',
               ].filter(Boolean).join(' ')}
               onClick={() => onSelect(skill)}
             >
+              <td className="col-check" onClick={e => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds?.has(skill.id) ?? false}
+                  onChange={e => onSelectId?.(skill.id, e.target.checked)}
+                />
+              </td>
               <td className="col-health">
                 <HealthBadge health={skill.health} />
               </td>

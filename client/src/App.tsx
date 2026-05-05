@@ -68,6 +68,7 @@ export default function App() {
   const [timeframe, setTimeframe] = useState<Timeframe>(
     () => (localStorage.getItem('lsm-timeframe') as Timeframe) ?? 'all'
   )
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   function showToast(msg: string) {
     setToast(msg)
@@ -119,6 +120,38 @@ export default function App() {
     } catch (e) {
       setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, disabled: skill.disabled } : s))
       showToast((e as Error).message)
+    }
+  }
+
+  function handleSelectId(id: string, checked: boolean) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  function handleSelectAll(checked: boolean) {
+    setSelectedIds(checked ? new Set(filtered.map(s => s.id)) : new Set())
+  }
+
+  async function handleBulkDisable() {
+    const targets = filtered.filter(s => selectedIds.has(s.id) && !s.disabled)
+    if (targets.length === 0) return
+    if (targets.length > 5) {
+      if (!window.confirm(`Disable ${targets.length} skills? This can be undone one by one via the toggle.`)) return
+    }
+    setSkills(prev => prev.map(s => selectedIds.has(s.id) ? { ...s, disabled: true } : s))
+    setSelectedIds(new Set())
+    const errors: string[] = []
+    await Promise.all(targets.map(async s => {
+      try { await setSkillDisabled(s.id, true) }
+      catch (e) { errors.push(s.name) }
+    }))
+    if (errors.length > 0) {
+      showToast(`Failed to disable: ${errors.join(', ')}`)
+      await load()
     }
   }
 
@@ -251,6 +284,18 @@ export default function App() {
           </div>
         )}
 
+        {selectedIds.size > 0 && (
+          <div className="bulk-bar">
+            <span className="bulk-count">{selectedIds.size} selected</span>
+            <button className="btn btn-sm btn-warn" onClick={handleBulkDisable}>
+              Disable selected
+            </button>
+            <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
+              Clear
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <EmptyState variant="loading" />
         ) : error ? (
@@ -268,6 +313,9 @@ export default function App() {
             onToggle={handleToggle}
             onBreakdown={setBreakdownSkill}
             timeframe={timeframe}
+            selectedIds={selectedIds}
+            onSelectId={handleSelectId}
+            onSelectAll={handleSelectAll}
           />
         )}
       </main>

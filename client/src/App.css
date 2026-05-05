@@ -208,8 +208,10 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 
 .health-tooltip-icon { flex-shrink: 0; font-weight: 700; }
 
+.col-check   { width: 32px; text-align: center; padding: 0 8px !important; }
 .col-health  { width: 48px; text-align: center; }
 .col-insight { width: 36px; text-align: center; vertical-align: middle; }
+.row-checked { background: rgba(99, 179, 237, 0.08) !important; }
 .pill-issues.active { border-color: #f5c45b; background: rgba(245,196,91,.12); color: #f5c45b; }
 .pill-review.active { border-color: #f55b5b; background: rgba(245,91,91,.12); color: #f55b5b; }
 
@@ -313,8 +315,9 @@ td.col-totalDollars { color: var(--text); }
 }
 .insight-tooltip-removal { color: #f55b5b; }
 .insight-tooltip-winner  { color: var(--c-global); }
-.insight-tooltip-dormant { color: #f5c45b; }
-.insight-tooltip-bloat   { color: #a0a0c0; }
+.insight-tooltip-dormant  { color: #f5c45b; }
+.insight-tooltip-bloat    { color: #a0a0c0; }
+.insight-tooltip-mismatch { color: #7db8f7; }
 
 .insight-tooltip-row {
   font-size: 11px; font-family: var(--mono); color: var(--text);
@@ -349,6 +352,18 @@ td.col-totalDollars { color: var(--text); }
   white-space: nowrap;
 }
 .btn-warn:hover { border-color: #f55b5b; color: #f55b5b; }
+
+/* ─── Bulk-action bar ───────────────────────────────────────────────────── */
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(99, 179, 237, 0.08);
+  border-bottom: 1px solid rgba(99, 179, 237, 0.2);
+  font-size: 13px;
+}
+.bulk-count { font-weight: 600; color: var(--text-head); flex: 1; }
 
 /* ─── Toggle switch ─────────────────────────────────────────────────────── */
 .col-enabled { width: 72px; text-align: center; }
