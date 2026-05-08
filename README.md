@@ -1,6 +1,6 @@
 # Local Loadout Smithery
 
-<img width="350" height="450" alt="image" src="https://github.com/user-attachments/assets/62208058-22d5-460c-ba60-facfa7e13264" />
+<img width="250" height="300" alt="image" src="https://github.com/user-attachments/assets/6ac8b937-ae0c-4d0d-82aa-018349d8d837" />
 
 The control panel for your Claude Code loadout. See every skill, slash command, subagent, and MCP server you have, what each one costs in tokens, and which ones aren't pulling their weight — all in one place.
 
