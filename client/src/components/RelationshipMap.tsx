@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Skill } from '../types'
 import mermaid from 'mermaid'
 
@@ -199,13 +199,11 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   // squishing the SVG.
   const [fullscreen, setFullscreen] = useState<boolean>(false)
 
-  // Zoom level for the rendered SVG (1 = natural size). Applied by overriding
-  // the svg element's width/height attributes — simpler than CSS transforms
-  // because the parent's overflow:auto then sizes scroll bounds correctly.
+  // Zoom level for the rendered SVG (1 = natural size). The actual sizing is
+  // applied declaratively via the wrapper div's inline width/height — the
+  // inner svg fills the wrapper via CSS — so unrelated re-renders (e.g. hover
+  // state changes) can't perturb the rendered scale.
   const [zoom, setZoom] = useState<number>(1)
-  // Natural size from the SVG's viewBox, captured each time mermaid renders a
-  // new graph. Used both to apply zoom and to compute fit-to-screen.
-  const naturalDimRef = useRef<{ w: number; h: number } | null>(null)
 
   const { nodes, edges } = useMemo(
     () => buildChain(skill, allSkills, maxDepth, direction),
@@ -240,53 +238,37 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     return () => { cancelled = true }
   }, [mermaidSrc])
 
-  // Tracks the last svgHtml we processed so we can detect "new graph" vs
-  // "user changed zoom" inside the same effect.
-  const lastSvgRef = useRef<string | null>(null)
-
-  // Apply zoom by setting the svg's width/height. On a brand-new graph,
-  // auto-fit so the default view always frames the whole thing — the user
-  // can then zoom in for detail without losing their place.
-  useEffect(() => {
-    if (!svgHtml || !graphRef.current) return
-    const svgEl = graphRef.current.querySelector('svg') as SVGSVGElement | null
-    if (!svgEl) return
-
-    const isNewGraph = lastSvgRef.current !== svgHtml
-    lastSvgRef.current = svgHtml
-
-    if (isNewGraph) {
-      // Re-capture natural dims from the viewBox each time mermaid emits a new svg.
-      const viewBox = svgEl.getAttribute('viewBox')
-      if (viewBox) {
-        const parts = viewBox.split(/\s+/).map(Number)
-        if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
-          naturalDimRef.current = { w: parts[2], h: parts[3] }
-        }
-      }
+  // Natural dimensions parsed from the rendered SVG's viewBox. Done from the
+  // svgHtml string directly so it's available in the same render that mounts
+  // the wrapper — no async DOM-querying required.
+  const naturalDim = useMemo(() => {
+    if (!svgHtml) return null
+    const m = svgHtml.match(/viewBox\s*=\s*["']([^"']+)["']/)
+    if (!m) return null
+    const parts = m[1].split(/\s+/).map(Number)
+    if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
+      return { w: parts[2], h: parts[3] }
     }
+    return null
+  }, [svgHtml])
 
-    const dim = naturalDimRef.current
-    if (!dim) return
+  // Tracks the last svgHtml we auto-fit so we don't fight the user's zoom on
+  // unrelated re-renders.
+  const lastFitSvgRef = useRef<string | null>(null)
 
-    // Pick the zoom we'll apply this pass: on a new graph, compute fit-to-screen
-    // and use that directly so we never paint at the wrong scale even briefly.
-    let effectiveZoom = zoom
-    if (isNewGraph) {
-      const { width, height } = graphRef.current.getBoundingClientRect()
-      const availW = Math.max(40, width - 24)   // 12px padding each side
-      const availH = Math.max(40, height - 24)
-      const fit = Math.min(availW / dim.w, availH / dim.h)
-      effectiveZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2)))
-      if (effectiveZoom !== zoom) setZoom(effectiveZoom)
-    }
-
-    svgEl.setAttribute('width', String(dim.w * effectiveZoom))
-    svgEl.setAttribute('height', String(dim.h * effectiveZoom))
-    // Drop any max-width style mermaid sometimes adds — would otherwise cap zoom.
-    svgEl.style.maxWidth = 'none'
-    svgEl.style.maxHeight = 'none'
-  }, [svgHtml, zoom])
+  // On every new svgHtml, compute fit-to-screen and apply. useLayoutEffect so
+  // the zoom state lands before the browser paints, avoiding a flash of the
+  // graph at the previous (unrelated) zoom.
+  useLayoutEffect(() => {
+    if (!svgHtml || !naturalDim || !graphRef.current) return
+    if (lastFitSvgRef.current === svgHtml) return
+    lastFitSvgRef.current = svgHtml
+    const { width, height } = graphRef.current.getBoundingClientRect()
+    const availW = Math.max(40, width - 24)   // 12px padding each side
+    const availH = Math.max(40, height - 24)
+    const fit = Math.min(availW / naturalDim.w, availH / naturalDim.h)
+    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2))))
+  }, [svgHtml, naturalDim])
 
   const ZOOM_MIN = 0.2
   const ZOOM_MAX = 4
@@ -295,14 +277,13 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   const zoomIn = () => setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))
   const zoomOut = () => setZoom(z => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))
   const fitToScreen = () => {
-    const dim = naturalDimRef.current
     const graphEl = graphRef.current
-    if (!dim || !graphEl) return
+    if (!naturalDim || !graphEl) return
     const { width, height } = graphEl.getBoundingClientRect()
     // Account for padding on .relmap-graph (12px each side from CSS).
     const availW = Math.max(40, width - 24)
     const availH = Math.max(40, height - 24)
-    const fit = Math.min(availW / dim.w, availH / dim.h)
+    const fit = Math.min(availW / naturalDim.w, availH / naturalDim.h)
     setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2))))
   }
 
@@ -449,6 +430,7 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
               ) : svgHtml ? (
                 <div
                   className="relmap-svg"
+                  style={naturalDim ? { width: naturalDim.w * zoom, height: naturalDim.h * zoom } : undefined}
                   dangerouslySetInnerHTML={{ __html: svgHtml }}
                 />
               ) : (

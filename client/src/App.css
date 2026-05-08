@@ -1275,14 +1275,11 @@ td.col-totalDollars { color: var(--text); }
 }
 
 .relmap-svg {
-  /* Size to the rendered svg so flex centering on the parent has something
-     compact to align. Was previously width:100%, which left-anchored the
-     graph inside a stretched div. */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  max-width: 100%;
-  max-height: 100%;
+  /* Size is React state-driven via inline width/height (in pixels); the
+     inner svg fills this wrapper. Doing it this way keeps zoom under React
+     control so unrelated re-renders (hover, etc.) can't perturb the rendered
+     scale via mermaid's own inline styles or CSS auto-sizing. */
+  flex-shrink: 0;
 }
 
 /* ─── Info rail (right side of relmap-body) ─────────────────────────────── */
@@ -1357,9 +1354,13 @@ td.col-totalDollars { color: var(--text); }
   padding-top: 8px;
 }
 .relmap-svg svg {
-  max-width: 100%;
-  max-height: 100%;
-  height: auto;
+  /* Fill the wrapper exactly. !important needed because mermaid sometimes
+     inlines max-width on the svg element. */
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
 }
 /* Clickable nodes: pointer cursor + subtle hover so it's obvious they
    navigate to the corresponding artifact's detail view. */
