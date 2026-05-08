@@ -158,7 +158,7 @@ export async function probeMCPStdio(
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'local-skill-manager', version: '0.1.0' },
+        clientInfo: { name: 'local-loadout-smithery', version: '0.0.1' },
       },
     })
   })

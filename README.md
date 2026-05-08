@@ -1,11 +1,11 @@
-# Local Skill Manager
+# Local Loadout Smithery
 
-The control panel for your Claude Code skill library. See what skills you have, what they cost in tokens, and which ones aren't performing — all in one place.
+The control panel for your Claude Code loadout. See every skill, slash command, subagent, and MCP server you have, what each one costs in tokens, and which ones aren't pulling their weight — all in one place.
 
 ## Install
 
 ```bash
-npm install -g local-skill-manager
+npm install -g local-loadout-smithery
 ```
 
 Requires Node.js 18+.
@@ -13,28 +13,29 @@ Requires Node.js 18+.
 ## Run
 
 ```bash
-local-skill-manager
+local-loadout-smithery     # full name
+lls                        # short alias
 ```
 
 Opens the UI in your browser at `http://localhost:5173` (dev) or `http://localhost:3001` (production build).
 
 ## First-time setup
 
-No configuration required — LSM discovers your skills automatically by scanning `~/.claude` (and any additional account dirs like `~/.claude-work`) for skills, commands, and agents.
+No configuration required — the app discovers your loadout automatically by scanning `~/.claude` (and any additional account dirs like `~/.claude-work`) for skills, commands, subagents, and MCP server definitions.
 
-**Optional:** customize pricing for cost calculations by creating `~/.local-skill-manager/pricing.json`. LSM ships with hardcoded defaults for current Claude models; override any model's rates in that file to match Anthropic's published pricing.
+**Optional:** customize pricing for cost calculations by creating `~/.loadoutsmith/pricing.json`. Defaults ship for current Claude models; override any model's rates in that file to match Anthropic's published pricing.
 
 ## Why use it
 
-Skills left unmanaged accumulate quietly. Every skill you have enabled is loaded into every conversation context, whether you invoked it or not. That loaded context costs tokens on every turn — and most skills are never actually invoked.
+Loadout artifacts left unmanaged accumulate quietly. Every enabled skill, command listing, subagent, and MCP tool is loaded into every conversation context, whether you invoked it or not. That loaded context costs tokens on every turn — and most of it is never actually invoked.
 
-Local Skill Manager shows you which skills are earning their keep and which are pure overhead:
+Local Loadout Smithery shows you which artifacts are earning their keep and which are pure overhead:
 
-- **🚨 Removal candidates** — skills with meaningful loaded cost but zero active usage. They're taxing every conversation and doing nothing in return.
-- **💤 Dormant skills** — skills you haven't invoked in 90+ days. Probably forgotten, definitely still costing you.
+- **🚨 Removal candidates** — artifacts with meaningful loaded cost but zero active usage. They're taxing every conversation and doing nothing in return.
+- **💤 Dormant artifacts** — items you haven't invoked in 90+ days. Probably forgotten, definitely still costing you.
 - **✅ Winners** — high loaded cost AND high active usage. These are pulling their weight.
 
-The diagnostic view puts the removal candidates and dormant skills in one filtered list so you can act on them in one pass.
+The diagnostic view puts the removal candidates and dormant items in one filtered list so you can act on them in one pass.
 
 ## The auto-invocation problem
 
@@ -52,9 +53,9 @@ Skills and subagents are designed to fire automatically when their description m
 2. **Token budget overflow.** When the listing exceeds ~15K characters, descriptions get silently truncated. Skills toward the bottom never appear in context at all.
 3. **Vague descriptions.** *"Helps with tests"* gets ignored. *"When the user asks to run, check, or verify tests, run pytest"* gets picked up. The description is the trigger, not the instructions.
 
-### Why this matters for LSM
+### Why it matters here
 
-This is exactly why the *removal candidate* and *dormant* diagnostics exist. A skill with meaningful loaded cost but zero invocations isn't unused because you don't need it — it's unused because the router never picked it up. LSM surfaces those skills so you can either rewrite the description or delete the skill.
+This is exactly why the *removal candidate* and *dormant* diagnostics exist. A skill with meaningful loaded cost but zero invocations isn't unused because you don't need it — it's unused because the router never picked it up. The smithery surfaces those artifacts so you can either rewrite the description or delete the artifact.
 
 ### What works (community-converged fixes)
 
@@ -64,10 +65,10 @@ This is exactly why the *removal candidate* and *dormant* diagnostics exist. A s
 
 ## What it does
 
-- **Inventory** — unified view of all your Claude Code skills, commands, and agents across all accounts and scopes
-- **Token tracking** — dual-axis cost per skill: active cost (when invoked) + loaded cost (context tax on every turn), in tokens and dollars
+- **Inventory** — unified view of all your Claude Code skills, slash commands, subagents, and MCP server tools across all accounts and scopes
+- **Token tracking** — dual-axis cost per artifact: active cost (when invoked) + loaded cost (context tax on every turn), in tokens and dollars. See [`COST_MODEL.md`](./COST_MODEL.md) for the full spec.
 - **Health diagnostics** — frontmatter linter, broken symlink detection, and health badges with inline issue descriptions
-- **Diagnostic insights** — surfaces removal candidates and dormant skills; "Needs review" filter + inline insight banner
+- **Diagnostic insights** — surfaces removal candidates and dormant artifacts; "Needs review" filter + inline insight banner
 
 Everything runs locally. No data leaves your machine.
 
@@ -78,8 +79,8 @@ Everything runs locally. No data leaves your machine.
 ## Development
 
 ```bash
-git clone https://github.com/yourusername/local-skill-manager
-cd local-skill-manager
+git clone https://github.com/yourusername/local-loadout-smithery
+cd local-loadout-smithery
 npm install && cd client && npm install && cd ..
 npm run dev
 ```

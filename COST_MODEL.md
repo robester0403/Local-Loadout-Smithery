@@ -1,6 +1,6 @@
 # Cost Model
 
-How `local-skill-manager` calculates per-skill cost from Claude Code session JSONL files.
+How Local Loadout Smithery calculates per-skill cost from Claude Code session JSONL files.
 
 This is the reference for what every dollar figure in the UI means and where it comes from. If a number looks wrong, this document is the spec — fix the data or fix the spec, but they should agree.
 
@@ -28,7 +28,7 @@ Tokens are priced according to the cache state on the API request that records t
 
 The cost model **only uses `cacheWritePerM` and `cacheReadPerM`**. Skill-related content is always cached — it's stable system content. Input/output rates show up in pricing.ts for completeness but are not charged to any skill's Active or Loaded axis.
 
-Pricing source: `server/src/usage/pricing.ts`. Defaults can be overridden by `~/.local-skill-manager/pricing.json`.
+Pricing source: `server/src/usage/pricing.ts`. Defaults can be overridden by `~/.loadoutsmith/pricing.json`.
 
 ## Active cost
 
@@ -128,7 +128,7 @@ Two repos provided the original inspiration. Both make different design choices:
 - **`oh-my-hi`** (`scripts/parsers/usage.mjs`): tracks which skill was active at each turn, then attributes the **full turn's input + output + cache tokens** to that skill. Records cache-tier counts but does not multiply by tier rates. Has no Loaded axis. Includes subagents.
 - **`skills-janitor`** (`scripts/tokencost.sh`): not a per-session cost analyzer. Counts words across all SKILL.md files at a flat 1.3× ratio to estimate static context-window usage if every skill were listed. Used for cleanup recommendations, not historical attribution.
 
-`local-skill-manager` is more granular than either: body-only at cache-tier rates for Active, listing-share at cache-tier rates for Loaded, subagents excluded, signal-based activation. The trade-off is a more complex spec; this document exists to keep it intelligible.
+Local Loadout Smithery is more granular than either: body-only at cache-tier rates for Active, listing-share at cache-tier rates for Loaded, subagents excluded, signal-based activation. The trade-off is a more complex spec; this document exists to keep it intelligible.
 
 ## File map
 

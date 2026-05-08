@@ -276,7 +276,7 @@ app.post('/api/skills/:id/reclassify', (req, res) => {
     fs.mkdirSync(path.dirname(destPath), { recursive: true })
     fs.renameSync(sourcePath, destPath)
 
-    const logDir = path.join(home, '.local-skill-manager')
+    const logDir = path.join(home, '.loadoutsmith')
     fs.mkdirSync(logDir, { recursive: true })
     fs.appendFileSync(
       path.join(logDir, 'move-log.jsonl'),
@@ -586,14 +586,14 @@ if (process.env.NODE_ENV === 'production') {
 // Global error handler — catches anything thrown by middleware/routes
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[LSM]', err.message)
+  console.error('[loadoutsmith]', err.message)
   res.status(500).json({ error: err.message })
 })
 
 const server = app.listen(PORT, () => {
   const line = '─'.repeat(44)
   console.log(`\n\x1b[36m┌${line}┐\x1b[0m`)
-  console.log(`\x1b[36m│\x1b[0m  \x1b[1mLocal Skill Manager\x1b[0m                        \x1b[36m│\x1b[0m`)
+  console.log(`\x1b[36m│\x1b[0m  \x1b[1mLocal Loadout Smithery\x1b[0m                     \x1b[36m│\x1b[0m`)
   console.log(`\x1b[36m│\x1b[0m  API server  →  http://localhost:${PORT}           \x1b[36m│\x1b[0m`)
   if (process.env.NODE_ENV !== 'production') {
     console.log(`\x1b[36m│\x1b[0m  \x1b[1m\x1b[32mOpen in browser → http://localhost:5173\x1b[0m     \x1b[36m│\x1b[0m`)
@@ -602,7 +602,7 @@ const server = app.listen(PORT, () => {
 })
 
 function shutdown(signal: NodeJS.Signals) {
-  console.log(`\n[LSM] received ${signal}, shutting down…`)
+  console.log(`\n[loadoutsmith] received ${signal}, shutting down…`)
   server.close(() => process.exit(0))
   // Force-exit if any open keep-alive connection holds the server open.
   setTimeout(() => process.exit(0), 1000).unref()

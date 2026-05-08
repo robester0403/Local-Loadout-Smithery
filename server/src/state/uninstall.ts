@@ -2,9 +2,9 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 
-const LSM_DIR = path.join(os.homedir(), '.local-skill-manager')
-const UNINSTALLED_DIR = path.join(LSM_DIR, 'uninstalled')
-const UNINSTALLED_LOG = path.join(LSM_DIR, 'uninstalled.json')
+const LOADOUT_DIR = path.join(os.homedir(), '.loadoutsmith')
+const UNINSTALLED_DIR = path.join(LOADOUT_DIR, 'uninstalled')
+const UNINSTALLED_LOG = path.join(LOADOUT_DIR, 'uninstalled.json')
 
 export interface UninstalledEntry {
   id: string            // base64 of logical path (sans .disabled suffix)
@@ -31,7 +31,7 @@ export function loadUninstalled(): UninstalledEntry[] {
 }
 
 function saveUninstalled(entries: UninstalledEntry[]): void {
-  fs.mkdirSync(LSM_DIR, { recursive: true })
+  fs.mkdirSync(LOADOUT_DIR, { recursive: true })
   const tmp = UNINSTALLED_LOG + '.tmp'
   fs.writeFileSync(tmp, JSON.stringify(entries, null, 2))
   fs.renameSync(tmp, UNINSTALLED_LOG)

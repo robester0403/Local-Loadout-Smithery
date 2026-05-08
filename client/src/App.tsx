@@ -18,7 +18,7 @@ import './App.css'
 type ActiveTab = 'inventory' | 'superrouter'
 
 // Thresholds for diagnostic insights.
-// Future: read from ~/.local-skill-manager/config.json
+// Future: read from ~/.loadoutsmith/config.json
 const LOADED_HIGH_USD = 0.001   // skills costing > $0.001 in loaded context are "high loaded"
 const ACTIVE_HIGH_USD = 0.0001  // treat active < $0.0001 as "zero active" (float safety)
 const DORMANT_DAYS = 90
@@ -118,7 +118,9 @@ export default function App() {
   const [showCostModal, setShowCostModal] = useState(false)
   const [breakdownSkill, setBreakdownSkill] = useState<Skill | null>(null)
   const [timeframe, setTimeframe] = useState<Timeframe>(
-    () => (localStorage.getItem('lsm-timeframe') as Timeframe) ?? 'all'
+    () => (localStorage.getItem('loadoutsmith-timeframe') as Timeframe)
+      ?? (localStorage.getItem('lsm-timeframe') as Timeframe)  // legacy key from pre-rename builds
+      ?? 'all'
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [profilesData, setProfilesData] = useState<ProfilesData>({ profiles: {}, activeProfile: null })
@@ -138,7 +140,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    localStorage.setItem('lsm-timeframe', timeframe)
+    localStorage.setItem('loadoutsmith-timeframe', timeframe)
   }, [timeframe])
 
   const load = useCallback(async () => {
@@ -403,7 +405,7 @@ export default function App() {
     <div className="app">
       <header className="header">
         <div className="header-left">
-          <span className="header-title">Local Skill Manager</span>
+          <span className="header-title">Local Loadout Smithery</span>
           <span className="header-motto">Win little and win big</span>
           <span className="header-count">{skills.length} total</span>
           <span className="header-cost" title={`Active ${fmt(totals.active)} · Loaded ${fmt(totals.loaded)} (${totalDollars > 0 ? Math.round((totals.loaded / totalDollars) * 100) : 0}% of total)`}>

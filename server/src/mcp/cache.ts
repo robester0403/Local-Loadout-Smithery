@@ -26,7 +26,7 @@ export interface CachedProbeResult {
 }
 
 function cacheFilePath(): string {
-  return path.join(os.homedir(), '.local-skill-manager', 'mcp-cache.json')
+  return path.join(os.homedir(), '.loadoutsmith', 'mcp-cache.json')
 }
 
 function loadFile(): CacheFile {

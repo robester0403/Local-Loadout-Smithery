@@ -115,7 +115,7 @@ describe('schema cache', () => {
 
     // Write a cache file with a fetchedAt 25 hours ago
     const staleDate = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
-    const cacheFile = path.join(home, '.local-skill-manager', 'mcp-cache.json')
+    const cacheFile = path.join(home, '.loadoutsmith', 'mcp-cache.json')
     write(cacheFile, JSON.stringify({
       entries: {
         'old-srv': { configHash: 'hash-x', fetchedAt: staleDate, status: 'ok', tools: [{ name: 'old', schemaBytes: 5 }] },

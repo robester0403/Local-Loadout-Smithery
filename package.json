@@ -1,9 +1,10 @@
 {
-  "name": "local-skill-manager",
+  "name": "local-loadout-smithery",
   "version": "0.0.1",
-  "description": "The control panel for your Claude Code skill library",
+  "description": "The control panel for your Claude Code loadout — skills, commands, subagents, and MCPs.",
   "bin": {
-    "local-skill-manager": "./dist/server/src/index.js"
+    "local-loadout-smithery": "./dist/server/src/index.js",
+    "lls": "./dist/server/src/index.js"
   },
   "main": "./dist/server/src/index.js",
   "scripts": {

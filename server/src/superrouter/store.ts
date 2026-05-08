@@ -4,7 +4,7 @@ import os from 'os'
 import crypto from 'crypto'
 import type { RoutingGroup, SuperRouterState, GroupMember } from './types'
 
-export const SUPERROUTER_DIR = path.join(os.homedir(), '.local-skill-manager', 'superrouter')
+export const SUPERROUTER_DIR = path.join(os.homedir(), '.loadoutsmith', 'superrouter')
 const GROUPS_FILE = path.join(SUPERROUTER_DIR, 'groups.json')
 
 function ensureDirs(): void {

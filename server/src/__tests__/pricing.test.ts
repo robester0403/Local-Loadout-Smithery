@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import { getPricing, toDollars, resetPricingCache } from '../usage/pricing'
 
-const PRICING_FILE = path.join(os.homedir(), '.local-skill-manager', 'pricing.json')
+const PRICING_FILE = path.join(os.homedir(), '.loadoutsmith', 'pricing.json')
 
 beforeEach(() => {
   resetPricingCache()
