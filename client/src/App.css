@@ -1234,6 +1234,17 @@ td.col-totalDollars { color: var(--text); }
   align-items: safe center;
   justify-content: safe center;
   padding: 12px;
+  /* Click-and-drag panning affordance. Becomes 'grabbing' while a drag is in
+     progress (set by useGraphPanning via the .is-panning class). Nodes
+     override to 'pointer' below since they're navigation targets. */
+  cursor: grab;
+}
+.relmap-graph.is-panning,
+.relmap-graph.is-panning * {
+  cursor: grabbing !important;
+  /* Disable text/element selection during a drag so the browser doesn't try
+     to highlight node labels as the mouse moves. */
+  user-select: none;
 }
 
 /* ─── Zoom controls overlay (bottom-right of the graph pane) ────────────── */
