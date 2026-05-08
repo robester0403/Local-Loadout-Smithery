@@ -1109,6 +1109,9 @@ td.col-totalDollars { color: var(--text); }
 .relmap-modal {
   max-width: 1100px;
   width: 94vw;
+  /* Min-height locks the modal to a consistent size so the centered overlay
+     doesn't shift up/down when the info rail's content grows on hover. */
+  min-height: 78vh;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
