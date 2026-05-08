@@ -37,16 +37,18 @@ export default function CostExplainerModal({ onClose, timeframe }: Props) {
         <div className="modal-section">
           <div className="modal-section-title">Two axes of cost</div>
           <p>
-            <strong>Active cost</strong> is attributed when you invoke a skill directly — via{' '}
-            <code>/skill-name</code>. Every assistant turn in that session until the next command
-            invocation counts toward that skill. This is the cost the skill <em>caused</em>.
+            <strong>Active cost</strong> is the body-token tax a skill pays while its full body is
+            in context. The pipeline detects activation by watching{' '}
+            <code>cache_creation_input_tokens</code> deltas — when a large delta matches a skill's
+            known body size, that turn is an activation. The body's tokens are charged at the
+            cache_write rate on activation, then cache_read on every subsequent turn until the
+            session compacts.
           </p>
           <p style={{ marginTop: 8 }}>
-            <strong>Loaded cost</strong> is a context tax every skill pays on every turn. Claude
-            Code lazy-loads skill bodies — at startup, only the skill's name and description
-            metadata (~30–50 tokens) is pre-loaded into context. The full body is only injected
-            when the skill becomes directly relevant. You pay a proportional share of every
-            input-side token cost, every turn, based on each skill's metadata size.
+            <strong>Loaded cost</strong> is the listing-token tax every skill pays on every turn.
+            Claude Code always includes each installed skill's name and description in the system
+            prompt, even skills you never invoke. Each turn you pay for those listing tokens at the
+            cache_write rate (first turn of a session) or cache_read rate (all subsequent turns).
           </p>
         </div>
 
@@ -83,9 +85,12 @@ export default function CostExplainerModal({ onClose, timeframe }: Props) {
         <div className="modal-section">
           <div className="modal-section-title">The math</div>
           <p>
-            Loaded cost is computed as:{' '}
-            <code>(skill name+description bytes ÷ total metadata bytes) × turn input-side tokens</code>.
-            Input-side means regular input tokens + cache creation tokens + cache read tokens.
+            Loaded cost per turn:{' '}
+            <code>countTokens(name + description) × budget_scale × cache_rate</code>.
+            Budget scale is{' '}
+            <code>min(1, 8000 bytes / total listing bytes)</code> — applied when the combined
+            listing exceeds Claude Code's 8000-byte budget. The first assistant turn of each
+            session pays cache_write; all subsequent turns pay the much cheaper cache_read rate.
           </p>
           {sample === 'loading' && (
             <div className="sample-box" style={{ color: 'var(--text-dim)', fontStyle: 'italic' }}>

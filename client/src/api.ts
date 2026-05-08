@@ -2,12 +2,9 @@ import type { Skill, SkillUsageSummary, Timeframe, MCPRow } from './types'
 
 export interface SampleTurn {
   skillName: string
-  skillBodyBytes: number
-  totalBodyBytes: number
-  turnInputTokens: number
-  turnCacheCreateTokens: number
-  turnCacheReadTokens: number
-  attributedTokens: number
+  listingTokens: number
+  effectiveTokens: number
+  isFirstTurn: boolean
   dollars: number
   model: string
   formula: string

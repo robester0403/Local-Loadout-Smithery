@@ -1,17 +1,14 @@
 import fs from 'fs'
-import path from 'path'
 import { discoverAllSkills } from '../scanner'
 import { findSessionFiles } from './parser'
-import { getPricing, toDollars } from './pricing'
+import { getPricing } from './pricing'
+import { listingBytesFor, listingTokensFor, LISTING_BUDGET_BYTES } from './loaded'
 
 export interface SampleTurnResult {
   skillName: string
-  skillBodyBytes: number
-  totalBodyBytes: number
-  turnInputTokens: number
-  turnCacheCreateTokens: number
-  turnCacheReadTokens: number
-  attributedTokens: number
+  listingTokens: number
+  effectiveTokens: number
+  isFirstTurn: boolean
   dollars: number
   model: string
   formula: string
@@ -19,25 +16,26 @@ export interface SampleTurnResult {
 
 export function getSampleTurn(since?: Date): SampleTurnResult | null {
   const allSkills = discoverAllSkills()
-  const nonCommandSkills = allSkills
+  const prepared = allSkills
     .filter(s => s.type !== 'command')
     .map(s => ({
       name: s.name,
-      bodyBytes: Buffer.byteLength(`${s.name} ${s.description ?? ''}`, 'utf-8'),
-      description: s.description ?? '',
+      listingBytes: listingBytesFor(s.name, s.description),
+      listingTokens: listingTokensFor(s.name, s.description),
     }))
-    .filter(s => s.bodyBytes > 0)
+    .filter(s => s.listingBytes > 0)
 
-  if (nonCommandSkills.length === 0) return null
+  if (prepared.length === 0) return null
 
-  const totalBodyBytes = nonCommandSkills.reduce((sum, s) => sum + s.bodyBytes, 0)
-  if (totalBodyBytes === 0) return null
+  const rawTotalBytes = prepared.reduce((sum, s) => sum + s.listingBytes, 0)
+  const effectiveScale = Math.min(1, LISTING_BUDGET_BYTES / rawTotalBytes)
 
-  const topSkill = nonCommandSkills.reduce((best, s) => (s.bodyBytes > best.bodyBytes ? s : best))
+  const topSkill = prepared.reduce((best, s) => (s.listingTokens > best.listingTokens ? s : best))
+  const effectiveTokens = topSkill.listingTokens * effectiveScale
 
-  const sessionFiles = findSessionFiles()
+  const seenSessions = new Set<string>()
 
-  for (const filePath of sessionFiles) {
+  for (const filePath of findSessionFiles()) {
     let raw: string
     try {
       raw = fs.readFileSync(filePath, 'utf-8')
@@ -62,48 +60,36 @@ export function getSampleTurn(since?: Date): SampleTurnResult | null {
       const usage = msg['usage'] as Record<string, unknown> | undefined
       if (!usage) continue
 
+      const input = typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0
+      const cc = typeof usage['cache_creation_input_tokens'] === 'number' ? usage['cache_creation_input_tokens'] : 0
+      const cr = typeof usage['cache_read_input_tokens'] === 'number' ? usage['cache_read_input_tokens'] : 0
+      if (input + cc + cr === 0) continue
+
       if (since) {
         const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
         if (ts && new Date(ts) < since) continue
       }
 
-      const input = typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0
-      const cacheCreate =
-        typeof usage['cache_creation_input_tokens'] === 'number'
-          ? usage['cache_creation_input_tokens']
-          : 0
-      const cacheRead =
-        typeof usage['cache_read_input_tokens'] === 'number'
-          ? usage['cache_read_input_tokens']
-          : 0
-
-      if (input === 0 && cacheCreate === 0 && cacheRead === 0) continue
+      const sessionId = typeof obj['sessionId'] === 'string' ? obj['sessionId'] : ''
+      const isFirstTurn = !seenSessions.has(sessionId)
+      if (sessionId) seenSessions.add(sessionId)
 
       const model = typeof msg['model'] === 'string' ? msg['model'] : ''
       const pricing = getPricing(model)
+      const ratePerM = isFirstTurn ? (pricing?.cacheWritePerM ?? 0) : (pricing?.cacheReadPerM ?? 0)
+      const dollars = (effectiveTokens / 1_000_000) * ratePerM
 
-      const share = topSkill.bodyBytes / totalBodyBytes
-      const totalTurnInputSide = input + cacheCreate + cacheRead
-      const attributedTokens = Math.round(totalTurnInputSide * share)
-
-      const dollars = pricing
-        ? toDollars(input * share, pricing.inputPerM) +
-          toDollars(cacheCreate * share, pricing.cacheWritePerM) +
-          toDollars(cacheRead * share, pricing.cacheReadPerM)
-        : 0
-
-      const formula =
-        `(${topSkill.bodyBytes.toLocaleString()} metadata bytes ÷ ${totalBodyBytes.toLocaleString()} total metadata bytes) × ` +
-        `${totalTurnInputSide.toLocaleString()} tokens = ${attributedTokens.toLocaleString()} attributed tokens`
+      const rateName = isFirstTurn ? 'cache_write' : 'cache_read'
+      const scaleNote = effectiveScale < 1
+        ? `× ${effectiveScale.toFixed(3)} budget scale = ${effectiveTokens.toFixed(1)} effective tokens`
+        : `(no budget cap)`
+      const formula = `${topSkill.listingTokens} listing tokens ${scaleNote} · ${rateName} @ $${ratePerM}/M`
 
       return {
         skillName: topSkill.name,
-        skillBodyBytes: topSkill.bodyBytes,
-        totalBodyBytes,
-        turnInputTokens: input,
-        turnCacheCreateTokens: cacheCreate,
-        turnCacheReadTokens: cacheRead,
-        attributedTokens,
+        listingTokens: topSkill.listingTokens,
+        effectiveTokens,
+        isFirstTurn,
         dollars,
         model,
         formula,
