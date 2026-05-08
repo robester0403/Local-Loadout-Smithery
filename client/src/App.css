@@ -1211,6 +1211,16 @@ td.col-totalDollars { color: var(--text); }
   overflow: hidden;
   border-top: 1px solid var(--border);
 }
+/* Wrap that provides a positioning context for the zoom overlay. The wrap
+   doesn't scroll — only .relmap-graph inside does — so the overlay stays put
+   in the bottom-right of the visible graph area regardless of scroll state. */
+.relmap-graph-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
 .relmap-graph {
   flex: 1;
   min-width: 0;
@@ -1222,6 +1232,46 @@ td.col-totalDollars { color: var(--text); }
   align-items: safe center;
   justify-content: safe center;
   padding: 12px;
+}
+
+/* ─── Zoom controls overlay (bottom-right of the graph pane) ────────────── */
+.relmap-zoom {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  z-index: 5;
+}
+.relmap-zoom-btn {
+  font: 600 12px var(--mono);
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.relmap-zoom-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.relmap-zoom-btn:disabled { opacity: .35; cursor: not-allowed; }
+.relmap-zoom-fit { font-size: 10.5px; }
+.relmap-zoom-level {
+  font: 11px var(--mono);
+  color: var(--text-dim);
+  min-width: 38px;
+  text-align: center;
 }
 
 .relmap-svg {

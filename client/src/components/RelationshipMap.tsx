@@ -182,6 +182,7 @@ const DIRECTION_OPTIONS: Array<{ label: string; value: Direction; title: string 
 export default function RelationshipMap({ skill, allSkills, onClose, onSelect }: Props) {
   // Always-mounted outer container we attach the click delegation handler to.
   const containerRef = useRef<HTMLDivElement>(null)
+  const graphRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [svgHtml, setSvgHtml] = useState<string | null>(null)
 
@@ -197,6 +198,14 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   // large or you want the rail's description text to be readable without
   // squishing the SVG.
   const [fullscreen, setFullscreen] = useState<boolean>(false)
+
+  // Zoom level for the rendered SVG (1 = natural size). Applied by overriding
+  // the svg element's width/height attributes — simpler than CSS transforms
+  // because the parent's overflow:auto then sizes scroll bounds correctly.
+  const [zoom, setZoom] = useState<number>(1)
+  // Natural size from the SVG's viewBox, captured each time mermaid renders a
+  // new graph. Used both to apply zoom and to compute fit-to-screen.
+  const naturalDimRef = useRef<{ w: number; h: number } | null>(null)
 
   const { nodes, edges } = useMemo(
     () => buildChain(skill, allSkills, maxDepth, direction),
@@ -230,6 +239,57 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     render()
     return () => { cancelled = true }
   }, [mermaidSrc])
+
+  // Reset zoom whenever a new graph is rendered (different skill, different
+  // depth/direction). Otherwise a zoomed-in view would persist into a graph
+  // it doesn't fit, leaving the user lost.
+  useEffect(() => {
+    setZoom(1)
+  }, [mermaidSrc])
+
+  // Apply zoom by setting the svg's width/height attributes. Capture natural
+  // dimensions from the viewBox the first time we see a given svgHtml.
+  useEffect(() => {
+    if (!svgHtml || !graphRef.current) return
+    const svgEl = graphRef.current.querySelector('svg') as SVGSVGElement | null
+    if (!svgEl) return
+
+    // Re-capture natural dims from the viewBox each time the svg changes.
+    const viewBox = svgEl.getAttribute('viewBox')
+    if (viewBox) {
+      const parts = viewBox.split(/\s+/).map(Number)
+      if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
+        naturalDimRef.current = { w: parts[2], h: parts[3] }
+      }
+    }
+
+    const dim = naturalDimRef.current
+    if (dim) {
+      svgEl.setAttribute('width', String(dim.w * zoom))
+      svgEl.setAttribute('height', String(dim.h * zoom))
+      // Drop max-width style mermaid sometimes adds — would otherwise cap our zoom.
+      svgEl.style.maxWidth = 'none'
+      svgEl.style.maxHeight = 'none'
+    }
+  }, [svgHtml, zoom])
+
+  const ZOOM_MIN = 0.2
+  const ZOOM_MAX = 4
+  const ZOOM_STEP = 0.2
+
+  const zoomIn = () => setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))
+  const zoomOut = () => setZoom(z => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))
+  const fitToScreen = () => {
+    const dim = naturalDimRef.current
+    const graphEl = graphRef.current
+    if (!dim || !graphEl) return
+    const { width, height } = graphEl.getBoundingClientRect()
+    // Account for padding on .relmap-graph (12px each side from CSS).
+    const availW = Math.max(40, width - 24)
+    const availH = Math.max(40, height - 24)
+    const fit = Math.min(availW / dim.w, availH / dim.h)
+    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2))))
+  }
 
   // DOM event delegation on the outer (always-mounted) container. Click
   // dispatches navigation; mouseover/mouseleave drives the info rail. Handlers
@@ -361,23 +421,53 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
         </div>
 
         <div className="relmap-body" ref={containerRef}>
-          <div className="relmap-graph">
-            {isOrphan ? (
-              <div className="relmap-orphan">
-                <div className="relmap-orphan-icon">◉</div>
-                <div>No relationships visible at the current depth and direction.</div>
-                <div className="relmap-orphan-sub">Try increasing depth, switching direction, or this artifact is genuinely an island.</div>
-              </div>
-            ) : error ? (
-              <div className="sr-form-error">{error}</div>
-            ) : svgHtml ? (
-              <div
-                className="relmap-svg"
-                dangerouslySetInnerHTML={{ __html: svgHtml }}
-              />
-            ) : (
-              <div className="empty-state" style={{ minHeight: 120 }}>
-                <div className="spinner" />
+          <div className="relmap-graph-wrap">
+            <div className="relmap-graph" ref={graphRef}>
+              {isOrphan ? (
+                <div className="relmap-orphan">
+                  <div className="relmap-orphan-icon">◉</div>
+                  <div>No relationships visible at the current depth and direction.</div>
+                  <div className="relmap-orphan-sub">Try increasing depth, switching direction, or this artifact is genuinely an island.</div>
+                </div>
+              ) : error ? (
+                <div className="sr-form-error">{error}</div>
+              ) : svgHtml ? (
+                <div
+                  className="relmap-svg"
+                  dangerouslySetInnerHTML={{ __html: svgHtml }}
+                />
+              ) : (
+                <div className="empty-state" style={{ minHeight: 120 }}>
+                  <div className="spinner" />
+                </div>
+              )}
+            </div>
+
+            {!isOrphan && !error && svgHtml && (
+              <div className="relmap-zoom" role="toolbar" aria-label="Zoom">
+                <button
+                  type="button"
+                  className="relmap-zoom-btn"
+                  onClick={zoomOut}
+                  disabled={zoom <= ZOOM_MIN}
+                  title="Zoom out"
+                  aria-label="Zoom out"
+                >−</button>
+                <button
+                  type="button"
+                  className="relmap-zoom-btn relmap-zoom-fit"
+                  onClick={fitToScreen}
+                  title="Fit to screen"
+                >Fit</button>
+                <span className="relmap-zoom-level" aria-live="polite">{Math.round(zoom * 100)}%</span>
+                <button
+                  type="button"
+                  className="relmap-zoom-btn"
+                  onClick={zoomIn}
+                  disabled={zoom >= ZOOM_MAX}
+                  title="Zoom in"
+                  aria-label="Zoom in"
+                >+</button>
               </div>
             )}
           </div>
