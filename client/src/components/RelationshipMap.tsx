@@ -161,6 +161,8 @@ function buildMermaid(
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function RelationshipMap({ skill, allSkills, onClose, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const svgHostRef = useRef<HTMLDivElement>(null)
+  const bindFunctionsRef = useRef<((el: Element) => void) | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [svgHtml, setSvgHtml] = useState<string | null>(null)
 
@@ -193,8 +195,14 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     async function render() {
       try {
         const id = `mermaid-${Date.now()}`
-        const { svg } = await mermaid.render(id, mermaidSrc)
-        if (!cancelled) setSvgHtml(svg)
+        // mermaid.render returns both the SVG markup AND a bindFunctions
+        // callback. The click directives we emit (`click <id> <callback>`)
+        // are inert until bindFunctions runs against the live DOM — that's
+        // what actually attaches the click handlers to the SVG nodes.
+        const { svg, bindFunctions } = await mermaid.render(id, mermaidSrc)
+        if (cancelled) return
+        bindFunctionsRef.current = bindFunctions ?? null
+        setSvgHtml(svg)
       } catch (e) {
         if (!cancelled) setError((e as Error).message)
       }
@@ -202,6 +210,14 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     render()
     return () => { cancelled = true }
   }, [mermaidSrc])
+
+  // After React commits the SVG into the DOM, run Mermaid's bind step so
+  // every `click` directive becomes a real handler.
+  useEffect(() => {
+    if (svgHtml && svgHostRef.current && bindFunctionsRef.current) {
+      bindFunctionsRef.current(svgHostRef.current)
+    }
+  }, [svgHtml])
 
   const isOrphan = nodes.size === 1 && edges.length === 0
 
@@ -240,6 +256,7 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
             <div className="sr-form-error">{error}</div>
           ) : svgHtml ? (
             <div
+              ref={svgHostRef}
               className="relmap-svg"
               dangerouslySetInnerHTML={{ __html: svgHtml }}
             />
