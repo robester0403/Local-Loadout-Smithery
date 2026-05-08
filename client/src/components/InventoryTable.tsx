@@ -30,6 +30,7 @@ const TYPE_LABELS: Record<string, string> = {
   skill: 'skill',
   command: 'cmd',
   subagent: 'subagent',
+  mcp: 'mcp',
 }
 
 const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean }[] = [
@@ -119,91 +120,117 @@ export default function InventoryTable({
           </tr>
         </thead>
         <tbody>
-          {skills.map(skill => (
-            <tr
-              key={skill.id}
-              className={[
-                selected?.id === skill.id ? 'selected' : '',
-                skill.disabled ? 'row-disabled' : '',
-                selectedIds?.has(skill.id) ? 'row-checked' : '',
-              ].filter(Boolean).join(' ')}
-              onClick={() => onSelect(skill)}
-            >
-              <td className="col-check" onClick={e => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds?.has(skill.id) ?? false}
-                  onChange={e => onSelectId?.(skill.id, e.target.checked)}
-                />
-              </td>
-              <td className="col-health">
-                <HealthBadge health={skill.health} skill={skill} />
-              </td>
-              <td className="col-insight">
-                <InsightBadge
-                  insight={skill.insight}
-                  dormant={skill.dormant}
-                  activeDollars={skill.activeDollars}
-                  loadedDollars={skill.loadedDollars}
-                  lastInvoked={skill.lastInvoked}
-                  bloat={skill.bloat}
-                  descLen={skill.descLen}
-                  suggestedType={skill.suggestedType}
-                  skill={skill}
-                  onReclassify={onReclassify}
-                />
-              </td>
-              <td className="col-name">
-                <span className="skill-name">{skill.name}</span>
-                {skill.description && (
-                  <span className="skill-desc">{skill.description}</span>
-                )}
-              </td>
-              <td className="col-type">
-                <span className={`type-badge type-${skill.type}`}>
-                  {TYPE_LABELS[skill.type] ?? skill.type}
-                </span>
-              </td>
-              <td className="col-scope">
-                <ContextCell skill={skill} />
-              </td>
-              <td className="col-lastModified">{formatDate(skill.lastModified)}</td>
-              <td className="col-activeDollars col-numeric">
-                <span
-                  className="dollar-link"
-                  onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
-                  title="Show cost breakdown"
-                >
-                  {fmtDollars(skill.activeDollars)}
-                </span>
-              </td>
-              <td className="col-loadedDollars col-numeric">
-                <span
-                  className="dollar-link"
-                  onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
-                  title="Show cost breakdown"
-                >
-                  {fmtDollars(skill.loadedDollars)}
-                </span>
-              </td>
-              <td className="col-totalDollars col-numeric">
-                <span
-                  className="dollar-link"
-                  onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
-                  title="Show cost breakdown"
-                >
-                  {fmtDollars(skill.totalDollars)}
-                </span>
-              </td>
-              <td className="col-enabled" onClick={e => e.stopPropagation()}>
-                <ToggleSwitch
-                  checked={!skill.disabled}
-                  onChange={enabled => onToggle(skill, enabled)}
-                  title={skill.disabled ? 'Enable skill' : 'Disable skill'}
-                />
-              </td>
-            </tr>
-          ))}
+          {skills.map(skill => {
+            const isMCP = skill.type === 'mcp'
+            return (
+              <tr
+                key={skill.id}
+                className={[
+                  selected?.id === skill.id ? 'selected' : '',
+                  skill.disabled ? 'row-disabled' : '',
+                  selectedIds?.has(skill.id) ? 'row-checked' : '',
+                  isMCP && skill.mcpData?.kind === 'session-injected' ? 'row-session-injected' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => onSelect(skill)}
+              >
+                <td className="col-check" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds?.has(skill.id) ?? false}
+                    onChange={e => onSelectId?.(skill.id, e.target.checked)}
+                  />
+                </td>
+                <td className="col-health">
+                  <HealthBadge health={skill.health} skill={skill} />
+                </td>
+                <td className="col-insight">
+                  <InsightBadge
+                    insight={skill.insight}
+                    dormant={skill.dormant}
+                    activeDollars={skill.activeDollars}
+                    loadedDollars={skill.loadedDollars}
+                    lastInvoked={skill.lastInvoked}
+                    bloat={skill.bloat}
+                    descLen={skill.descLen}
+                    suggestedType={skill.suggestedType}
+                    skill={skill}
+                    onReclassify={onReclassify}
+                  />
+                </td>
+                <td className="col-name">
+                  <span className="skill-name">{skill.name}</span>
+                  {skill.description && (
+                    <span className="skill-desc">{skill.description}</span>
+                  )}
+                </td>
+                <td className="col-type">
+                  <span className={`type-badge type-${skill.type}`}>
+                    {TYPE_LABELS[skill.type] ?? skill.type}
+                  </span>
+                </td>
+                <td className="col-scope">
+                  <ContextCell skill={skill} />
+                </td>
+                <td className="col-lastModified">
+                  {isMCP
+                    ? (skill.lastInvoked ? formatDate(skill.lastInvoked) : '—')
+                    : formatDate(skill.lastModified)}
+                </td>
+                <td className="col-activeDollars col-numeric">
+                  {isMCP ? (
+                    skill.activeDollars > 0
+                      ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost">{fmtDollars(skill.activeDollars)}</span>
+                      : <span className="col-mcp-dash">—</span>
+                  ) : (
+                    <span
+                      className="dollar-link"
+                      onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                      title="Show cost breakdown"
+                    >
+                      {fmtDollars(skill.activeDollars)}
+                    </span>
+                  )}
+                </td>
+                <td className="col-loadedDollars col-numeric">
+                  {isMCP ? <span className="col-mcp-dash">—</span> : (
+                    <span
+                      className="dollar-link"
+                      onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                      title="Show cost breakdown"
+                    >
+                      {fmtDollars(skill.loadedDollars)}
+                    </span>
+                  )}
+                </td>
+                <td className="col-totalDollars col-numeric">
+                  {isMCP ? (
+                    skill.totalDollars > 0
+                      ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>
+                      : <span className="col-mcp-dash">—</span>
+                  ) : (
+                    <span
+                      className="dollar-link"
+                      onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                      title="Show cost breakdown"
+                    >
+                      {fmtDollars(skill.totalDollars)}
+                    </span>
+                  )}
+                </td>
+                <td className="col-enabled" onClick={e => e.stopPropagation()}>
+                  {isMCP ? (
+                    <span className="col-mcp-dash" title="Configure in ~/.claude.json">—</span>
+                  ) : (
+                    <ToggleSwitch
+                      checked={!skill.disabled}
+                      onChange={enabled => onToggle(skill, enabled)}
+                      title={skill.disabled ? 'Enable skill' : 'Disable skill'}
+                    />
+                  )}
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

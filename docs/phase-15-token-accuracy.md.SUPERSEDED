@@ -1,0 +1,153 @@
+# Phase 15 — Loaded cost token accuracy
+
+Replace `bytes / 4` with a real BPE tokenizer, and replace the proportional cache-state mix with an explicit per-session model. Together these eliminate the two known approximations in `loaded.ts`.
+
+## Background
+
+Today's loaded cost has two approximations (see `docs/cost-calculations.md`):
+
+1. **Tokenization:** `BYTES_PER_TOKEN = 4` overcounts tokens for typical skill listings by ~18% (measured empirically on the user's 15 actual skills: 4.70 bytes/token actual vs 4.0 assumed).
+2. **Cache-state mix:** the listing's tokens are split across input/cache_create/cache_read using the turn's overall mix, not the listing's actual cache state. The listing should be `cache_create` on the first session turn and `cache_read` on every turn after.
+
+This phase fixes both.
+
+## Files to read first
+
+```
+server/src/usage/loaded.ts          — current implementation
+server/src/usage/pricing.ts         — pricing table, toDollars()
+server/src/usage/aggregate.ts       — combines active + loaded
+server/src/__tests__/loaded.test.ts — existing tests; will need updating
+docs/cost-calculations.md           — accuracy notes you're improving
+```
+
+---
+
+## Phase A — Add a real tokenizer
+
+### A1. Install `@anthropic-ai/tokenizer`
+
+```bash
+npm install @anthropic-ai/tokenizer
+```
+
+It's local (WASM via `tiktoken/lite` + a bundled `claude.json` BPE table), pulls in `tiktoken@^1.0.10` as a transitive dep, and adds ~1.4 MB unpacked. It uses Anthropic's Claude 1/2 vocabulary — not perfectly aligned with Claude 4 but the closest publicly-available Claude tokenizer.
+
+### A2. Replace `listingBytesFor` → `listingTokensFor`
+
+In `server/src/usage/loaded.ts`:
+
+- Keep `listingBytesFor()` as-is for the budget cap math (the 8000-byte budget is bytes-based per Claude Code docs).
+- Add a new `listingTokensFor(name, description)` that returns the tokenizer's exact count of the same name+space+truncated-description string.
+- In `processSession()`, replace `(sk.bodyBytes * effectiveScale) / BYTES_PER_TOKEN` with `sk.listingTokens * effectiveScale` (note: the scale still applies because Claude Code's truncation is bytes-based and applied before tokenization, so scaling tokens proportionally is the right approximation of "this many bytes got cut").
+
+### A3. Update `PreparedSkill`
+
+```typescript
+interface PreparedSkill {
+  name: string
+  bodyBytes: number      // for the budget calculation
+  listingTokens: number  // for the cost attribution
+}
+```
+
+### A4. Remove `BYTES_PER_TOKEN`
+
+Delete the export. Grep the codebase first — if anything else uses it, refactor that too. (Spot check: `aggregate.ts`, `breakdown.ts`, the breakdown UI.)
+
+### A5. Tokenizer cleanup
+
+`@anthropic-ai/tokenizer.countTokens()` calls `tokenizer.free()` internally on every invocation. That's fine for one-shot calls but expensive when called per-skill per-turn. Cache the encoded count per skill at the top of `computeLoadedCost()` — tokenize each skill once into `prepared`, reuse across all turns.
+
+---
+
+## Phase B — Explicit cache-state model
+
+### B1. Track first-turn-per-session
+
+Replace the proportional split in `processSession` with:
+
+```typescript
+// At the start of computeLoadedCost():
+const seenSession = new Set<string>()
+
+// In processSession(), per assistant turn:
+const sessionId = typeof obj['sessionId'] === 'string' ? obj['sessionId'] : ''
+const isFirstTurn = sessionId !== '' && !seenSession.has(sessionId)
+if (sessionId) seenSession.add(sessionId)
+
+for (const sk of loaded) {
+  const skTokens = sk.listingTokens * effectiveScale
+  const dollars = pricing
+    ? isFirstTurn
+        ? toDollars(skTokens, pricing.cacheWritePerM)
+        : toDollars(skTokens, pricing.cacheReadPerM)
+    : 0
+  // ... accumulate
+}
+```
+
+This needs `seenSession` to be passed into or shared across `processSession()` calls. Two options:
+- Move the session set up to `computeLoadedCost()` and pass it in.
+- Order session files by their earliest timestamp before processing so the first-turn detection is stable. (Already happens incidentally because `findSessionFiles` returns in directory order, which is non-deterministic — fix this.)
+
+Pick option 1: hoist `seenSession` and order files deterministically by their first turn's timestamp.
+
+### B2. Token accumulator buckets
+
+The existing `LoadedCostEntry` splits tokens into `inputTokens / cacheCreationTokens / cacheReadTokens`. Update accumulator to write only `cacheCreationTokens` for first-turn allocations and only `cacheReadTokens` for subsequent. `inputTokens` becomes always 0 for loaded — that's correct (the listing is always part of the cached prefix in steady state).
+
+### B3. Update tests
+
+`server/src/__tests__/loaded.test.ts` will fail because dollar amounts shift. Update expected values. **Important:** the relative ordering between skills should be unchanged — verify tests cover both absolute amounts AND relative ranking, and only the absolute-amount assertions need to move.
+
+---
+
+## Phase C — Verify
+
+### C1. Test suite
+
+```
+npm test
+```
+
+Must stay green at 123+ tests. New expected values in `loaded.test.ts` should reflect the tokenizer count (not `/4`) and the per-session cache state.
+
+### C2. Type check
+
+```
+node_modules/.bin/tsc -p tsconfig.server.json --noEmit
+node_modules/.bin/tsc -p client/tsconfig.json --noEmit
+```
+
+### C3. Sanity diff
+
+Run the dev server, inspect a high-loaded-cost skill's number before and after. Expected change: ~10–25% lower (combination of tokenizer correction and cache_read pricing). Document the before/after delta in the commit message so future-you can verify the change matched expectations.
+
+### C4. Spot-check the math
+
+Pick one skill with a known byte count. Hand-calculate:
+- listing tokens via `node -e "console.log(require('@anthropic-ai/tokenizer').countTokens('skillname truncated description'))"`
+- expected dollars: `tokens × cacheReadPerM / 1e6 × loadedTurns` (after first-turn-per-session)
+
+Match against the API response. If they differ, the per-session detection or accumulator is wrong.
+
+---
+
+## Constraints
+
+- One new dependency: `@anthropic-ai/tokenizer`. No others.
+- Keep the 8000-byte budget cap exactly as-is (Claude Code's truncation is bytes-based, applied before tokenization).
+- Do not break the existing 123 tests; only update the loaded-cost numerical assertions.
+- Preserve the public shape of `LoadedCostEntry` and `SkillCostSummary` — only internal computation changes.
+
+## Risk notes
+
+- **Tokenizer vocabulary mismatch.** The bundled `claude.json` is from 2023. Modern Claude models likely use a refined vocabulary. The error from this is probably small (<5%) and consistent — measurably better than `/4` either way.
+- **Session-ordering determinism.** If `findSessionFiles` returns files in a different order, the first-turn detection could pick a different "first" turn for sessions that span multiple files (rare but possible). Sorting by earliest timestamp inside each file before processing avoids this.
+- **`<synthetic>` model returns 0 cost.** First-turn-per-session detection still runs for synthetic-model turns, so they consume the "first turn" slot for their session even though they cost nothing. Subsequent real turns then get cache_read pricing, which is correct. No fix needed but worth noting.
+
+## Out of scope
+
+- Calling `messages.countTokens()` against the live API for true Claude-4 token counts. Network dependency, rate limits, requires API key. Future phase if accuracy demand justifies it.
+- Modeling other system-prompt content (tool definitions, project instructions). Separate problem; loaded cost is per-skill by definition.

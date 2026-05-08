@@ -37,7 +37,7 @@ export function findSessionFiles(): string[] {
   return files
 }
 
-function extractToolUses(content: unknown[]): string[] {
+export function extractToolUses(content: unknown[]): string[] {
   const names: string[] = []
   for (const block of content) {
     if (

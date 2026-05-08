@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { Skill, SkillType, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe } from './types'
-import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude, reclassifySkill } from './api'
-import type { ProfilesData } from './api'
+import type { Skill, SkillType, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe, MCPRow } from './types'
+import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude, reclassifySkill, fetchUninstalled, uninstallSkillApi, restoreSkillApi, fetchMCPInventory, fetchMCPUsage, fetchMCPRelationships } from './api'
+import type { ProfilesData, UninstalledEntry, MCPUsageSummary, MCPRelationship } from './api'
 import { getBundledPrompt } from './prompts'
 import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
@@ -11,7 +11,11 @@ import CostExplainerModal from './components/CostExplainerModal'
 import ProfileSwitcher from './components/ProfileSwitcher'
 import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
+import SuperRouterTab from './components/SuperRouterTab'
+import UninstalledPanel from './components/UninstalledPanel'
 import './App.css'
+
+type ActiveTab = 'inventory' | 'superrouter'
 
 // Thresholds for diagnostic insights.
 // Future: read from ~/.local-skill-manager/config.json
@@ -23,6 +27,51 @@ const GRACE_PERIOD_DAYS = 10    // newly modified skills are exempt from removal
 const HEALTH_ORDER: Record<string, number> = { error: 0, warn: 1, ok: 2 }
 const INSIGHT_RANK = (s: Skill): number =>
   s.insight === 'removal-candidate' ? 0 : s.dormant ? 1 : s.insight === 'winner' ? 2 : 3
+
+function toMCPSkill(entry: MCPRow, usage?: MCPUsageSummary): Skill {
+  const statusMap: Record<MCPRow['status'], Skill['health']['status']> = {
+    ok: 'ok', unavailable: 'error', unknown: 'warn',
+  }
+  const toolCount = entry.tools.length
+  const transport = entry.transport ?? 'stdio'
+  const now = Date.now()
+  const dormant = !!(
+    usage?.lastInvoked &&
+    (now - new Date(usage.lastInvoked).getTime()) / 86_400_000 > DORMANT_DAYS
+  )
+  return {
+    id: `mcp::${entry.name}`,
+    name: entry.name,
+    description: `${toolCount} tool${toolCount !== 1 ? 's' : ''} · ${transport}`,
+    version: '',
+    type: 'mcp',
+    scope: entry.scope ?? 'global',
+    account: '',
+    path: entry.source ?? '',
+    realpath: entry.source ?? '',
+    isSymlink: false,
+    body: '',
+    frontmatter: {},
+    lastModified: '',
+    health: {
+      status: statusMap[entry.status],
+      issues: entry.statusReason
+        ? [{ severity: entry.status === 'unavailable' ? 'error' : 'warn', message: entry.statusReason }]
+        : [],
+    },
+    disabled: false,
+    references: [],
+    activeDollars: usage?.dollars ?? 0,
+    loadedDollars: 0,
+    totalDollars: usage?.dollars ?? 0,
+    insight: null,
+    dormant,
+    lastInvoked: usage?.lastInvoked ?? '',
+    bloat: false,
+    descLen: 0,
+    mcpData: entry,
+  }
+}
 
 function mergeWithCost(skills: Skill[], summaries: SkillUsageSummary[]): Skill[] {
   const costMap = new Map(summaries.map(s => [s.skillName, s]))
@@ -75,6 +124,13 @@ export default function App() {
   const [profilesData, setProfilesData] = useState<ProfilesData>({ profiles: {}, activeProfile: null })
   const [lastMove, setLastMove] = useState<{ newId: string; originalType: SkillType; skillName: string } | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('inventory')
+  const [trashCount, setTrashCount] = useState(0)
+  const [showTrash, setShowTrash] = useState(false)
+  const [lastUninstall, setLastUninstall] = useState<{ id: string; name: string } | null>(null)
+  const uninstallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [mcpUsageMap, setMcpUsageMap] = useState<Map<string, MCPUsageSummary>>(new Map())
+  const [mcpRelationships, setMcpRelationships] = useState<MCPRelationship[]>([])
 
   function showToast(msg: string) {
     setToast(msg)
@@ -89,14 +145,23 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const [rawSkills, pd] = await Promise.all([
+      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
         fetchInventory(),
         fetchProfiles().catch(() => ({ profiles: {}, activeProfile: null })),
+        fetchUninstalled().catch(() => [] as UninstalledEntry[]),
+        fetchMCPInventory().catch(() => [] as MCPRow[]),
+        fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
+        fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
       ])
       let summaries: SkillUsageSummary[] = []
       try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
-      setSkills(mergeWithCost(rawSkills, summaries))
+      const merged = mergeWithCost(rawSkills, summaries)
+      const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
+      setMcpUsageMap(usageMap)
+      setMcpRelationships(mcpRels)
+      setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
       setProfilesData(pd)
+      setTrashCount(uninstalled.length)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -109,13 +174,20 @@ export default function App() {
   useEffect(() => {
     const id = setInterval(async () => {
       try {
-        const [rawSkills, pd] = await Promise.all([
+        const [rawSkills, pd, mcpServers, mcpUsage, mcpRels] = await Promise.all([
           fetchInventory(),
           fetchProfiles().catch(() => null),
+          fetchMCPInventory().catch(() => [] as MCPRow[]),
+          fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
+          fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
         ])
         let summaries: SkillUsageSummary[] = []
         try { summaries = await fetchUsageAggregate(timeframe) } catch { /* ignore */ }
-        setSkills(mergeWithCost(rawSkills, summaries))
+        const merged = mergeWithCost(rawSkills, summaries)
+        const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
+        setMcpUsageMap(usageMap)
+        setMcpRelationships(mcpRels)
+        setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
         if (pd) setProfilesData(pd)
       } catch { /* ignore */ }
     }, 30_000)
@@ -238,6 +310,38 @@ export default function App() {
     }
   }
 
+  async function handleUninstall(skill: Skill) {
+    if (!window.confirm(
+      `Uninstall "${skill.name}"?\n\nThe skill will be moved to Trash and can be restored from there.`,
+    )) return
+    try {
+      await uninstallSkillApi(skill.id)
+      setSelected(null)
+      if (uninstallTimerRef.current) clearTimeout(uninstallTimerRef.current)
+      setLastUninstall({ id: skill.id, name: skill.name })
+      uninstallTimerRef.current = setTimeout(() => setLastUninstall(null), 60_000)
+      setTrashCount(c => c + 1)
+      showToast(`${skill.name} uninstalled`)
+      await load()
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
+  async function handleUninstallUndo() {
+    if (!lastUninstall) return
+    try {
+      await restoreSkillApi(lastUninstall.id)
+      if (uninstallTimerRef.current) clearTimeout(uninstallTimerRef.current)
+      setLastUninstall(null)
+      setTrashCount(c => Math.max(0, c - 1))
+      showToast(`${lastUninstall.name} restored`)
+      await load()
+    } catch (e) {
+      showToast((e as Error).message)
+    }
+  }
+
   const filtered = skills
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
@@ -277,6 +381,7 @@ export default function App() {
     skill: skills.filter(s => s.type === 'skill').length,
     command: skills.filter(s => s.type === 'command').length,
     subagent: skills.filter(s => s.type === 'subagent').length,
+    mcp: skills.filter(s => s.type === 'mcp').length,
   }
 
   const totals = skills.reduce(
@@ -316,6 +421,17 @@ export default function App() {
             </span>
           </span>
         </div>
+        <div className="header-tabs">
+          <button
+            className={`header-tab${activeTab === 'inventory' ? ' active' : ''}`}
+            onClick={() => setActiveTab('inventory')}
+          >Inventory</button>
+          <button
+            className={`header-tab${activeTab === 'superrouter' ? ' active' : ''}`}
+            onClick={() => setActiveTab('superrouter')}
+          >SuperRouter</button>
+        </div>
+
         <div className="header-right">
           <ProfileSwitcher
             profilesData={profilesData}
@@ -328,11 +444,23 @@ export default function App() {
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             ? How costs work
           </button>
+          {lastUninstall && (
+            <button className="btn btn-sm btn-warn" onClick={handleUninstallUndo} title={`Restore ${lastUninstall.name}`}>
+              ↩ Restore: {lastUninstall.name}
+            </button>
+          )}
           {lastMove && (
             <button className="btn btn-sm btn-warn" onClick={handleUndoMove} title={`Undo move of ${lastMove.skillName}`}>
               ↩ Undo: {lastMove.skillName}
             </button>
           )}
+          <button
+            className={`btn btn-sm${trashCount > 0 ? ' btn-trash-active' : ''}`}
+            onClick={() => setShowTrash(true)}
+            title="View uninstalled skills"
+          >
+            🗑{trashCount > 0 ? ` ${trashCount}` : ' Trash'}
+          </button>
           <button className="btn btn-sm" onClick={load} disabled={loading}>
             {loading ? '…' : '↺'} Refresh
           </button>
@@ -372,79 +500,89 @@ export default function App() {
             <span className="type-badge type-subagent">subagent</span>
             <span>{counts.subagent}</span>
           </div>
+          <div className="stat-row">
+            <span className="type-badge type-mcp">mcp</span>
+            <span>{counts.mcp}</span>
+          </div>
         </div>
       </aside>
 
       <main className="main">
-        {showBanner && (
-          <div className="insight-banner">
-            <span className="insight-banner-text">
-              {removalCount > 0 && (
-                <span><span className="banner-em">🚨 {removalCount} removal {removalCount === 1 ? 'candidate' : 'candidates'}</span> — loaded but never invoked</span>
-              )}
-              {removalCount > 0 && dormantCount > 0 && <span className="banner-sep"> · </span>}
-              {dormantCount > 0 && (
-                <span><span className="banner-em">💤 {dormantCount} dormant</span> — not invoked in {DORMANT_DAYS}+ days</span>
-              )}
-            </span>
-            <button
-              className="btn btn-sm btn-warn"
-              onClick={() => setFilters(f => ({ ...f, reviewOnly: true }))}
-            >
-              Review →
-            </button>
-          </div>
-        )}
-
-        {selectedIds.size > 0 && (
-          <div className="bulk-bar">
-            <span className="bulk-count">{selectedIds.size} selected</span>
-            <button className="btn btn-sm" onClick={async () => {
-              const targets = filtered.filter(s => selectedIds.has(s.id))
-              const prompt = getBundledPrompt(targets)
-              try {
-                const result = await launchClaude(prompt)
-                showToast(result.platform === 'unsupported'
-                  ? 'Prompt copied — open Claude Code manually'
-                  : 'Prompt copied + Claude Code launched')
-              } catch {
-                await navigator.clipboard.writeText(prompt)
-                showToast('Prompt copied to clipboard')
-              }
-            }}>
-              Generate combined prompt
-            </button>
-            <button className="btn btn-sm btn-warn" onClick={handleBulkDisable}>
-              Disable selected
-            </button>
-            <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
-              Clear
-            </button>
-          </div>
-        )}
-
-        {loading ? (
-          <EmptyState variant="loading" />
-        ) : error ? (
-          <EmptyState variant="error" message={error} onRetry={load} />
-        ) : filtered.length === 0 ? (
-          <EmptyState variant="empty" />
+        {activeTab === 'superrouter' ? (
+          <SuperRouterTab skills={skills} onToast={showToast} />
         ) : (
-          <InventoryTable
-            skills={filtered}
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={handleSort}
-            selected={selected}
-            onSelect={setSelected}
-            onToggle={handleToggle}
-            onBreakdown={setBreakdownSkill}
-            timeframe={timeframe}
-            selectedIds={selectedIds}
-            onSelectId={handleSelectId}
-            onSelectAll={handleSelectAll}
-            onReclassify={handleReclassify}
-          />
+          <>
+            {showBanner && (
+              <div className="insight-banner">
+                <span className="insight-banner-text">
+                  {removalCount > 0 && (
+                    <span><span className="banner-em">🚨 {removalCount} removal {removalCount === 1 ? 'candidate' : 'candidates'}</span> — loaded but never invoked</span>
+                  )}
+                  {removalCount > 0 && dormantCount > 0 && <span className="banner-sep"> · </span>}
+                  {dormantCount > 0 && (
+                    <span><span className="banner-em">💤 {dormantCount} dormant</span> — not invoked in {DORMANT_DAYS}+ days</span>
+                  )}
+                </span>
+                <button
+                  className="btn btn-sm btn-warn"
+                  onClick={() => setFilters(f => ({ ...f, reviewOnly: true }))}
+                >
+                  Review →
+                </button>
+              </div>
+            )}
+
+            {selectedIds.size > 0 && (
+              <div className="bulk-bar">
+                <span className="bulk-count">{selectedIds.size} selected</span>
+                <button className="btn btn-sm" onClick={async () => {
+                  const targets = filtered.filter(s => selectedIds.has(s.id))
+                  const prompt = getBundledPrompt(targets)
+                  try {
+                    const result = await launchClaude(prompt)
+                    showToast(result.platform === 'unsupported'
+                      ? 'Prompt copied — open Claude Code manually'
+                      : 'Prompt copied + Claude Code launched')
+                  } catch {
+                    await navigator.clipboard.writeText(prompt)
+                    showToast('Prompt copied to clipboard')
+                  }
+                }}>
+                  Generate combined prompt
+                </button>
+                <button className="btn btn-sm btn-warn" onClick={handleBulkDisable}>
+                  Disable selected
+                </button>
+                <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
+                  Clear
+                </button>
+              </div>
+            )}
+
+            {loading ? (
+              <EmptyState variant="loading" />
+            ) : error ? (
+              <EmptyState variant="error" message={error} onRetry={load} />
+            ) : filtered.length === 0 ? (
+              <EmptyState variant="empty" />
+            ) : (
+              <InventoryTable
+                skills={filtered}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
+                selected={selected}
+                onSelect={setSelected}
+                onToggle={handleToggle}
+                onBreakdown={setBreakdownSkill}
+                timeframe={timeframe}
+                selectedIds={selectedIds}
+                onSelectId={handleSelectId}
+                onSelectAll={handleSelectAll}
+                onReclassify={handleReclassify}
+              />
+            )}
+          </>
         )}
       </main>
 
@@ -457,6 +595,17 @@ export default function App() {
           onBreakdown={setBreakdownSkill}
           onSelect={setSelected}
           onReclassify={handleReclassify}
+          onUninstall={handleUninstall}
+          mcpUsageMap={mcpUsageMap}
+          mcpRelationships={mcpRelationships}
+        />
+      )}
+
+      {showTrash && (
+        <UninstalledPanel
+          onClose={() => setShowTrash(false)}
+          onRestored={load}
+          onCountChange={setTrashCount}
         />
       )}
 

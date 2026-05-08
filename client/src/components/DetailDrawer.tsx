@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
+import type { MCPUsageSummary, MCPRelationship } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
+import RelationshipMap from './RelationshipMap'
 
 interface Props {
   skill: Skill
@@ -13,6 +15,9 @@ interface Props {
   onBreakdown: (skill: Skill) => void
   onSelect: (skill: Skill) => void
   onReclassify?: (skill: Skill) => void
+  onUninstall?: (skill: Skill) => void
+  mcpUsageMap?: Map<string, MCPUsageSummary>
+  mcpRelationships?: MCPRelationship[]
 }
 
 function formatDate(iso: string): string {
@@ -35,8 +40,10 @@ const META_ROWS: { label: string; getValue: (s: Skill) => string }[] = [
 
 const SEVERITY_ICON: Record<string, string> = { error: '✗', warn: '⚠' }
 
-export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify }: Props) {
+export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships }: Props) {
   const [issuesOpen, setIssuesOpen] = useState(skill.health.status !== 'ok')
+  const [showMap, setShowMap] = useState(false)
+  const [relsOpen, setRelsOpen] = useState(true)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -45,11 +52,6 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-
-  // Auto-expand when a different skill is opened
-  useEffect(() => {
-    setIssuesOpen(skill.health.status !== 'ok')
-  }, [skill.id, skill.health.status])
 
   const bodyHtml = skill.body
     ? (marked(skill.body) as string)
@@ -65,7 +67,136 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     s.id !== skill.id && s.references?.some(r => r.name === skill.name)
   )
 
+  // Auto-reset when a different skill is opened
+  useEffect(() => {
+    setIssuesOpen(skill.health.status !== 'ok')
+    setRelsOpen(outgoing.length > 0 || inbound.length > 0)
+    setShowMap(false)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skill.id])
+
   // (allSkillNames used inline in JSX for broken-ref detection)
+
+  const isMCP = skill.type === 'mcp' && !!skill.mcpData
+  const mcp = skill.mcpData
+
+  if (isMCP && mcp) {
+    const sortedTools = [...mcp.tools].sort((a, b) => b.schemaBytes - a.schemaBytes)
+    const statusColor: Record<string, string> = { ok: 'var(--c-mcp)', unavailable: '#f55b5b', unknown: '#f5a55b' }
+    const statusIcon: Record<string, string> = { ok: '✓', unavailable: '✗', unknown: '⚠' }
+    const usage = mcpUsageMap?.get(skill.name)
+    const calledBy = mcpRelationships?.filter(r => r.serverName === skill.name) ?? []
+
+    return (
+      <>
+        <div className="drawer-overlay" onClick={onClose} />
+        <aside className="drawer">
+          <div className="drawer-header">
+            <div className="drawer-title-row">
+              <span className="type-badge type-mcp">mcp</span>
+              <h2 className="drawer-title">{skill.name}</h2>
+            </div>
+            {skill.description && <p className="drawer-desc">{skill.description}</p>}
+            <div className="drawer-actions">
+              <button className="btn" onClick={onClose}>Close</button>
+            </div>
+          </div>
+
+          <div className="mcp-status-banner" style={{ borderColor: statusColor[mcp.status], color: statusColor[mcp.status] }}>
+            <span className="mcp-status-icon">{statusIcon[mcp.status]}</span>
+            <span className="mcp-status-text">
+              {mcp.status === 'ok' ? 'Connected' : mcp.status === 'unavailable' ? 'Unavailable' : 'Unknown'}
+              {mcp.statusReason && <span className="mcp-status-reason"> — {mcp.statusReason}</span>}
+            </span>
+          </div>
+
+          {mcp.kind === 'session-injected' && (
+            <div className="mcp-bridge-warning">
+              Bridge server (session-injected) — proxied via Claude.ai; configure in ~/.claude.json to persist
+            </div>
+          )}
+
+          <div className="mcp-meta-row">
+            {mcp.source && <span className="mcp-meta-item"><span className="mcp-meta-label">Source</span> {mcp.source}</span>}
+            <span className="mcp-meta-item"><span className="mcp-meta-label">Transport</span> {mcp.transport ?? 'stdio'}</span>
+            <span className="mcp-meta-item"><span className="mcp-meta-label">Kind</span> {mcp.kind}</span>
+            {mcp.scope && <span className="mcp-meta-item"><span className="mcp-meta-label">Scope</span> {mcp.scope}</span>}
+          </div>
+
+          <div className="mcp-tools-section">
+            <span className="mcp-tools-heading">{sortedTools.length} tool{sortedTools.length !== 1 ? 's' : ''}</span>
+            <table className="mcp-tools-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th className="col-numeric">Schema bytes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTools.map(tool => (
+                  <tr key={tool.name}>
+                    <td className="mcp-tool-name">{tool.name}</td>
+                    <td className="col-numeric mcp-schema-bytes">{tool.schemaBytes.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {usage && (
+            <div className="mcp-usage-section">
+              <span className="mcp-tools-heading">Usage</span>
+              <div className="mcp-usage-summary">
+                <span><span className="mcp-meta-label">Invocations</span> {usage.invocations}</span>
+                <span><span className="mcp-meta-label">Cost</span> ${usage.dollars.toFixed(4)}</span>
+                <span><span className="mcp-meta-label">Last invoked</span> {formatDate(usage.lastInvoked)}</span>
+              </div>
+              {usage.tools.length > 0 && (
+                <table className="mcp-tools-table">
+                  <thead>
+                    <tr>
+                      <th>Tool</th>
+                      <th className="col-numeric">Calls</th>
+                      <th>Last invoked</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usage.tools.map(t => (
+                      <tr key={t.name}>
+                        <td className="mcp-tool-name">{t.name}</td>
+                        <td className="col-numeric">{t.calls}</td>
+                        <td>{t.lastInvoked ? formatDate(t.lastInvoked) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {calledBy.length > 0 && (
+            <div className="mcp-called-by-section">
+              <span className="mcp-tools-heading">Called by</span>
+              <ul className="rel-list">
+                {calledBy.map(r => {
+                  const callerSkill = allSkills.find(s => s.name === r.skillName)
+                  return (
+                    <li key={r.skillName} className="rel-item">
+                      {callerSkill
+                        ? <button className="rel-link" onClick={() => onSelect(callerSkill)}>{r.skillName}</button>
+                        : <span className="rel-broken-name">{r.skillName}</span>
+                      }
+                      <span className="rel-source">{r.calls} call{r.calls !== 1 ? 's' : ''}</span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </aside>
+      </>
+    )
+  }
 
   return (
     <>
@@ -86,6 +217,9 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             <button className="btn" onClick={() => onBreakdown(skill)}>
               Show breakdown
             </button>
+            <button className="btn" onClick={() => setShowMap(true)} title="Show Mermaid relationship map">
+              Relationship map
+            </button>
             {skill.suggestedType && (
               <>
                 <CopyPromptButton
@@ -98,6 +232,11 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                   </button>
                 )}
               </>
+            )}
+            {onUninstall && (
+              <button className="btn btn-warn" onClick={() => onUninstall(skill)} title="Move to Trash (can be restored)">
+                Uninstall
+              </button>
             )}
             <button className="btn" onClick={onClose}>Close</button>
           </div>
@@ -131,51 +270,64 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           </div>
         )}
 
-        <div className="drawer-relationships">
-          <div className="rel-summary">
-            {outgoing.length === 0 && inbound.length === 0
-              ? <span className="rel-orphan">No relationships found — this skill is an island</span>
-              : <span className="rel-stat">
-                  References {outgoing.length} skill{outgoing.length !== 1 ? 's' : ''}, referenced by {inbound.length}
-                </span>
-            }
-          </div>
+        <div className="drawer-accordion">
+          <button
+            className="accordion-trigger accordion-trigger-rel"
+            onClick={() => setRelsOpen(o => !o)}
+            aria-expanded={relsOpen}
+          >
+            <span className="accordion-icon">{relsOpen ? '▾' : '▸'}</span>
+            <span>
+              {outgoing.length === 0 && inbound.length === 0
+                ? 'Relationships — none'
+                : `Relationships — ${outgoing.length} out, ${inbound.length} in`}
+            </span>
+          </button>
 
-          {outgoing.length > 0 && (
-            <div className="rel-group">
-              <span className="rel-group-label">References</span>
-              <ul className="rel-list">
-                {outgoing.map(ref => {
-                  const target = allSkills.find(s => s.name === ref.name)
-                  const isBroken = !target
-                  return (
-                    <li key={ref.name} className={`rel-item ${isBroken ? 'rel-broken' : ''}`}>
-                      {isBroken
-                        ? <span className="rel-broken-name" title="Skill not found in inventory">⚠ {ref.name}</span>
-                        : <button className="rel-link" onClick={() => onSelect(target!)}>
-                            {ref.name}
-                          </button>
-                      }
-                      <span className="rel-source">{ref.source}</span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
-
-          {inbound.length > 0 && (
-            <div className="rel-group">
-              <span className="rel-group-label">Referenced by</span>
-              <ul className="rel-list">
-                {inbound.map(s => (
-                  <li key={s.id} className="rel-item">
-                    <button className="rel-link" onClick={() => onSelect(s)}>
-                      {s.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          {relsOpen && (
+            <div className="drawer-relationships">
+              {outgoing.length === 0 && inbound.length === 0 ? (
+                <span className="rel-orphan">No relationships found — this skill is an island</span>
+              ) : (
+                <>
+                  {outgoing.length > 0 && (
+                    <div className="rel-group">
+                      <span className="rel-group-label">References</span>
+                      <ul className="rel-list">
+                        {outgoing.map(ref => {
+                          const target = allSkills.find(s => s.name === ref.name)
+                          const isBroken = !target
+                          return (
+                            <li key={ref.name} className={`rel-item ${isBroken ? 'rel-broken' : ''}`}>
+                              {isBroken
+                                ? <span className="rel-broken-name" title="Skill not found in inventory">⚠ {ref.name}</span>
+                                : <button className="rel-link" onClick={() => onSelect(target!)}>
+                                    {ref.name}
+                                  </button>
+                              }
+                              <span className="rel-source">{ref.source}</span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  {inbound.length > 0 && (
+                    <div className="rel-group">
+                      <span className="rel-group-label">Referenced by</span>
+                      <ul className="rel-list">
+                        {inbound.map(s => (
+                          <li key={s.id} className="rel-item">
+                            <button className="rel-link" onClick={() => onSelect(s)}>
+                              {s.name}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -203,6 +355,14 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           dangerouslySetInnerHTML={{ __html: bodyHtml }}
         />
       </aside>
+
+      {showMap && (
+        <RelationshipMap
+          skill={skill}
+          allSkills={allSkills}
+          onClose={() => setShowMap(false)}
+        />
+      )}
     </>
   )
 }

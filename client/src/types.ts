@@ -1,4 +1,23 @@
-export type SkillType = 'skill' | 'command' | 'subagent'
+export type SkillType = 'skill' | 'command' | 'subagent' | 'mcp'
+
+export interface MCPTool {
+  name: string
+  description?: string
+  schemaBytes: number
+}
+
+export interface MCPRow {
+  name: string
+  kind: 'configured' | 'session-injected'
+  scope?: 'global' | 'project'
+  transport?: 'stdio' | 'sse' | 'http'
+  tools: MCPTool[]
+  schemaBytes: number | null
+  status: 'ok' | 'unavailable' | 'unknown'
+  statusReason?: string
+  source?: string
+  projectPath?: string
+}
 
 export interface ClassificationResult {
   suggested: SkillType
@@ -63,6 +82,7 @@ export interface Skill {
   bloat: boolean
   descLen: number
   suggestedType?: ClassificationResult | null
+  mcpData?: MCPRow
 }
 
 export interface Filters {
