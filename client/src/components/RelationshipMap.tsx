@@ -193,6 +193,11 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   // artifact when nothing is hovered, so the info rail always shows something.
   const [hoveredName, setHoveredName] = useState<string | null>(null)
 
+  // Toggle for the modal taking the full viewport. Useful when the graph is
+  // large or you want the rail's description text to be readable without
+  // squishing the SVG.
+  const [fullscreen, setFullscreen] = useState<boolean>(false)
+
   const { nodes, edges } = useMemo(
     () => buildChain(skill, allSkills, maxDepth, direction),
     [skill, allSkills, maxDepth, direction],
@@ -285,7 +290,7 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="modal relmap-modal">
+      <div className={`modal relmap-modal ${fullscreen ? 'relmap-modal-fullscreen' : ''}`}>
         <div className="modal-header">
           <div>
             <div className="modal-title">{skill.name} — relationship map</div>
@@ -297,7 +302,18 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
               </span>
             </div>
           </div>
-          <button className="btn btn-sm modal-close" onClick={onClose}>×</button>
+          <div className="relmap-modal-buttons">
+            <button
+              type="button"
+              className="btn btn-sm modal-close"
+              onClick={() => setFullscreen(f => !f)}
+              title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {fullscreen ? '⊟' : '⛶'}
+            </button>
+            <button className="btn btn-sm modal-close" onClick={onClose} aria-label="Close">×</button>
+          </div>
         </div>
 
         <div className="relmap-controls">
