@@ -264,10 +264,14 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     if (lastFitSvgRef.current === svgHtml) return
     lastFitSvgRef.current = svgHtml
     const { width, height } = graphRef.current.getBoundingClientRect()
-    const availW = Math.max(40, width - 24)   // 12px padding each side
-    const availH = Math.max(40, height - 24)
+    // 12px padding each side + 2px safety buffer for sub-pixel rounding so the
+    // fit-to-screen scale never tips into "1 pixel over" and triggers scrollbars.
+    const availW = Math.max(40, width - 26)
+    const availH = Math.max(40, height - 26)
     const fit = Math.min(availW / naturalDim.w, availH / naturalDim.h)
-    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2))))
+    // Don't round here — rounding can tip up past the available space. Only
+    // round for display in the % readout.
+    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fit)))
   }, [svgHtml, naturalDim])
 
   const ZOOM_MIN = 0.2
@@ -280,11 +284,11 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     const graphEl = graphRef.current
     if (!naturalDim || !graphEl) return
     const { width, height } = graphEl.getBoundingClientRect()
-    // Account for padding on .relmap-graph (12px each side from CSS).
-    const availW = Math.max(40, width - 24)
-    const availH = Math.max(40, height - 24)
+    // 12px padding each side + 2px safety buffer (matches auto-fit math).
+    const availW = Math.max(40, width - 26)
+    const availH = Math.max(40, height - 26)
     const fit = Math.min(availW / naturalDim.w, availH / naturalDim.h)
-    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2))))
+    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fit)))
   }
 
   // DOM event delegation on the outer (always-mounted) container. Click
