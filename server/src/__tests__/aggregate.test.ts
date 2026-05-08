@@ -4,6 +4,7 @@ import os from 'os'
 import path from 'path'
 import { computeSkillAggregate } from '../usage/aggregate'
 import { resetPricingCache } from '../usage/pricing'
+import { listingTokensFor } from '../usage/loaded'
 
 let tmp: string
 
@@ -57,18 +58,19 @@ describe('computeSkillAggregate', () => {
   it('merges active and loaded cost for the same skill', () => {
     const home = path.join(tmp, 'home-merge')
     write(path.join(home, '.claude', 'settings.json'), '{}')
-    // Turn 1: skill is invoked (active) + loaded (passive)
-    // Turn 2: skill is NOT invoked but still loaded
+    // Turn 1: cacheCreate=500 matches bodyTokens → activation detected (active cost)
+    //         + listing tokens attributed (loaded cost)
+    // Turn 2: skill already cached → cache_read (active) + loaded cost
     write(
       path.join(home, '.claude', 'projects', 'proj', 'sess.jsonl'),
       [
         userWithSkill('quiz', '2026-05-01T10:00:00Z'),
-        assistantTurn('2026-05-01T10:00:05Z', 500, 200, 0, 0),
+        assistantTurn('2026-05-01T10:00:05Z', 0, 200, 500, 0),
         assistantTurn('2026-05-01T10:01:00Z', 300, 100, 0, 0),
       ].join('\n') + '\n',
     )
 
-    const skills = [{ name: 'quiz', description: 'a quiz skill' }]
+    const skills = [{ name: 'quiz', description: 'a quiz skill', bodyTokens: 500, bodyBytes: 2000 }]
     const orig = process.env['HOME']
     process.env['HOME'] = home
     const result = computeSkillAggregate(skills)
@@ -112,9 +114,7 @@ describe('computeSkillAggregate', () => {
     expect(result).toHaveLength(1)
     expect(result[0].active.tokens).toBe(0)
     expect(result[0].active.dollars).toBe(0)
-    // Loaded tokens = listing tokens for this skill (capped, 4 bytes/token).
-    // 'passive always here' = 19 bytes → 4.75 tokens
-    const expectedLoadedTokens = Buffer.byteLength('passive always here', 'utf-8') / 4
+    const expectedLoadedTokens = listingTokensFor('passive', 'always here')
     expect(result[0].loaded.tokens).toBeCloseTo(expectedLoadedTokens)
     expect(result[0].invocations).toBe(0)
   })
@@ -122,17 +122,17 @@ describe('computeSkillAggregate', () => {
   it('includes skills with active cost but zero metadata bytes (no loaded cost)', () => {
     const home = path.join(tmp, 'home-activeonly')
     write(path.join(home, '.claude', 'settings.json'), '{}')
+    // cacheCreate=500 matches bodyTokens=500 → activation detected
     write(
       path.join(home, '.claude', 'projects', 'proj', 'sess.jsonl'),
       [
         userWithSkill('ghost', '2026-05-01T10:00:00Z'),
-        assistantTurn('2026-05-01T10:00:05Z', 500, 200, 0, 0),
+        assistantTurn('2026-05-01T10:00:05Z', 0, 200, 500, 0),
       ].join('\n') + '\n',
     )
 
-    // A name of '' with no description → 'Buffer.byteLength(" ")' = 1 byte, still > 0.
-    // To get truly zero loaded cost, pass type: 'command' so it's filtered out.
-    const skills = [{ name: 'ghost', description: undefined, type: 'command' as const }]
+    // type: 'command' → excluded from loaded cost; bodyTokens → included in active cost
+    const skills = [{ name: 'ghost', description: undefined, type: 'command' as const, bodyTokens: 500, bodyBytes: 2000 }]
     const orig = process.env['HOME']
     process.env['HOME'] = home
     const result = computeSkillAggregate(skills)

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { computeLoadedCost } from '../usage/loaded'
+import { computeLoadedCost, listingTokensFor, listingBytesFor } from '../usage/loaded'
 import { resetPricingCache } from '../usage/pricing'
 
 let tmp: string
@@ -19,8 +19,9 @@ function assistantTurn(
   cacheCreate = 0,
   cacheRead = 0,
   model = 'claude-sonnet-4-6',
+  sessionId?: string,
 ): string {
-  return JSON.stringify({
+  const obj: Record<string, unknown> = {
     type: 'assistant',
     timestamp: ts,
     message: {
@@ -34,7 +35,9 @@ function assistantTurn(
         cache_read_input_tokens: cacheRead,
       },
     },
-  })
+  }
+  if (sessionId !== undefined) obj['sessionId'] = sessionId
+  return JSON.stringify(obj)
 }
 
 beforeAll(() => {
@@ -49,12 +52,8 @@ beforeEach(() => {
   resetPricingCache()
 })
 
-// Listing layout matches loaded.ts: name + ' ' + description, capped per skill,
-// then total budget cap of 8000, converted at 4 bytes/token.
-const BYTES_PER_TOKEN = 4
-
 function listingTokens(name: string, description = ''): number {
-  return (Buffer.byteLength(`${name} ${description}`, 'utf-8')) / BYTES_PER_TOKEN
+  return listingTokensFor(name, description)
 }
 
 describe('computeLoadedCost', () => {
@@ -74,13 +73,13 @@ describe('computeLoadedCost', () => {
     const costs = computeLoadedCost([{ name: 'only-skill', description: desc }])
     process.env['HOME'] = orig
 
-    const expectedBytes = Buffer.byteLength(`only-skill ${desc}`, 'utf-8')
+    const expectedBytes = listingBytesFor('only-skill', desc)
     expect(costs).toHaveLength(1)
     expect(costs[0].skillName).toBe('only-skill')
-    // Skill listing tokens this turn, capped at the actual billed input.
-    expect(costs[0].inputTokens).toBeCloseTo(listingTokens('only-skill', desc))
+    // First (and only) turn → charged at cache_write rate → cacheCreationTokens
+    expect(costs[0].cacheCreationTokens).toBeCloseTo(listingTokens('only-skill', desc))
     expect(costs[0].loadedTurns).toBe(1)
-    expect(costs[0].bodyBytes).toBe(expectedBytes)
+    expect(costs[0].listingBytes).toBe(expectedBytes)
   })
 
   it('splits a turn proportionally across multiple loaded skills by metadata bytes', () => {
@@ -96,28 +95,27 @@ describe('computeLoadedCost', () => {
     const orig = process.env['HOME']
     process.env['HOME'] = home
     const costs = computeLoadedCost([
-      { name: 'a', description: '' },   // 'a ' = 2 bytes
-      { name: 'bbb', description: '' }, // 'bbb ' = 4 bytes
+      { name: 'a', description: '' },
+      { name: 'bbb', description: '' },
     ])
     process.env['HOME'] = orig
 
     const a = costs.find(c => c.skillName === 'a')!
     const bbb = costs.find(c => c.skillName === 'bbb')!
-    // Each skill is attributed only its own listing tokens, not the full input.
-    expect(a.inputTokens).toBeCloseTo(listingTokens('a'))
-    expect(bbb.inputTokens).toBeCloseTo(listingTokens('bbb'))
-    // Proportional split is preserved: 2:4
-    expect(a.inputTokens / bbb.inputTokens).toBeCloseTo(2 / 4)
+    // Each skill gets its own listing tokens charged independently — not a shared split.
+    expect(a.cacheCreationTokens).toBeCloseTo(listingTokens('a'))
+    expect(bbb.cacheCreationTokens).toBeCloseTo(listingTokens('bbb'))
   })
 
   it('counts cache reads as a real cost', () => {
     const home = path.join(tmp, 'home-cache')
     write(path.join(home, '.claude', 'settings.json'), '{}')
+    // Two turns in same session: first → cache_write rate, second → cache_read rate
     write(
       path.join(home, '.claude', 'projects', 'proj', 'sess.jsonl'),
       [
-        // No fresh input — context entirely served from cache
-        assistantTurn('2026-05-01T10:00:00Z', 0, 50, 0, 1_000_000),
+        assistantTurn('2026-05-01T10:00:00Z', 1000, 50, 0, 0, 'claude-sonnet-4-6', 'ses-A'),
+        assistantTurn('2026-05-01T10:01:00Z', 500, 50, 0, 0, 'claude-sonnet-4-6', 'ses-A'),
       ].join('\n') + '\n',
     )
 
@@ -126,13 +124,12 @@ describe('computeLoadedCost', () => {
     const costs = computeLoadedCost([{ name: 'sole', description: 'desc' }])
     process.env['HOME'] = orig
 
-    expect(costs).toHaveLength(1)
-    // Skill is attributed only its share of the cache_read bucket: listing_tokens
-    // out of 1M total billed.
     const skTokens = listingTokens('sole', 'desc')
-    expect(costs[0].cacheReadTokens).toBeCloseTo(skTokens)
-    // Sonnet cache read $0.30 / M → skTokens × 0.30 / 1M
-    expect(costs[0].totalDollars).toBeCloseTo((skTokens * 0.30) / 1_000_000)
+    expect(costs).toHaveLength(1)
+    expect(costs[0].cacheCreationTokens).toBeCloseTo(skTokens)   // first turn: write rate
+    expect(costs[0].cacheReadTokens).toBeCloseTo(skTokens)       // second turn: read rate
+    // Sonnet: write $3.75/M, read $0.30/M
+    expect(costs[0].totalDollars).toBeCloseTo((skTokens * 3.75 + skTokens * 0.30) / 1_000_000)
   })
 
   it('skips turns with zero input-side tokens', () => {
@@ -195,8 +192,8 @@ describe('computeLoadedCost', () => {
 
     expect(costs).toHaveLength(1)
     expect(costs[0].loadedTurns).toBe(3)
-    // Per turn the skill is attributed listingTokens('sole','desc'), summed across 3 turns.
-    expect(costs[0].inputTokens).toBeCloseTo(3 * listingTokens('sole', 'desc'))
+    // All 3 turns have no sessionId → all treated as first-turn → cacheCreationTokens
+    expect(costs[0].cacheCreationTokens).toBeCloseTo(3 * listingTokens('sole', 'desc'))
   })
 
   it('sorts results by totalDollars descending', () => {
@@ -211,7 +208,6 @@ describe('computeLoadedCost', () => {
 
     const orig = process.env['HOME']
     process.env['HOME'] = home
-    // 'tiny' has short description (few bytes), 'huge' has long description (many bytes)
     const costs = computeLoadedCost([
       { name: 'tiny', description: 'x' },
       { name: 'huge', description: 'x'.repeat(990) },
@@ -232,13 +228,12 @@ describe('computeLoadedCost', () => {
       ].join('\n') + '\n',
     )
 
-    // Give real-skill and a-subagent identical metadata bytes so they split 50/50
     const orig = process.env['HOME']
     process.env['HOME'] = home
     const costs = computeLoadedCost([
-      { name: 'real-skill', description: 'aaaa', type: 'skill' },   // same desc length
+      { name: 'real-skill', description: 'aaaa', type: 'skill' },
       { name: 'a-command',  description: 'x'.repeat(900), type: 'command' },
-      { name: 'a-subagent', description: 'aaaa', type: 'subagent' }, // same desc length
+      { name: 'a-subagent', description: 'aaaa', type: 'subagent' },
     ])
     process.env['HOME'] = orig
 
@@ -248,8 +243,8 @@ describe('computeLoadedCost', () => {
     // their own listing tokens attributed.
     const skill = costs.find(c => c.skillName === 'real-skill')!
     const subagent = costs.find(c => c.skillName === 'a-subagent')!
-    expect(skill.inputTokens).toBeCloseTo(listingTokens('real-skill', 'aaaa'))
-    expect(subagent.inputTokens).toBeCloseTo(listingTokens('a-subagent', 'aaaa'))
+    expect(skill.cacheCreationTokens).toBeCloseTo(listingTokens('real-skill', 'aaaa'))
+    expect(subagent.cacheCreationTokens).toBeCloseTo(listingTokens('a-subagent', 'aaaa'))
   })
 
   it('handles malformed JSONL lines without crashing', () => {
@@ -270,7 +265,7 @@ describe('computeLoadedCost', () => {
     process.env['HOME'] = orig
 
     expect(costs).toHaveLength(1)
-    expect(costs[0].inputTokens).toBeCloseTo(listingTokens('sole', 'desc'))
+    expect(costs[0].cacheCreationTokens).toBeCloseTo(listingTokens('sole', 'desc'))
   })
 
   it('scales attribution down proportionally when listing exceeds the 8000-byte budget', () => {
@@ -283,10 +278,8 @@ describe('computeLoadedCost', () => {
       ].join('\n') + '\n',
     )
 
-    // Two skills with very long descriptions push raw listing past 8000 bytes.
-    // Each desc is 6000 bytes → capped at 1536, so per-skill listingBytes ≈ 1547.
-    // Total raw ≈ 3094 (still under budget) — instead, give 6 such skills:
-    // 6 × 1547 ≈ 9282 raw → effectiveScale = 8000 / 9282 ≈ 0.862
+    // 6 skills with very long descriptions push raw listing past 8000 bytes.
+    // Each desc is 6000 bytes → capped at 1536, so per-skill listingBytes = name + 1 + 1536.
     const skills = Array.from({ length: 6 }, (_, i) => ({
       name: `s${i}`,
       description: 'x'.repeat(6000),
@@ -297,18 +290,18 @@ describe('computeLoadedCost', () => {
     const costs = computeLoadedCost(skills)
     process.env['HOME'] = orig
 
-    // Each skill's raw listing bytes after per-skill cap.
-    const rawPerSkill = Buffer.byteLength('s0', 'utf-8') + 1 + 1536
-    const rawTotal = rawPerSkill * 6
-    const effectiveScale = 8000 / rawTotal
-    const expectedTokensPerSkill = (rawPerSkill * effectiveScale) / 4
+    // Scale factor is computed in bytes; attribution is in tokens.
+    const rawBytesPerSkill = listingBytesFor('s0', 'x'.repeat(6000))
+    const rawTotalBytes = rawBytesPerSkill * 6
+    const effectiveScale = 8000 / rawTotalBytes
+    const rawTokensPerSkill = listingTokens('s0', 'x'.repeat(6000))
+    const expectedTokensPerSkill = rawTokensPerSkill * effectiveScale
 
     expect(costs).toHaveLength(6)
     for (const c of costs) {
-      expect(c.inputTokens).toBeCloseTo(expectedTokensPerSkill, 1)
+      expect(c.cacheCreationTokens).toBeCloseTo(expectedTokensPerSkill, 1)
     }
-    // Total attributed across all skills ≤ 8000 bytes / 4 = 2000 tokens
-    const totalAttributed = costs.reduce((sum, c) => sum + c.inputTokens, 0)
-    expect(totalAttributed).toBeLessThanOrEqual(2000 + 1)
+    const totalAttributed = costs.reduce((sum, c) => sum + c.cacheCreationTokens, 0)
+    expect(totalAttributed).toBeCloseTo(6 * expectedTokensPerSkill, 0)
   })
 })

@@ -103,6 +103,11 @@ function processSession(
     const usage = msg['usage'] as Record<string, unknown> | undefined
     if (!usage) continue
 
+    const inputT = typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0
+    const ccT = typeof usage['cache_creation_input_tokens'] === 'number' ? usage['cache_creation_input_tokens'] : 0
+    const crT = typeof usage['cache_read_input_tokens'] === 'number' ? usage['cache_read_input_tokens'] : 0
+    if (inputT + ccT + crT === 0) continue
+
     // Determine cache state: first qualifying turn of a session → cache_create.
     const sessionId = typeof obj['sessionId'] === 'string' ? obj['sessionId'] : ''
     const isFirstTurn = !seenSessionIds.has(sessionId)
