@@ -3,7 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { detectActivations, ClaudeCodeActivationDetector } from '../usage/activation'
-import type { SessionData, SkillTokenInfo } from '../usage/activation'
+import type { SessionData, SessionTurn, SkillTokenInfo } from '../usage/activation'
 
 let tmp: string
 
@@ -31,7 +31,13 @@ function userPlain(ts: string): string {
   })
 }
 
-function assistantTurn(ts: string, cacheCreate = 0, cacheRead = 0, contextMgmt: null | object = null): string {
+function assistantTurn(
+  ts: string,
+  cacheCreate = 0,
+  cacheRead = 0,
+  contextMgmt: null | object = null,
+  toolUses: Array<{ name: string; input: Record<string, unknown> }> = [],
+): string {
   return JSON.stringify({
     type: 'assistant',
     timestamp: ts,
@@ -39,7 +45,7 @@ function assistantTurn(ts: string, cacheCreate = 0, cacheRead = 0, contextMgmt: 
       role: 'assistant',
       model: 'claude-sonnet-4-6',
       context_management: contextMgmt,
-      content: [],
+      content: toolUses.map(t => ({ type: 'tool_use', name: t.name, input: t.input })),
       usage: {
         input_tokens: 100,
         output_tokens: 50,
@@ -58,44 +64,84 @@ afterAll(() => {
   fs.rmSync(tmp, { recursive: true, force: true })
 })
 
+// Helpers for SessionTurn fixtures.
+function userTurn(ts: string, commandName?: string): SessionTurn {
+  return {
+    timestamp: ts,
+    commandName,
+    skillToolInvocations: [],
+    isCompaction: false,
+    isAssistant: false,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+  }
+}
+function asstTurn(ts: string, opts: Partial<SessionTurn> = {}): SessionTurn {
+  return {
+    timestamp: ts,
+    skillToolInvocations: [],
+    isCompaction: false,
+    isAssistant: true,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    ...opts,
+  }
+}
+
 // ------------------------------------------------------------------
-// Unit tests for ClaudeCodeActivationDetector (no file I/O)
+// Unit tests for ClaudeCodeActivationDetector (signal-based)
 // ------------------------------------------------------------------
 
 describe('ClaudeCodeActivationDetector', () => {
   const detector = new ClaudeCodeActivationDetector()
 
-  it('detects a slash-invoked skill when cc matches body tokens', () => {
+  it('attributes a slash-invoked skill on the next assistant turn', () => {
     const skills: SkillTokenInfo[] = [{ name: 'quiz', bodyTokens: 500 }]
     const session: SessionData = {
       sessionId: 'sess-1',
       turns: [
-        { timestamp: 't1', commandName: 'quiz', isCompaction: false, isAssistant: false, cacheCreationTokens: 0, cacheReadTokens: 0 },
-        { timestamp: 't2', isCompaction: false, isAssistant: true, cacheCreationTokens: 500, cacheReadTokens: 0 },
+        userTurn('t1', 'quiz'),
+        asstTurn('t2', { cacheCreationTokens: 500 }),
       ],
     }
     const events = detector.detect(session, skills)
     expect(events).toHaveLength(1)
     expect(events[0].injectedSkills).toEqual(['quiz'])
     expect(events[0].turnIndex).toBe(0)
-    expect(events[0].unexplainedDelta).toBe(0)
   })
 
-  it('detects an auto-triggered skill (no slash command) via cache delta', () => {
+  it('attributes a Skill-tool invocation on the following assistant turn', () => {
+    // Assistant turn N calls the Skill tool. The body lands in turn N+1's cache.
     const skills: SkillTokenInfo[] = [{ name: 'concept', bodyTokens: 750 }]
     const session: SessionData = {
-      sessionId: 'sess-2',
+      sessionId: 'sess-tool',
       turns: [
-        { timestamp: 't1', isCompaction: false, isAssistant: false, cacheCreationTokens: 0, cacheReadTokens: 0 },
-        { timestamp: 't2', isCompaction: false, isAssistant: true, cacheCreationTokens: 750, cacheReadTokens: 0 },
+        asstTurn('t1', { skillToolInvocations: ['concept'] }),
+        userTurn('t1.5'),  // tool_result
+        asstTurn('t2', { cacheCreationTokens: 750 }),
       ],
     }
     const events = detector.detect(session, skills)
     expect(events).toHaveLength(1)
     expect(events[0].injectedSkills).toEqual(['concept'])
+    expect(events[0].turnIndex).toBe(1)
   })
 
-  it('detects two skills auto-triggered at different turns in order', () => {
+  it('does not attribute when there is no signal (no slash, no Skill tool)', () => {
+    // Cache-delta heuristic is retired — auto-triggered guesses are no longer made.
+    const skills: SkillTokenInfo[] = [{ name: 'concept', bodyTokens: 750 }]
+    const session: SessionData = {
+      sessionId: 'sess-2',
+      turns: [
+        userTurn('t1'),
+        asstTurn('t2', { cacheCreationTokens: 750 }),
+      ],
+    }
+    const events = detector.detect(session, skills)
+    expect(events).toHaveLength(0)
+  })
+
+  it('attributes consecutive slash invocations of different skills in order', () => {
     const skills: SkillTokenInfo[] = [
       { name: 'skill-a', bodyTokens: 400 },
       { name: 'skill-b', bodyTokens: 600 },
@@ -103,10 +149,10 @@ describe('ClaudeCodeActivationDetector', () => {
     const session: SessionData = {
       sessionId: 'sess-3',
       turns: [
-        { timestamp: 't1', isCompaction: false, isAssistant: false, cacheCreationTokens: 0, cacheReadTokens: 0 },
-        { timestamp: 't2', isCompaction: false, isAssistant: true, cacheCreationTokens: 400, cacheReadTokens: 0 },
-        { timestamp: 't3', isCompaction: false, isAssistant: false, cacheCreationTokens: 0, cacheReadTokens: 0 },
-        { timestamp: 't4', isCompaction: false, isAssistant: true, cacheCreationTokens: 600, cacheReadTokens: 0 },
+        userTurn('t1', 'skill-a'),
+        asstTurn('t2', { cacheCreationTokens: 400 }),
+        userTurn('t3', 'skill-b'),
+        asstTurn('t4', { cacheCreationTokens: 600 }),
       ],
     }
     const events = detector.detect(session, skills)
@@ -117,122 +163,85 @@ describe('ClaudeCodeActivationDetector', () => {
     expect(events[1].turnIndex).toBe(1)
   })
 
-  it('resets injected set on compaction and re-detects skills after', () => {
+  it('attributes both signals when a slash command and a Skill tool fire in sequence', () => {
+    // /A invokes skill A, A's body instructs Claude to call B via the Skill tool.
+    // Both should be charged: A on turn 1, B on turn 2.
+    const skills: SkillTokenInfo[] = [
+      { name: 'A', bodyTokens: 300 },
+      { name: 'B', bodyTokens: 400 },
+    ]
+    const session: SessionData = {
+      sessionId: 'sess-chain',
+      turns: [
+        userTurn('t1', 'A'),
+        asstTurn('t2', { cacheCreationTokens: 300, skillToolInvocations: ['B'] }),
+        userTurn('t2.5'),  // tool_result for the Skill call
+        asstTurn('t3', { cacheCreationTokens: 400 }),
+      ],
+    }
+    const events = detector.detect(session, skills)
+    expect(events).toHaveLength(2)
+    expect(events[0].injectedSkills).toEqual(['A'])
+    expect(events[1].injectedSkills).toEqual(['B'])
+  })
+
+  it('compaction clears the injected set; a re-signal re-activates the skill', () => {
     const skills: SkillTokenInfo[] = [{ name: 'morning-plan', bodyTokens: 800 }]
     const session: SessionData = {
       sessionId: 'sess-4',
       turns: [
-        // Initial activation
-        { timestamp: 't1', isCompaction: false, isAssistant: true, cacheCreationTokens: 800, cacheReadTokens: 0 },
-        // Compaction — clears injected set
-        { timestamp: 't2', isCompaction: true, isAssistant: true, cacheCreationTokens: 0, cacheReadTokens: 0 },
-        // Re-activation after compaction
-        { timestamp: 't3', isCompaction: false, isAssistant: true, cacheCreationTokens: 800, cacheReadTokens: 0 },
+        userTurn('t1', 'morning-plan'),
+        asstTurn('t2', { cacheCreationTokens: 800 }),
+        // Compaction
+        asstTurn('t3', { isCompaction: true }),
+        // Re-signal
+        userTurn('t4', 'morning-plan'),
+        asstTurn('t5', { cacheCreationTokens: 800 }),
       ],
     }
     const events = detector.detect(session, skills)
-    // Both activations should be detected (skill was re-injected after compaction)
-    const activations = events.filter(e => e.injectedSkills.includes('morning-plan'))
-    expect(activations).toHaveLength(2)
+    const matched = events.filter(e => e.injectedSkills.includes('morning-plan'))
+    expect(matched).toHaveLength(2)
   })
 
-  it('puts an unmatched delta into unexplainedDelta and does not attribute it', () => {
-    const skills: SkillTokenInfo[] = [{ name: 'tiny', bodyTokens: 50 }]
-    const session: SessionData = {
-      sessionId: 'sess-5',
-      turns: [
-        // Delta of 5000 — way bigger than tiny's body, doesn't match anything
-        { timestamp: 't1', isCompaction: false, isAssistant: true, cacheCreationTokens: 5000, cacheReadTokens: 0 },
-      ],
-    }
-    const events = detector.detect(session, skills)
-    expect(events).toHaveLength(1)
-    expect(events[0].injectedSkills).toHaveLength(0)
-    expect(events[0].unexplainedDelta).toBe(5000)
-  })
-
-  it('attributes ambiguous single-match delta to all matches', () => {
-    // Two skills with the same token count — delta matches both
-    const skills: SkillTokenInfo[] = [
-      { name: 'alpha', bodyTokens: 500 },
-      { name: 'beta', bodyTokens: 500 },
-    ]
-    const session: SessionData = {
-      sessionId: 'sess-6',
-      turns: [
-        { timestamp: 't1', isCompaction: false, isAssistant: true, cacheCreationTokens: 500, cacheReadTokens: 0 },
-      ],
-    }
-    const events = detector.detect(session, skills)
-    expect(events).toHaveLength(1)
-    // Both skills attributed when ambiguous
-    expect(events[0].injectedSkills).toContain('alpha')
-    expect(events[0].injectedSkills).toContain('beta')
-  })
-
-  it('uses slash-command hint to disambiguate ambiguous single matches', () => {
-    const skills: SkillTokenInfo[] = [
-      { name: 'alpha', bodyTokens: 500 },
-      { name: 'beta', bodyTokens: 500 },
-    ]
-    const session: SessionData = {
-      sessionId: 'sess-7',
-      turns: [
-        { timestamp: 't1', commandName: 'beta', isCompaction: false, isAssistant: false, cacheCreationTokens: 0, cacheReadTokens: 0 },
-        { timestamp: 't2', isCompaction: false, isAssistant: true, cacheCreationTokens: 500, cacheReadTokens: 0 },
-      ],
-    }
-    const events = detector.detect(session, skills)
-    expect(events).toHaveLength(1)
-    expect(events[0].injectedSkills).toEqual(['beta'])
-  })
-
-  it('puts pair-sum-matching delta into unexplainedDelta (pair matching disabled in Phase 15)', () => {
-    // Pair matching was disabled after a real-data spike showed high FPR.
-    // A delta matching two skill bodies goes to unexplainedDelta, not attributed.
-    const skills: SkillTokenInfo[] = [
-      { name: 'small', bodyTokens: 300 },
-      { name: 'large', bodyTokens: 700 },
-    ]
-    const session: SessionData = {
-      sessionId: 'sess-8',
-      turns: [
-        // Delta = 1000 = 300 + 700, but neither single-skill matches (300 ≠ 1000, 700 ≠ 1000)
-        { timestamp: 't1', isCompaction: false, isAssistant: true, cacheCreationTokens: 1000, cacheReadTokens: 0 },
-      ],
-    }
-    const events = detector.detect(session, skills)
-    expect(events).toHaveLength(1)
-    expect(events[0].injectedSkills).toHaveLength(0)
-    expect(events[0].unexplainedDelta).toBe(1000)
-  })
-
-  it('does not re-detect already-injected skills', () => {
+  it('does not re-attribute a skill that is already injected', () => {
+    // Two slash invocations of the same skill in one session — only the first
+    // creates a new cache write; the second is already cached.
     const skills: SkillTokenInfo[] = [{ name: 'review', bodyTokens: 600 }]
     const session: SessionData = {
       sessionId: 'sess-9',
       turns: [
-        // First turn — activates review
-        { timestamp: 't1', isCompaction: false, isAssistant: true, cacheCreationTokens: 600, cacheReadTokens: 0 },
-        // Second turn — same cc value, but review is already injected; goes to unexplained
-        { timestamp: 't2', isCompaction: false, isAssistant: true, cacheCreationTokens: 600, cacheReadTokens: 0 },
+        userTurn('t1', 'review'),
+        asstTurn('t2', { cacheCreationTokens: 600 }),
+        userTurn('t3', 'review'),
+        asstTurn('t4', { cacheCreationTokens: 0 }),
       ],
     }
     const events = detector.detect(session, skills)
-    // Only one activation event (first turn)
     const matched = events.filter(e => e.injectedSkills.includes('review'))
     expect(matched).toHaveLength(1)
-    // Second event should be unexplained
-    expect(events[1].unexplainedDelta).toBe(600)
   })
 
-  it('ignores deltas below MIN_DELTA_TOLERANCE', () => {
+  it('ignores signals naming skills that are not in the validSkills list', () => {
+    const skills: SkillTokenInfo[] = [{ name: 'real-skill', bodyTokens: 500 }]
+    const session: SessionData = {
+      sessionId: 'sess-unknown',
+      turns: [
+        userTurn('t1', 'unknown-skill'),
+        asstTurn('t2', { cacheCreationTokens: 500 }),
+      ],
+    }
+    const events = detector.detect(session, skills)
+    expect(events).toHaveLength(0)
+  })
+
+  it('emits no events when there are no signals at all', () => {
     const skills: SkillTokenInfo[] = [{ name: 'tiny', bodyTokens: 50 }]
     const session: SessionData = {
       sessionId: 'sess-10',
       turns: [
-        // cc = 50 — below the 200-token minimum
-        { timestamp: 't1', isCompaction: false, isAssistant: true, cacheCreationTokens: 50, cacheReadTokens: 0 },
+        asstTurn('t1', { cacheCreationTokens: 18000 }),  // pure system content
+        asstTurn('t2', { cacheCreationTokens: 200 }),    // mid-session noise
       ],
     }
     const events = detector.detect(session, skills)
@@ -248,7 +257,6 @@ describe('detectActivations (file-based)', () => {
   it('detects slash-invoked skill from JSONL', () => {
     const home = path.join(tmp, 'home-slash')
     write(path.join(home, '.claude', 'settings.json'), '{}')
-    // Use 500 tokens — well within ±15% of the cc we'll set
     write(
       path.join(home, '.claude', 'projects', 'p', 'sess-a.jsonl'),
       [
@@ -268,7 +276,32 @@ describe('detectActivations (file-based)', () => {
     expect(events[0].turnIndex).toBe(0)
   })
 
-  it('detects auto-triggered skill from JSONL', () => {
+  it('detects a Skill-tool invocation from JSONL', () => {
+    const home = path.join(tmp, 'home-tool')
+    write(path.join(home, '.claude', 'settings.json'), '{}')
+    write(
+      path.join(home, '.claude', 'projects', 'p', 'sess-tool.jsonl'),
+      [
+        userPlain('2026-05-01T10:00:00Z'),
+        // Assistant calls Skill tool
+        assistantTurn('2026-05-01T10:00:05Z', 0, 0, null, [
+          { name: 'Skill', input: { skill: 'kibana-api' } },
+        ]),
+        userPlain('2026-05-01T10:00:06Z'),  // tool_result
+        assistantTurn('2026-05-01T10:00:07Z', 1500, 0),
+      ].join('\n') + '\n',
+    )
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = home
+    const events = detectActivations([{ name: 'kibana-api', bodyTokens: 1500 }])
+    process.env['HOME'] = orig
+
+    expect(events).toHaveLength(1)
+    expect(events[0].injectedSkills).toEqual(['kibana-api'])
+  })
+
+  it('does not detect anything without an explicit signal', () => {
     const home = path.join(tmp, 'home-auto')
     write(path.join(home, '.claude', 'settings.json'), '{}')
     write(
@@ -284,8 +317,7 @@ describe('detectActivations (file-based)', () => {
     const events = detectActivations([{ name: 'concept', bodyTokens: 750 }])
     process.env['HOME'] = orig
 
-    expect(events).toHaveLength(1)
-    expect(events[0].injectedSkills).toEqual(['concept'])
+    expect(events).toHaveLength(0)
   })
 
   it('resets on compaction event in JSONL', () => {
@@ -294,9 +326,11 @@ describe('detectActivations (file-based)', () => {
     write(
       path.join(home, '.claude', 'projects', 'p', 'sess-c.jsonl'),
       [
-        assistantTurn('2026-05-01T10:00:00Z', 400, 0),                            // activate
-        assistantTurn('2026-05-01T10:01:00Z', 0, 0, { applied_edits: [] }),       // compaction
-        assistantTurn('2026-05-01T10:02:00Z', 400, 0),                            // re-activate
+        userWithSkill('review', '2026-05-01T10:00:00Z'),
+        assistantTurn('2026-05-01T10:00:05Z', 400, 0),                           // first activate
+        assistantTurn('2026-05-01T10:01:00Z', 0, 0, { applied_edits: [] }),      // compaction
+        userWithSkill('review', '2026-05-01T10:02:00Z'),
+        assistantTurn('2026-05-01T10:02:05Z', 400, 0),                           // re-activate
       ].join('\n') + '\n',
     )
 
@@ -315,8 +349,10 @@ describe('detectActivations (file-based)', () => {
     write(
       path.join(home, '.claude', 'projects', 'p', 'sess-d.jsonl'),
       [
-        assistantTurn('2026-04-01T10:00:00Z', 500, 0),  // before since
-        assistantTurn('2026-05-01T10:00:00Z', 500, 0),  // after since
+        userWithSkill('quiz', '2026-04-01T10:00:00Z'),
+        assistantTurn('2026-04-01T10:00:05Z', 500, 0),  // before since
+        userWithSkill('quiz', '2026-05-01T10:00:00Z'),
+        assistantTurn('2026-05-01T10:00:05Z', 500, 0),  // after since (but already injected)
       ].join('\n') + '\n',
     )
 
@@ -326,8 +362,10 @@ describe('detectActivations (file-based)', () => {
     const events = detectActivations([{ name: 'quiz', bodyTokens: 500 }], since)
     process.env['HOME'] = orig
 
-    // Only the May event should appear
-    expect(events).toHaveLength(1)
-    expect(events[0].timestamp).toBe('2026-05-01T10:00:00Z')
+    // The April activation is filtered out by since. The May one would be a
+    // re-activation, but the skill is still in the injected set from April —
+    // so no new event is emitted. (Compaction would clear that; absent one,
+    // a single session doesn't double-attribute.)
+    expect(events).toHaveLength(0)
   })
 })

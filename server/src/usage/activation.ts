@@ -2,9 +2,6 @@ import fs from 'fs'
 import path from 'path'
 import { findSessionFiles } from './parser'
 
-const MIN_DELTA_TOLERANCE = 200  // tokens — smaller than any plausible skill body
-const MATCH_TOLERANCE = 0.15     // ±15% around the delta
-
 export interface SkillTokenInfo {
   name: string
   bodyTokens: number
@@ -15,14 +12,21 @@ export interface ActivationEvent {
   turnIndex: number     // 0-based index of the assistant turn within the session
   timestamp: string
   injectedSkills: string[]
+  // Cache delta on the activating turn — informational only. Not used for
+  // attribution: detection is driven by explicit signals, not heuristics.
   cacheCreateDelta: number
-  unexplainedDelta: number
 }
 
 // Normalized turn — harness-agnostic representation consumed by the detector.
 export interface SessionTurn {
   timestamp: string
-  commandName?: string      // skill name from <command-message> if this is a slash command
+  // Slash-command name extracted from a <command-message> tag in a user turn.
+  // Reliable signal: user explicitly invoked /<name>.
+  commandName?: string
+  // Skill names invoked from this assistant turn via the Skill tool. Reliable
+  // signal: Claude itself triggered the skill (covers transitive activations
+  // where one skill instructs Claude to call another).
+  skillToolInvocations: string[]
   isCompaction: boolean     // assistant turn where context_management is non-null
   isAssistant: boolean      // true for valid assistant turns (including compaction turns)
   cacheCreationTokens: number
@@ -38,76 +42,66 @@ export interface ActivationDetector {
   detect(sessionData: SessionData, validSkills: SkillTokenInfo[]): ActivationEvent[]
 }
 
-function withinTolerance(candidate: number, target: number): boolean {
-  if (target === 0) return false
-  return Math.abs(candidate - target) / target <= MATCH_TOLERANCE
-}
-
+// Signal-based activation detection. The cache-delta heuristic was retired
+// because it could not distinguish skill-body deltas from system-content,
+// post-compaction re-cache, file reads, MCP tool refreshes, or Task-tool
+// overhead — producing systematic false-positive Active $ for skills the user
+// had never invoked. We now attribute only when we have an explicit ground-truth
+// signal that a skill body was injected:
+//   1. <command-message> tag in a user turn (slash-command invocation)
+//   2. tool_use block with name="Skill" in an assistant turn (Claude calling
+//      another skill via the Skill tool, including transitive skill→skill chains)
+// Each signal queues the named skill for attribution on the *next* assistant
+// turn, where the body actually lands in cache.
 export class ClaudeCodeActivationDetector implements ActivationDetector {
   detect(sessionData: SessionData, validSkills: SkillTokenInfo[]): ActivationEvent[] {
+    const validSet = new Set(validSkills.map(s => s.name))
     const events: ActivationEvent[] = []
     const injectedNames = new Set<string>()
+    const pendingSignals: string[] = []
     let turnIndex = -1
-    let pendingCommandHint: string | undefined
 
     for (const turn of sessionData.turns) {
       if (turn.isCompaction) {
+        // Cache is wiped — anything previously in context will need to be
+        // re-injected via a fresh signal to count again.
         injectedNames.clear()
-        pendingCommandHint = undefined
+        pendingSignals.length = 0
         turnIndex++
         continue
       }
 
       if (!turn.isAssistant) {
-        if (turn.commandName) {
-          pendingCommandHint = turn.commandName
-        }
+        if (turn.commandName) pendingSignals.push(turn.commandName)
         continue
       }
 
       turnIndex++
-      const cc = turn.cacheCreationTokens
 
-      if (cc > MIN_DELTA_TOLERANCE) {
-        const candidates = validSkills.filter(s => !injectedNames.has(s.name))
-        let matched: string[] = []
-        let unexplained = cc
+      const activated: string[] = []
+      for (const name of pendingSignals) {
+        if (!validSet.has(name)) continue
+        if (injectedNames.has(name)) continue
+        activated.push(name)
+        injectedNames.add(name)
+      }
+      pendingSignals.length = 0
 
-        // Try single-skill match first.
-        const singleMatches = candidates.filter(s => withinTolerance(s.bodyTokens, cc))
-        if (singleMatches.length === 1) {
-          matched = [singleMatches[0].name]
-          unexplained = 0
-        } else if (singleMatches.length > 1) {
-          // Ambiguous single — use slash-command hint as tiebreaker.
-          const hinted = pendingCommandHint
-            ? singleMatches.find(s => s.name === pendingCommandHint)
-            : undefined
-          matched = hinted ? [hinted.name] : singleMatches.map(s => s.name)
-          unexplained = 0
-        } else {
-          // Pair matching is disabled: spike against real sessions (May 2026) showed
-          // 190 pair-matched events vs 98 single-skill events, with repeated false-positive
-          // pairs (e.g. context-degradation+gsd-codebase-mapper) lacking slash-command
-          // corroboration. Unmatched deltas go to unexplainedDelta until a tighter
-          // constraint can be established (Phase 15.1).
-        }
-
-        for (const name of matched) {
-          injectedNames.add(name)
-        }
-
+      if (activated.length > 0) {
         events.push({
           sessionId: sessionData.sessionId,
           turnIndex,
           timestamp: turn.timestamp,
-          injectedSkills: matched,
-          cacheCreateDelta: cc,
-          unexplainedDelta: unexplained,
+          injectedSkills: activated,
+          cacheCreateDelta: turn.cacheCreationTokens,
         })
       }
 
-      pendingCommandHint = undefined
+      // Skill tool calls in this assistant turn cause the named skills to be
+      // injected into the cache by the next assistant turn — queue for then.
+      for (const name of turn.skillToolInvocations) {
+        pendingSignals.push(name)
+      }
     }
 
     return events
@@ -115,6 +109,21 @@ export class ClaudeCodeActivationDetector implements ActivationDetector {
 }
 
 const CMD_MSG_RE = /<command-message>([^<]+)<\/command-message>/
+
+function extractSkillToolInvocations(content: unknown): string[] {
+  if (!Array.isArray(content)) return []
+  const out: string[] = []
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue
+    const b = block as Record<string, unknown>
+    if (b['type'] !== 'tool_use') continue
+    if (b['name'] !== 'Skill') continue
+    const input = b['input'] as Record<string, unknown> | undefined
+    const skill = input?.['skill']
+    if (typeof skill === 'string' && skill.length > 0) out.push(skill)
+  }
+  return out
+}
 
 function parseSessionFileToSessionData(filePath: string): SessionData {
   const sessionId = path.basename(filePath, '.jsonl')
@@ -149,7 +158,11 @@ function parseSessionFileToSessionData(filePath: string): SessionData {
         const m = content.match(CMD_MSG_RE)
         if (m) commandName = m[1].trim()
       }
-      turns.push({ timestamp, commandName, isCompaction: false, isAssistant: false, cacheCreationTokens: 0, cacheReadTokens: 0 })
+      turns.push({
+        timestamp, commandName, skillToolInvocations: [],
+        isCompaction: false, isAssistant: false,
+        cacheCreationTokens: 0, cacheReadTokens: 0,
+      })
       continue
     }
 
@@ -157,16 +170,21 @@ function parseSessionFileToSessionData(filePath: string): SessionData {
     if (!msg || msg['role'] !== 'assistant') continue
 
     const usage = msg['usage'] as Record<string, unknown> | undefined
-    const cc = typeof usage?.['cache_creation_input_tokens'] === 'number' ? usage['cache_creation_input_tokens'] : 0
-    const cr = typeof usage?.['cache_read_input_tokens'] === 'number' ? usage['cache_read_input_tokens'] : 0
+    const cc = typeof usage?.['cache_creation_input_tokens'] === 'number' ? (usage['cache_creation_input_tokens'] as number) : 0
+    const cr = typeof usage?.['cache_read_input_tokens'] === 'number' ? (usage['cache_read_input_tokens'] as number) : 0
 
     const contextMgmt = msg['context_management']
     const isCompaction = contextMgmt != null && contextMgmt !== null
 
-    turns.push({ timestamp, isCompaction, isAssistant: true, cacheCreationTokens: cc, cacheReadTokens: cr })
+    const skillToolInvocations = extractSkillToolInvocations(msg['content'])
+
+    turns.push({
+      timestamp, skillToolInvocations,
+      isCompaction, isAssistant: true,
+      cacheCreationTokens: cc, cacheReadTokens: cr,
+    })
   }
 
-  // Sort by timestamp (defensive — JSONL lines are usually chronological).
   turns.sort((a, b) => {
     if (!a.timestamp) return -1
     if (!b.timestamp) return 1

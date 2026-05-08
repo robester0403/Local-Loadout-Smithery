@@ -23,11 +23,11 @@ import { buildMCPInventory, refreshMCPInventory } from './mcp/inventory'
 import { computeMCPUsage, computeMCPRelationships } from './mcp/usage'
 import { countTokens } from './usage/tokenizer'
 
-// Warm up the WASM tokenizer — first call is slow.
-countTokens('')
+// Warm up the tokenizer — builds the cached Tiktoken instance at startup, not on first request.
+countTokens('warmup')
 
 const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 4123
 
 app.use(express.json())
 
@@ -36,7 +36,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', version: '0.1.0' })
+  res.json({ status: 'ok', version: '0.0.1' })
 })
 
 app.get('/api/inventory', (_req, res) => {
@@ -185,7 +185,9 @@ app.get('/api/usage/breakdown/:skillId', (req, res) => {
   try {
     const tf = parseTimeframe(req.query['timeframe'])
     const since = sinceDate(tf) ?? undefined
-    const breakdown = breakdownForSkill(skill.name, skill.description, skill.type, 100, since)
+    // High cap — with the per-session loaded summary, total rows are bounded
+    // by (active activations + 1 per session), well under any reasonable cap.
+    const breakdown = breakdownForSkill(skill.name, skill.description, skill.type, 10_000, since)
     res.json({ breakdown })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
@@ -588,7 +590,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: err.message })
 })
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   const line = '─'.repeat(44)
   console.log(`\n\x1b[36m┌${line}┐\x1b[0m`)
   console.log(`\x1b[36m│\x1b[0m  \x1b[1mLocal Skill Manager\x1b[0m                        \x1b[36m│\x1b[0m`)
@@ -598,5 +600,14 @@ app.listen(PORT, () => {
   }
   console.log(`\x1b[36m└${line}┘\x1b[0m\n`)
 })
+
+function shutdown(signal: NodeJS.Signals) {
+  console.log(`\n[LSM] received ${signal}, shutting down…`)
+  server.close(() => process.exit(0))
+  // Force-exit if any open keep-alive connection holds the server open.
+  setTimeout(() => process.exit(0), 1000).unref()
+}
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
 
 export default app

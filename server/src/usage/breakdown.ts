@@ -5,9 +5,10 @@ import { findSessionFiles } from './parser'
 import { getPricing, toDollars } from './pricing'
 import {
   listingBytesFor,
+  listingTokensFor,
   LISTING_BUDGET_BYTES,
-  BYTES_PER_TOKEN,
 } from './loaded'
+import { detectActivations } from './activation'
 import type { SkillType } from '../scanner/types'
 
 export interface BreakdownTurn {
@@ -27,7 +28,75 @@ export interface BreakdownSession {
   turns: BreakdownTurn[]
 }
 
-const CMD_MSG_RE = /<command-message>([^<]+)<\/command-message>/
+interface ParsedTurn {
+  timestamp: string
+  isAssistant: boolean
+  isCompaction: boolean
+  model: string
+  sessionId: string
+  inputT: number
+  ccT: number
+  crT: number
+}
+
+function parseSession(filePath: string): ParsedTurn[] {
+  let raw: string
+  try {
+    raw = fs.readFileSync(filePath, 'utf-8')
+  } catch {
+    return []
+  }
+
+  const turns: ParsedTurn[] = []
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let obj: Record<string, unknown>
+    try {
+      obj = JSON.parse(trimmed) as Record<string, unknown>
+    } catch {
+      continue
+    }
+
+    const type = obj['type']
+    const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
+    const sessionId = typeof obj['sessionId'] === 'string' ? obj['sessionId'] : ''
+    const msg = obj['message'] as Record<string, unknown> | undefined
+
+    if (type === 'user') {
+      turns.push({
+        timestamp: ts, isAssistant: false, isCompaction: false,
+        model: '', sessionId, inputT: 0, ccT: 0, crT: 0,
+      })
+      continue
+    }
+    if (type !== 'assistant') continue
+    if (!msg || msg['role'] !== 'assistant') continue
+
+    const usage = msg['usage'] as Record<string, unknown> | undefined
+    const inputT = typeof usage?.['input_tokens'] === 'number' ? (usage['input_tokens'] as number) : 0
+    const ccT = typeof usage?.['cache_creation_input_tokens'] === 'number' ? (usage['cache_creation_input_tokens'] as number) : 0
+    const crT = typeof usage?.['cache_read_input_tokens'] === 'number' ? (usage['cache_read_input_tokens'] as number) : 0
+
+    const ctx = msg['context_management']
+    const isCompaction = ctx != null && ctx !== null
+    const model = typeof msg['model'] === 'string' ? msg['model'] : ''
+
+    turns.push({
+      timestamp: ts, isAssistant: true, isCompaction,
+      model, sessionId, inputT, ccT, crT,
+    })
+  }
+
+  // Sort by timestamp — must match activation.ts so turnIndex aligns.
+  turns.sort((a, b) => {
+    if (!a.timestamp) return -1
+    if (!b.timestamp) return 1
+    return a.timestamp.localeCompare(b.timestamp)
+  })
+
+  return turns
+}
 
 export function breakdownForSkill(
   skillName: string,
@@ -37,157 +106,183 @@ export function breakdownForSkill(
   since?: Date,
 ): BreakdownSession[] {
   const allSkills = discoverAllSkills()
-  const nonCommandSkills = allSkills
+  const targetSkill = allSkills.find(s => s.name === skillName)
+  // Subagents never have their body cached in the parent session, so they
+  // cannot accumulate active cost. Mirror the filter applied in aggregate.ts.
+  const skillBodyTokens =
+    targetSkill && targetSkill.type !== 'subagent' ? targetSkill.bodyTokens : 0
+
+  // Listing-share scaling — mirrors loaded.ts.
+  const prepared = allSkills
     .filter(s => s.type !== 'command')
-    .map(s => ({ name: s.name, bodyBytes: listingBytesFor(s.name, s.description) }))
-    .filter(s => s.bodyBytes > 0)
-
-  const rawTotalBytes = nonCommandSkills.reduce((sum, s) => sum + s.bodyBytes, 0)
+    .map(s => ({
+      name: s.name,
+      listingBytes: listingBytesFor(s.name, s.description),
+    }))
+    .filter(s => s.listingBytes > 0)
+  const rawTotalBytes = prepared.reduce((sum, s) => sum + s.listingBytes, 0)
   const effectiveScale = rawTotalBytes > 0 ? Math.min(1, LISTING_BUDGET_BYTES / rawTotalBytes) : 0
-  const skillBodyBytes = listingBytesFor(skillName, skillDescription)
-  // Tokens this skill contributes to the listing after caps + budget scaling.
-  const skillListingTokens = (skillBodyBytes * effectiveScale) / BYTES_PER_TOKEN
+  const skillListingTokens =
+    skillType !== 'command'
+      ? listingTokensFor(skillName, skillDescription) * effectiveScale
+      : 0
 
-  const validSkills = new Set(allSkills.map(s => s.name))
+  // Detect activations across full history (not filtered by `since`) so that
+  // skills activated before the window are still recognized as in-context after.
+  const tokenInfos = allSkills
+    .filter(s => s.bodyTokens > 0 && s.type !== 'subagent')
+    .map(s => ({ name: s.name, bodyTokens: s.bodyTokens }))
+  const allEvents = detectActivations(tokenInfos)
 
-  const allMatchingTurns: BreakdownTurn[] = []
-  const sessionFiles = findSessionFiles()
-
-  for (const filePath of sessionFiles) {
-    let raw: string
-    try {
-      raw = fs.readFileSync(filePath, 'utf-8')
-    } catch {
-      continue
+  // sessionId → turn indices where this skill was newly activated.
+  const activationsForSkill = new Map<string, Set<number>>()
+  for (const ev of allEvents) {
+    if (!ev.injectedSkills.includes(skillName)) continue
+    let set = activationsForSkill.get(ev.sessionId)
+    if (!set) {
+      set = new Set<number>()
+      activationsForSkill.set(ev.sessionId, set)
     }
+    set.add(ev.turnIndex)
+  }
 
+  // Active rows are emitted per-turn (each one is interesting: when the body
+  // entered cache, when it stayed cached). Loaded rows are uniform tiny charges
+  // on every assistant turn — there can be tens of thousands of them per skill.
+  // We aggregate loaded into a single synthetic row per session so the modal
+  // total still equals the inventory's Active$ + Loaded$ exactly, without
+  // flooding the response. (`maxTurns` is retained for compatibility but only
+  // applies as a sanity bound; with the new shape it is rarely hit.)
+  const activeRowsByFile = new Map<string, BreakdownTurn[]>()
+  interface LoadedAccum {
+    turns: number
+    cacheCreationTokens: number
+    cacheReadTokens: number
+    dollars: number
+    firstTs: string
+    lastTs: string
+    model: string
+  }
+  const loadedAccByFile = new Map<string, LoadedAccum>()
+
+  for (const filePath of findSessionFiles()) {
     const sessionFile = path.basename(filePath, '.jsonl')
-    let currentSkill: string | null = null
+    const turns = parseSession(filePath)
+    const newlyActivatedTurns = activationsForSkill.get(sessionFile) ?? new Set<number>()
 
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed) continue
+    let active = false
+    let turnIndex = -1
+    const seenSessionIds = new Set<string>()  // first-turn tracking for loaded share
 
-      let obj: Record<string, unknown>
-      try {
-        obj = JSON.parse(trimmed) as Record<string, unknown>
-      } catch {
-        continue
+    for (const turn of turns) {
+      if (!turn.isAssistant) continue
+      turnIndex++
+
+      let isNewActivation = false
+      let willEmitActive = false
+      if (turn.isCompaction) {
+        active = false
+      } else {
+        isNewActivation = newlyActivatedTurns.has(turnIndex)
+        if (isNewActivation || active) willEmitActive = true
+        if (isNewActivation) active = true
       }
 
-      const type = obj['type']
+      const beforeSince = since && turn.timestamp && new Date(turn.timestamp) < since
+      if (beforeSince) continue
 
-      // Track active skill via command-message tags
-      if (type === 'user') {
-        const content = (obj['message'] as Record<string, unknown> | undefined)?.['content']
-        if (typeof content === 'string' && content.includes('<command-name>')) {
-          const nameMatch = content.match(CMD_MSG_RE)
-          if (nameMatch) {
-            const name = nameMatch[1].trim()
-            if (validSkills.has(name)) {
-              currentSkill = name
-            } else {
-              currentSkill = null
-            }
-          }
-        }
-        continue
-      }
+      const pricing = getPricing(turn.model)
 
-      if (type !== 'assistant') continue
-      const msg = obj['message'] as Record<string, unknown> | undefined
-      if (!msg || msg['role'] !== 'assistant') continue
-      const usage = msg['usage'] as Record<string, unknown> | undefined
-      if (!usage) continue
-
-      if (since) {
-        const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
-        if (ts && new Date(ts) < since) continue
-      }
-
-      const input = typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0
-      const output = typeof usage['output_tokens'] === 'number' ? usage['output_tokens'] : 0
-      const cacheCreate =
-        typeof usage['cache_creation_input_tokens'] === 'number'
-          ? usage['cache_creation_input_tokens']
-          : 0
-      const cacheRead =
-        typeof usage['cache_read_input_tokens'] === 'number'
-          ? usage['cache_read_input_tokens']
-          : 0
-
-      const model = typeof msg['model'] === 'string' ? msg['model'] : ''
-      const pricing = getPricing(model)
-      const ts = typeof obj['timestamp'] === 'string' ? obj['timestamp'] : ''
-
-      // Active attribution
-      if (currentSkill === skillName) {
-        const dollars = pricing
-          ? toDollars(input, pricing.inputPerM) +
-            toDollars(output, pricing.outputPerM) +
-            toDollars(cacheCreate, pricing.cacheWritePerM) +
-            toDollars(cacheRead, pricing.cacheReadPerM)
-          : 0
-
-        allMatchingTurns.push({
+      if (willEmitActive && skillBodyTokens > 0 && pricing) {
+        const dollars = isNewActivation
+          ? toDollars(skillBodyTokens, pricing.cacheWritePerM)
+          : toDollars(skillBodyTokens, pricing.cacheReadPerM)
+        const list = activeRowsByFile.get(sessionFile) ?? []
+        list.push({
           sessionFile,
-          ts,
-          inputTokens: input,
-          outputTokens: output,
-          cacheCreationTokens: cacheCreate,
-          cacheReadTokens: cacheRead,
+          ts: turn.timestamp,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreationTokens: isNewActivation ? skillBodyTokens : 0,
+          cacheReadTokens: isNewActivation ? 0 : skillBodyTokens,
           dollars,
           attribution: 'active',
-          model,
+          model: turn.model,
         })
-        continue
+        activeRowsByFile.set(sessionFile, list)
       }
 
-      // Loaded attribution — only for non-command skills
-      if (skillType !== 'command' && (input > 0 || cacheCreate > 0 || cacheRead > 0)) {
-        const totalBilled = input + cacheCreate + cacheRead
-        const turnShare = totalBilled > 0 ? Math.min(skillListingTokens / totalBilled, 1) : 0
-        const dollars = pricing
-          ? toDollars(input * turnShare, pricing.inputPerM) +
-            toDollars(cacheCreate * turnShare, pricing.cacheWritePerM) +
-            toDollars(cacheRead * turnShare, pricing.cacheReadPerM)
-          : 0
-
-        // Skip negligible loaded turns
-        if (dollars < 0.000001) continue
-
-        allMatchingTurns.push({
-          sessionFile,
-          ts,
-          inputTokens: Math.round(input * turnShare),
-          outputTokens: 0,
-          cacheCreationTokens: Math.round(cacheCreate * turnShare),
-          cacheReadTokens: Math.round(cacheRead * turnShare),
-          dollars,
-          attribution: 'loaded',
-          model,
-        })
+      const hasUsage = turn.inputT + turn.ccT + turn.crT > 0
+      if (skillType !== 'command' && hasUsage && skillListingTokens > 0 && pricing) {
+        const isFirstTurnLoaded = !seenSessionIds.has(turn.sessionId)
+        if (turn.sessionId) seenSessionIds.add(turn.sessionId)
+        const dollars = isFirstTurnLoaded
+          ? toDollars(skillListingTokens, pricing.cacheWritePerM)
+          : toDollars(skillListingTokens, pricing.cacheReadPerM)
+        if (dollars >= 0.000001) {
+          let acc = loadedAccByFile.get(sessionFile)
+          if (!acc) {
+            acc = {
+              turns: 0, cacheCreationTokens: 0, cacheReadTokens: 0,
+              dollars: 0, firstTs: turn.timestamp, lastTs: turn.timestamp, model: turn.model,
+            }
+            loadedAccByFile.set(sessionFile, acc)
+          }
+          acc.turns++
+          if (isFirstTurnLoaded) acc.cacheCreationTokens += Math.round(skillListingTokens)
+          else acc.cacheReadTokens += Math.round(skillListingTokens)
+          acc.dollars += dollars
+          if (turn.timestamp && (!acc.firstTs || turn.timestamp < acc.firstTs)) acc.firstTs = turn.timestamp
+          if (turn.timestamp && turn.timestamp > acc.lastTs) acc.lastTs = turn.timestamp
+        }
       }
     }
   }
 
-  // Sort by timestamp descending and cap
-  allMatchingTurns.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-  const capped = allMatchingTurns.slice(0, maxTurns)
+  const sessionFiles = new Set<string>([...activeRowsByFile.keys(), ...loadedAccByFile.keys()])
+  const sessions: BreakdownSession[] = []
 
-  // Group by session
-  const sessionMap = new Map<string, BreakdownTurn[]>()
-  for (const turn of capped) {
-    if (!sessionMap.has(turn.sessionFile)) {
-      sessionMap.set(turn.sessionFile, [])
+  for (const sessionFile of sessionFiles) {
+    const activeRows = (activeRowsByFile.get(sessionFile) ?? [])
+      .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+    const acc = loadedAccByFile.get(sessionFile)
+    const turns: BreakdownTurn[] = [...activeRows]
+    if (acc) {
+      turns.push({
+        sessionFile,
+        ts: acc.lastTs,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: acc.cacheCreationTokens,
+        cacheReadTokens: acc.cacheReadTokens,
+        dollars: acc.dollars,
+        attribution: 'loaded',
+        model: acc.model,
+      })
     }
-    sessionMap.get(turn.sessionFile)!.push(turn)
+    if (turns.length > 0) sessions.push({ sessionFile, turns })
   }
 
-  return Array.from(sessionMap.entries())
-    .map(([sessionFile, turns]) => ({
-      sessionFile,
-      turns,
-    }))
-    .sort((a, b) => new Date(b.turns[0].ts).getTime() - new Date(a.turns[0].ts).getTime())
+  sessions.sort((a, b) => {
+    const aTs = a.turns.reduce((m, t) => (t.ts > m ? t.ts : m), '')
+    const bTs = b.turns.reduce((m, t) => (t.ts > m ? t.ts : m), '')
+    return bTs.localeCompare(aTs)
+  })
+
+  // `maxTurns` now bounds total rows across sessions (sanity cap only —
+  // active rows are bounded by real activation count, loaded is one row per
+  // session). Default 100 is virtually never hit.
+  let total = 0
+  const out: BreakdownSession[] = []
+  for (const s of sessions) {
+    if (total >= maxTurns) break
+    if (total + s.turns.length <= maxTurns) {
+      out.push(s)
+      total += s.turns.length
+    } else {
+      out.push({ sessionFile: s.sessionFile, turns: s.turns.slice(0, maxTurns - total) })
+      total = maxTurns
+    }
+  }
+  return out
 }

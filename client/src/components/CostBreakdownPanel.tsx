@@ -75,11 +75,13 @@ export default function CostBreakdownPanel({ skill, onClose, timeframe }: Props)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  const totalDollars = sessions
-    ? sessions.flatMap(s => s.turns).reduce((sum, t) => sum + t.dollars, 0)
-    : 0
-
-  const totalTurns = sessions ? sessions.flatMap(s => s.turns).length : 0
+  const flatTurns = sessions ? sessions.flatMap(s => s.turns) : []
+  const activeTurns = flatTurns.filter(t => t.attribution === 'active')
+  const loadedTurns = flatTurns.filter(t => t.attribution === 'loaded')
+  const activeDollars = activeTurns.reduce((sum, t) => sum + t.dollars, 0)
+  const loadedDollars = loadedTurns.reduce((sum, t) => sum + t.dollars, 0)
+  const totalDollars = activeDollars + loadedDollars
+  const totalTurns = flatTurns.length
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -139,11 +141,25 @@ export default function CostBreakdownPanel({ skill, onClose, timeframe }: Props)
               </div>
             ))}
 
-            <div className="breakdown-footer">
-              <span className="breakdown-footer-label">
-                Total across {totalTurns} turn{totalTurns !== 1 ? 's' : ''}
-              </span>
-              <span className="breakdown-footer-total">{fmtDollars(totalDollars)}</span>
+            <div className="breakdown-footer" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span className="breakdown-footer-label">
+                  Active · {activeTurns.length} turn{activeTurns.length !== 1 ? 's' : ''}
+                </span>
+                <span>{fmtDollars(activeDollars)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span className="breakdown-footer-label">
+                  Loaded · {loadedTurns.length} session{loadedTurns.length !== 1 ? 's' : ''}
+                </span>
+                <span>{fmtDollars(loadedDollars)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 4, marginTop: 4 }}>
+                <span className="breakdown-footer-label">
+                  Total · {totalTurns} row{totalTurns !== 1 ? 's' : ''}
+                </span>
+                <span className="breakdown-footer-total">{fmtDollars(totalDollars)}</span>
+              </div>
             </div>
           </>
         )}

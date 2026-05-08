@@ -221,8 +221,10 @@ describe('computeActiveCost', () => {
     write(
       path.join(home, '.claude', 'projects', 'proj', 'sess7.jsonl'),
       [
+        userWithSkill('morning-plan', '2026-05-01T09:59:50Z'),
         assistantTurn('2026-05-01T10:00:00Z', 500, 0),  // activation 1
-        compactionTurn('2026-05-01T10:01:00Z'),           // clears injected set
+        compactionTurn('2026-05-01T10:01:00Z'),         // clears injected set
+        userWithSkill('morning-plan', '2026-05-01T10:01:50Z'),
         assistantTurn('2026-05-01T10:02:00Z', 500, 0),  // activation 2
       ].join('\n') + '\n',
     )

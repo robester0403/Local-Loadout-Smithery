@@ -1,15 +1,15 @@
 {
   "name": "local-skill-manager",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "The control panel for your Claude Code skill library",
   "bin": {
     "local-skill-manager": "./dist/server/src/index.js"
   },
   "main": "./dist/server/src/index.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "tsx watch server/src/index.ts",
-    "dev:client": "cd client && npm run dev",
+    "dev": "concurrently -k -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx server/src/index.ts",
+    "dev:client": "npm --prefix client run dev",
     "build": "npm run build:server && npm run build:client",
     "build:server": "tsc --project tsconfig.server.json",
     "build:client": "cd client && npm run build",

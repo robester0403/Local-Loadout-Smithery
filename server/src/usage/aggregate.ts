@@ -31,7 +31,14 @@ export function computeSkillAggregate(skills?: SkillCostInput[], since?: Date): 
 
   if (skills === undefined) {
     const discovered = discoverAllSkills()
-    bodyInfoList = discovered.map(s => ({ name: s.name, bodyBytes: s.bodyBytes, bodyTokens: s.bodyTokens }))
+    // Subagents run in their own context — their body is never injected into
+    // the parent session's cache, so they cannot legitimately match cache-creation
+    // deltas. Including them as activation candidates produces systematic false
+    // positives whenever unrelated system content (CLAUDE.md, etc.) lands within
+    // ±15% of a subagent's body size.
+    bodyInfoList = discovered
+      .filter(s => s.type !== 'subagent')
+      .map(s => ({ name: s.name, bodyBytes: s.bodyBytes, bodyTokens: s.bodyTokens }))
     loadedInputList = discovered.map(s => ({
       name: s.name,
       description: s.description,
@@ -41,7 +48,7 @@ export function computeSkillAggregate(skills?: SkillCostInput[], since?: Date): 
     }))
   } else {
     bodyInfoList = skills
-      .filter(s => (s.bodyTokens ?? 0) > 0)
+      .filter(s => (s.bodyTokens ?? 0) > 0 && s.type !== 'subagent')
       .map(s => ({ name: s.name, bodyBytes: s.bodyBytes ?? 0, bodyTokens: s.bodyTokens! }))
     loadedInputList = skills
   }

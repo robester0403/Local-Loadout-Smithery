@@ -55,14 +55,24 @@ export async function probeMCPStdio(
       return
     }
 
+    // We spawned with stdio: ['pipe', 'pipe', 'pipe'], so these are non-null.
+    if (!proc.stdin || !proc.stdout) {
+      clearTimeout(timer)
+      resolve({ status: 'unavailable', reason: 'spawn produced no stdio pipes' })
+      return
+    }
+    const stdin = proc.stdin
+    const stdout = proc.stdout
+
     proc.on('error', (err) => {
       finish({ status: 'unavailable', reason: `process error: ${err.message}` })
     })
+    stdin.on('error', () => { /* absorb EPIPE when MCP process closes stdin */ })
 
     function send(msg: unknown) {
       const line = JSON.stringify(msg) + '\n'
       try {
-        proc.stdin.write(line)
+        stdin.write(line)
       } catch {
         /* stdin may already be closed */
       }
@@ -72,7 +82,7 @@ export async function probeMCPStdio(
     let phase: 'init' | 'tools' | 'done' = 'init'
     const TOOLS_ID = 2
 
-    proc.stdout.on('data', (chunk: Buffer) => {
+    stdout.on('data', (chunk: Buffer) => {
       buffer += chunk.toString('utf-8')
       const lines = buffer.split('\n')
       buffer = lines.pop() ?? ''

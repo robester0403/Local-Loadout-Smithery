@@ -79,11 +79,15 @@ function parseSessionTurns(filePath: string): WalkTurn[] {
 export function computeActiveCost(skills?: SkillBodyInfo[], since?: Date): ActiveCostEntry[] {
   const skillList =
     skills ??
-    discoverAllSkills().map(s => ({
-      name: s.name,
-      bodyBytes: s.bodyBytes,
-      bodyTokens: s.bodyTokens,
-    }))
+    discoverAllSkills()
+      // Subagents run in their own context — their body is never injected into
+      // the parent session's cache, so they cannot accumulate active cost.
+      .filter(s => s.type !== 'subagent')
+      .map(s => ({
+        name: s.name,
+        bodyBytes: s.bodyBytes,
+        bodyTokens: s.bodyTokens,
+      }))
 
   // Skills with zero bodyTokens have no detectable body — exclude from active cost.
   const withBody = skillList.filter(s => s.bodyTokens > 0)
