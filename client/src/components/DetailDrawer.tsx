@@ -83,10 +83,9 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Reset transient drawer state when a different skill opens.
-  useEffect(() => {
-    setShowMap(false)
-  }, [skill.id])
+  // Note: we intentionally don't reset showMap on skill change — when the user
+  // clicks a node inside the relationship map, the drawer skill switches but
+  // the map should stay open so they can keep navigating the graph.
 
   const bodyHtml = skill.body
     ? (marked(skill.body) as string)

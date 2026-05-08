@@ -184,11 +184,12 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
       if (!realName) return
       const skillToOpen = allByName.get(realName)
       if (!skillToOpen) return  // broken-ref placeholder — ignore
+      // Keep the map open while the drawer behind it switches artifacts —
+      // the user can keep navigating around the graph without re-opening.
       onSelect(skillToOpen)
-      onClose()
     }
     return () => { delete w[CLICK_CALLBACK] }
-  }, [nodes, allSkills, onSelect, onClose])
+  }, [nodes, allSkills, onSelect])
 
   useEffect(() => {
     let cancelled = false
