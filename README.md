@@ -1,5 +1,7 @@
 # Local Loadout Smithery
 
+<img width="697" height="900" alt="image" src="https://github.com/user-attachments/assets/62208058-22d5-460c-ba60-facfa7e13264" />
+
 The control panel for your Claude Code loadout. See every skill, slash command, subagent, and MCP server you have, what each one costs in tokens, and which ones aren't pulling their weight — all in one place.
 
 ## Install
