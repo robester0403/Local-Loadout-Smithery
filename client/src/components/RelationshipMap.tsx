@@ -113,10 +113,15 @@ function typeShape(type: string): [string, string] {
   }
 }
 
+// Name of the global window callback that Mermaid's `click` directive will
+// invoke. We register this in the component effect and tear it down on unmount.
+const CLICK_CALLBACK = '__llsRelmapClick'
+
 function buildMermaid(
   root: Skill,
   nodes: Map<string, Skill>,
   edges: Array<{ from: string; to: string; source: string }>,
+  enableClicks: boolean,
 ): string {
   const lines: string[] = ['flowchart LR']
 
@@ -140,6 +145,16 @@ function buildMermaid(
   const rootId = sanitizeId(root.name)
   lines.push(`  style ${rootId} fill:#4a2d80,stroke:#9d6cf5,color:#e4e0f4,stroke-width:2px`)
 
+  // Bind every node to a click callback. Mermaid's `click <id> <callback>`
+  // syntax dispatches `window[callback](id)` when the node is clicked, with
+  // `securityLevel: 'loose'` (set above). This is the version-stable way to
+  // bind navigation — DOM-id parsing was fragile across Mermaid versions.
+  if (enableClicks) {
+    for (const name of nodes.keys()) {
+      lines.push(`  click ${sanitizeId(name)} ${CLICK_CALLBACK}`)
+    }
+  }
+
   return lines.join('\n')
 }
 
@@ -150,13 +165,28 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   const [svgHtml, setSvgHtml] = useState<string | null>(null)
 
   const { nodes, edges } = buildChain(skill, allSkills)
-  const mermaidSrc = buildMermaid(skill, nodes, edges)
+  const mermaidSrc = buildMermaid(skill, nodes, edges, !!onSelect)
 
-  // Reverse-lookup from sanitized id (what Mermaid uses in DOM) back to the
-  // real artifact name. sanitizeId is lossy, but collisions are vanishingly
-  // unlikely within one user's loadout.
-  const sanitizedToName = new Map<string, string>()
-  for (const name of nodes.keys()) sanitizedToName.set(sanitizeId(name), name)
+  // Register the click callback that Mermaid will invoke. Mermaid passes the
+  // sanitized node id as the first argument; we reverse-lookup the real name
+  // from the nodes map and dispatch onSelect.
+  useEffect(() => {
+    if (!onSelect) return
+    const sanitizedToName = new Map<string, string>()
+    for (const name of nodes.keys()) sanitizedToName.set(sanitizeId(name), name)
+    const allByName = new Map(allSkills.map(s => [s.name, s]))
+
+    const w = window as unknown as Record<string, unknown>
+    w[CLICK_CALLBACK] = (clickedId: string) => {
+      const realName = sanitizedToName.get(clickedId)
+      if (!realName) return
+      const skillToOpen = allByName.get(realName)
+      if (!skillToOpen) return  // broken-ref placeholder — ignore
+      onSelect(skillToOpen)
+      onClose()
+    }
+    return () => { delete w[CLICK_CALLBACK] }
+  }, [nodes, allSkills, onSelect, onClose])
 
   useEffect(() => {
     let cancelled = false
@@ -172,32 +202,6 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     render()
     return () => { cancelled = true }
   }, [mermaidSrc])
-
-  // Attach click handlers to every rendered node group. Mermaid gives each
-  // node an id like `flowchart-<sanitized>-<counter>`; we parse that back to
-  // the artifact name and dispatch via onSelect.
-  useEffect(() => {
-    if (!svgHtml || !onSelect || !containerRef.current) return
-    const root = containerRef.current
-    const allByName = new Map(allSkills.map(s => [s.name, s]))
-
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Element | null
-      const node = target?.closest('.node') as SVGGraphicsElement | null
-      if (!node) return
-      const match = node.id.match(/^flowchart-(.+?)-\d+$/)
-      if (!match) return
-      const realName = sanitizedToName.get(match[1])
-      if (!realName) return
-      const skillToOpen = allByName.get(realName)
-      if (!skillToOpen) return  // broken-ref placeholder — ignore
-      onSelect(skillToOpen)
-      onClose()
-    }
-
-    root.addEventListener('click', handler)
-    return () => root.removeEventListener('click', handler)
-  }, [svgHtml, onSelect, onClose, allSkills, sanitizedToName])
 
   const isOrphan = nodes.size === 1 && edges.length === 0
 
