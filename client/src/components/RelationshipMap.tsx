@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Skill } from '../types'
 import mermaid from 'mermaid'
 
@@ -30,8 +30,15 @@ mermaid.initialize({
   securityLevel: 'loose',
 })
 
-// ─── Build the full ancestor + descendant chain ───────────────────────────────
-function buildChain(root: Skill, allSkills: Skill[]): {
+type Direction = 'in' | 'out' | 'both'
+
+// ─── Build the ancestor + descendant chain bounded by depth + direction ──────
+function buildChain(
+  root: Skill,
+  allSkills: Skill[],
+  maxDepth: number,
+  direction: Direction,
+): {
   nodes: Map<string, Skill>
   edges: Array<{ from: string; to: string; source: string }>
 } {
@@ -47,50 +54,68 @@ function buildChain(root: Skill, allSkills: Skill[]): {
     edges.push({ from, to, source })
   }
 
-  // BFS forward: root and all descendants
-  const visitedFwd = new Set<string>()
-  const queueFwd: Skill[] = [root]
-  while (queueFwd.length > 0) {
-    const s = queueFwd.shift()!
-    if (visitedFwd.has(s.name)) continue
-    visitedFwd.add(s.name)
-    nodes.set(s.name, s)
-    for (const ref of s.references ?? []) {
-      const target = byName.get(ref.name)
-      if (target) {
-        addEdge(s.name, ref.name, ref.source)
-        if (!visitedFwd.has(ref.name)) queueFwd.push(target)
-      } else {
-        // broken ref — add as a placeholder node
-        nodes.set(ref.name, {
-          ...s, name: ref.name, type: 'skill', id: ref.name,
-          description: '', health: { status: 'warn', issues: [] }, references: [],
-        } as unknown as Skill)
-        addEdge(s.name, ref.name, ref.source)
+  // Always include the root.
+  nodes.set(root.name, root)
+
+  // BFS forward (descendants): only when direction permits.
+  if (direction === 'out' || direction === 'both') {
+    const visited = new Set<string>()
+    const queue: Array<{ skill: Skill; depth: number }> = [{ skill: root, depth: 0 }]
+    while (queue.length > 0) {
+      const { skill: s, depth } = queue.shift()!
+      if (visited.has(s.name)) continue
+      visited.add(s.name)
+      if (depth >= maxDepth) continue
+      for (const ref of s.references ?? []) {
+        const target = byName.get(ref.name)
+        if (target) {
+          if (!nodes.has(target.name)) nodes.set(target.name, target)
+          addEdge(s.name, ref.name, ref.source)
+          if (!visited.has(ref.name)) queue.push({ skill: target, depth: depth + 1 })
+        } else {
+          // broken ref — add placeholder so the user can see the dangling pointer
+          if (!nodes.has(ref.name)) {
+            nodes.set(ref.name, {
+              ...s, name: ref.name, type: 'skill', id: ref.name,
+              description: '', health: { status: 'warn', issues: [] }, references: [],
+            } as unknown as Skill)
+          }
+          addEdge(s.name, ref.name, ref.source)
+        }
       }
     }
   }
 
-  // BFS backward: ancestors (skills that reference any node we've found)
-  const visitedBwd = new Set<string>()
-  const queueBwd: Skill[] = allSkills.filter(s =>
-    s.references?.some(r => nodes.has(r.name))
-  )
-  while (queueBwd.length > 0) {
-    const s = queueBwd.shift()!
-    if (visitedBwd.has(s.name)) continue
-    visitedBwd.add(s.name)
-    if (!nodes.has(s.name)) nodes.set(s.name, s)
-    for (const ref of s.references ?? []) {
-      if (nodes.has(ref.name)) {
-        addEdge(s.name, ref.name, ref.source)
+  // BFS backward (ancestors): only when direction permits.
+  if (direction === 'in' || direction === 'both') {
+    const visited = new Set<string>([root.name])
+    type BwdEntry = { name: string; depth: number }
+    // seed: anything that references the root
+    const queue: BwdEntry[] = allSkills
+      .filter(s => s.references?.some(r => r.name === root.name))
+      .map(s => ({ name: s.name, depth: 1 }))
+
+    while (queue.length > 0) {
+      const { name, depth } = queue.shift()!
+      if (visited.has(name)) continue
+      visited.add(name)
+      const s = byName.get(name)
+      if (!s) continue
+      if (!nodes.has(s.name)) nodes.set(s.name, s)
+      // Add edges from this ancestor to anything it references that's already
+      // in the node set — this includes the root and other in-graph nodes.
+      for (const ref of s.references ?? []) {
+        if (nodes.has(ref.name)) addEdge(s.name, ref.name, ref.source)
+      }
+      if (depth >= maxDepth) continue
+      // Find ancestors of this ancestor and queue them.
+      for (const a of allSkills) {
+        if (visited.has(a.name)) continue
+        if (a.references?.some(r => r.name === s.name)) {
+          queue.push({ name: a.name, depth: depth + 1 })
+        }
       }
     }
-    // Find ancestors of this ancestor too
-    const ancestors = allSkills.filter(a =>
-      !visitedBwd.has(a.name) && a.references?.some(r => r.name === s.name)
-    )
-    queueBwd.push(...ancestors)
   }
 
   return { nodes, edges }
@@ -114,7 +139,8 @@ function typeShape(type: string): [string, string] {
 }
 
 // Name of the global window callback that Mermaid's `click` directive will
-// invoke. We register this in the component effect and tear it down on unmount.
+// invoke. Stable for the process lifetime — registered once per RelationshipMap
+// instance so we never leave a stale empty hook in `window`.
 const CLICK_CALLBACK = '__llsRelmapClick'
 
 function buildMermaid(
@@ -125,7 +151,6 @@ function buildMermaid(
 ): string {
   const lines: string[] = ['flowchart LR']
 
-  // Node declarations with shapes
   for (const [name, skill] of nodes) {
     const id = sanitizeId(name)
     const label = escapeMermaidLabel(name)
@@ -133,7 +158,6 @@ function buildMermaid(
     lines.push(`  ${id}${open}"${label}"${close}`)
   }
 
-  // Edges with style hints
   for (const edge of edges) {
     const from = sanitizeId(edge.from)
     const to = sanitizeId(edge.to)
@@ -141,14 +165,9 @@ function buildMermaid(
     lines.push(`  ${from} ${arrow} ${to}`)
   }
 
-  // Style: highlight the root node
   const rootId = sanitizeId(root.name)
   lines.push(`  style ${rootId} fill:#4a2d80,stroke:#9d6cf5,color:#e4e0f4,stroke-width:2px`)
 
-  // Bind every node to a click callback. Mermaid's `click <id> <callback>`
-  // syntax dispatches `window[callback](id)` when the node is clicked, with
-  // `securityLevel: 'loose'` (set above). This is the version-stable way to
-  // bind navigation — DOM-id parsing was fragile across Mermaid versions.
   if (enableClicks) {
     for (const name of nodes.keys()) {
       lines.push(`  click ${sanitizeId(name)} ${CLICK_CALLBACK}`)
@@ -159,6 +178,19 @@ function buildMermaid(
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
+const DEPTH_OPTIONS: Array<{ label: string; value: number }> = [
+  { label: '1', value: 1 },
+  { label: '2', value: 2 },
+  { label: '3', value: 3 },
+  { label: 'All', value: Number.POSITIVE_INFINITY },
+]
+
+const DIRECTION_OPTIONS: Array<{ label: string; value: Direction; title: string }> = [
+  { label: '← In',   value: 'in',   title: 'Show only artifacts that reference this one' },
+  { label: '↔ Both', value: 'both', title: 'Show both incoming and outgoing references' },
+  { label: '→ Out',  value: 'out',  title: 'Show only artifacts this one references' },
+]
+
 export default function RelationshipMap({ skill, allSkills, onClose, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const svgHostRef = useRef<HTMLDivElement>(null)
@@ -166,40 +198,58 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   const [error, setError] = useState<string | null>(null)
   const [svgHtml, setSvgHtml] = useState<string | null>(null)
 
-  const { nodes, edges } = buildChain(skill, allSkills)
-  const mermaidSrc = buildMermaid(skill, nodes, edges, !!onSelect)
+  // Controls.
+  const [maxDepth, setMaxDepth] = useState<number>(2)
+  const [direction, setDirection] = useState<Direction>('both')
 
-  // Register the click callback that Mermaid will invoke. Mermaid passes the
-  // sanitized node id as the first argument; we reverse-lookup the real name
-  // from the nodes map and dispatch onSelect.
+  const { nodes, edges } = useMemo(
+    () => buildChain(skill, allSkills, maxDepth, direction),
+    [skill, allSkills, maxDepth, direction],
+  )
+  const mermaidSrc = useMemo(
+    () => buildMermaid(skill, nodes, edges, !!onSelect),
+    [skill, nodes, edges, onSelect],
+  )
+
+  // Lookup data needed by the click callback. Stored in refs so the callback
+  // registration effect doesn't churn (delete/re-register) every render — the
+  // callback reads the current value at click time, never closes over stale
+  // copies. This was the root cause of "clicks stop working after a while":
+  // rapid graph changes were repeatedly tearing down and re-installing the
+  // global hook, opening narrow windows where mermaid's bound handler invoked
+  // an undefined function.
+  const sanitizedToNameRef = useRef<Map<string, string>>(new Map())
+  const skillsByNameRef = useRef<Map<string, Skill>>(new Map())
+  sanitizedToNameRef.current = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const name of nodes.keys()) m.set(sanitizeId(name), name)
+    return m
+  }, [nodes])
+  skillsByNameRef.current = useMemo(
+    () => new Map(allSkills.map(s => [s.name, s])),
+    [allSkills],
+  )
+
+  // Register the global Mermaid click hook ONCE per mount. Lookups happen
+  // through the refs above, so this never has to be torn down on graph change.
   useEffect(() => {
     if (!onSelect) return
-    const sanitizedToName = new Map<string, string>()
-    for (const name of nodes.keys()) sanitizedToName.set(sanitizeId(name), name)
-    const allByName = new Map(allSkills.map(s => [s.name, s]))
-
     const w = window as unknown as Record<string, unknown>
     w[CLICK_CALLBACK] = (clickedId: string) => {
-      const realName = sanitizedToName.get(clickedId)
+      const realName = sanitizedToNameRef.current.get(clickedId)
       if (!realName) return
-      const skillToOpen = allByName.get(realName)
+      const skillToOpen = skillsByNameRef.current.get(realName)
       if (!skillToOpen) return  // broken-ref placeholder — ignore
-      // Keep the map open while the drawer behind it switches artifacts —
-      // the user can keep navigating around the graph without re-opening.
       onSelect(skillToOpen)
     }
     return () => { delete w[CLICK_CALLBACK] }
-  }, [nodes, allSkills, onSelect])
+  }, [onSelect])
 
   useEffect(() => {
     let cancelled = false
     async function render() {
       try {
         const id = `mermaid-${Date.now()}`
-        // mermaid.render returns both the SVG markup AND a bindFunctions
-        // callback. The click directives we emit (`click <id> <callback>`)
-        // are inert until bindFunctions runs against the live DOM — that's
-        // what actually attaches the click handlers to the SVG nodes.
         const { svg, bindFunctions } = await mermaid.render(id, mermaidSrc)
         if (cancelled) return
         bindFunctionsRef.current = bindFunctions ?? null
@@ -229,7 +279,7 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
           <div>
             <div className="modal-title">{skill.name} — relationship map</div>
             <div className="modal-subtitle">
-              {nodes.size} skill{nodes.size !== 1 ? 's' : ''} · {edges.length} edge{edges.length !== 1 ? 's' : ''} ·{' '}
+              {nodes.size} {nodes.size === 1 ? 'artifact' : 'artifacts'} · {edges.length} edge{edges.length !== 1 ? 's' : ''} ·{' '}
               <span className="relmap-legend">
                 <span className="relmap-legend-item">── direct &nbsp;</span>
                 <span className="relmap-legend-item">·· body mention</span>
@@ -237,6 +287,43 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
             </div>
           </div>
           <button className="btn btn-sm modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="relmap-controls">
+          <div className="relmap-control-group" role="radiogroup" aria-label="Direction">
+            <span className="relmap-control-label">Direction</span>
+            {DIRECTION_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={direction === opt.value}
+                title={opt.title}
+                className={`relmap-control-btn ${direction === opt.value ? 'is-active' : ''}`}
+                onClick={() => setDirection(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="relmap-control-group" role="radiogroup" aria-label="Depth">
+            <span className="relmap-control-label">Depth</span>
+            {DEPTH_OPTIONS.map(opt => (
+              <button
+                key={opt.label}
+                type="button"
+                role="radio"
+                aria-checked={maxDepth === opt.value}
+                title={opt.value === Number.POSITIVE_INFINITY
+                  ? 'Show the entire connected component (may be large)'
+                  : `Show up to ${opt.label} hop${opt.value === 1 ? '' : 's'} in each direction`}
+                className={`relmap-control-btn ${maxDepth === opt.value ? 'is-active' : ''}`}
+                onClick={() => setMaxDepth(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="relmap-type-legend">
@@ -250,8 +337,8 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
           {isOrphan ? (
             <div className="relmap-orphan">
               <div className="relmap-orphan-icon">◉</div>
-              <div>This skill has no references and is not referenced by any other skill.</div>
-              <div className="relmap-orphan-sub">It stands alone — nothing leads into or out of it.</div>
+              <div>No relationships visible at the current depth and direction.</div>
+              <div className="relmap-orphan-sub">Try increasing depth, switching direction, or this artifact is genuinely an island.</div>
             </div>
           ) : error ? (
             <div className="sr-form-error">{error}</div>
