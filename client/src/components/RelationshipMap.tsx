@@ -358,18 +358,7 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
               </span>
             </div>
           </div>
-          <div className="relmap-modal-buttons">
-            <button
-              type="button"
-              className="btn btn-sm modal-close"
-              onClick={() => setFullscreen(f => !f)}
-              title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-              aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-            >
-              {fullscreen ? '⊟' : '⛶'}
-            </button>
-            <button className="btn btn-sm modal-close" onClick={onClose} aria-label="Close">×</button>
-          </div>
+          <button className="btn btn-sm modal-close" onClick={onClose} aria-label="Close">×</button>
         </div>
 
         <div className="relmap-controls">
@@ -418,6 +407,15 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
 
         <div className="relmap-body" ref={containerRef}>
           <div className="relmap-graph-wrap">
+            <button
+              type="button"
+              className="relmap-fullscreen-btn"
+              onClick={() => setFullscreen(f => !f)}
+              title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {fullscreen ? '⊟' : '⛶'}
+            </button>
             <div className="relmap-graph" ref={graphRef}>
               {isOrphan ? (
                 <div className="relmap-orphan">

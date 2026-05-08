@@ -1127,7 +1127,6 @@ td.col-totalDollars { color: var(--text); }
   border: none !important;
 }
 
-.relmap-modal-buttons { display: flex; gap: 6px; }
 
 .relmap-type-legend {
   display: flex; align-items: center; gap: 16px;
@@ -1251,6 +1250,32 @@ td.col-totalDollars { color: var(--text); }
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0,0,0,.4);
   z-index: 5;
+}
+
+/* Fullscreen toggle in the top-right of the graph pane — visual sibling of
+   the zoom toolbar so the two graph-pane controls feel like a set. */
+.relmap-fullscreen-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  cursor: pointer;
+  z-index: 5;
+  transition: background .1s, color .1s;
+}
+.relmap-fullscreen-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
 }
 .relmap-zoom-btn {
   font: 600 12px var(--mono);
