@@ -33,15 +33,15 @@ const TYPE_LABELS: Record<string, string> = {
   mcp: 'mcp',
 }
 
-const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean }[] = [
+const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean; title?: string }[] = [
   { key: 'health', labelBase: 'Health' },
   { key: 'insight', labelBase: 'Diag' },
   { key: 'name', labelBase: 'Name' },
   { key: 'type', labelBase: 'Type' },
   { key: 'scope', labelBase: 'Context' },
   { key: 'lastModified', labelBase: 'Modified' },
-  { key: 'activeDollars', labelBase: 'Active $', numeric: true },
-  { key: 'loadedDollars', labelBase: 'Loaded $', numeric: true },
+  { key: 'activeDollars', labelBase: 'Active $', numeric: true, title: "Cost of this skill's body sitting in context across turns it was loaded" },
+  { key: 'loadedDollars', labelBase: 'Loaded $', numeric: true, title: "Cost of this skill's listing in the system prompt across every turn" },
   { key: 'totalDollars', labelBase: 'Total $', numeric: true },
 ]
 
@@ -109,6 +109,7 @@ export default function InventoryTable({
                   col.numeric ? 'col-numeric' : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => onSort(col.key)}
+                title={col.title}
               >
                 {col.label}
                 {sortKey === col.key && (
