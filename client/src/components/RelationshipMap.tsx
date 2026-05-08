@@ -6,6 +6,11 @@ interface Props {
   skill: Skill
   allSkills: Skill[]
   onClose: () => void
+  // Called when the user clicks a node in the rendered graph. Passing this
+  // makes the map navigable — clicking switches the detail view to the chosen
+  // artifact. Broken-ref placeholder nodes (skills that don't exist in
+  // allSkills) are silently ignored.
+  onSelect?: (skill: Skill) => void
 }
 
 mermaid.initialize({
@@ -139,13 +144,19 @@ function buildMermaid(
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function RelationshipMap({ skill, allSkills, onClose }: Props) {
+export default function RelationshipMap({ skill, allSkills, onClose, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [svgHtml, setSvgHtml] = useState<string | null>(null)
 
   const { nodes, edges } = buildChain(skill, allSkills)
   const mermaidSrc = buildMermaid(skill, nodes, edges)
+
+  // Reverse-lookup from sanitized id (what Mermaid uses in DOM) back to the
+  // real artifact name. sanitizeId is lossy, but collisions are vanishingly
+  // unlikely within one user's loadout.
+  const sanitizedToName = new Map<string, string>()
+  for (const name of nodes.keys()) sanitizedToName.set(sanitizeId(name), name)
 
   useEffect(() => {
     let cancelled = false
@@ -161,6 +172,32 @@ export default function RelationshipMap({ skill, allSkills, onClose }: Props) {
     render()
     return () => { cancelled = true }
   }, [mermaidSrc])
+
+  // Attach click handlers to every rendered node group. Mermaid gives each
+  // node an id like `flowchart-<sanitized>-<counter>`; we parse that back to
+  // the artifact name and dispatch via onSelect.
+  useEffect(() => {
+    if (!svgHtml || !onSelect || !containerRef.current) return
+    const root = containerRef.current
+    const allByName = new Map(allSkills.map(s => [s.name, s]))
+
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Element | null
+      const node = target?.closest('.node') as SVGGraphicsElement | null
+      if (!node) return
+      const match = node.id.match(/^flowchart-(.+?)-\d+$/)
+      if (!match) return
+      const realName = sanitizedToName.get(match[1])
+      if (!realName) return
+      const skillToOpen = allByName.get(realName)
+      if (!skillToOpen) return  // broken-ref placeholder — ignore
+      onSelect(skillToOpen)
+      onClose()
+    }
+
+    root.addEventListener('click', handler)
+    return () => root.removeEventListener('click', handler)
+  }, [svgHtml, onSelect, onClose, allSkills, sanitizedToName])
 
   const isOrphan = nodes.size === 1 && edges.length === 0
 

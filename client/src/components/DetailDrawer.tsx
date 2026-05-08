@@ -391,6 +391,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           skill={skill}
           allSkills={allSkills}
           onClose={() => setShowMap(false)}
+          onSelect={onSelect}
         />
       )}
     </>

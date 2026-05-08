@@ -1169,6 +1169,15 @@ td.col-totalDollars { color: var(--text); }
   max-width: 100%;
   height: auto;
 }
+/* Clickable nodes: pointer cursor + subtle hover so it's obvious they
+   navigate to the corresponding artifact's detail view. */
+.relmap-svg .node { cursor: pointer; }
+.relmap-svg .node:hover rect,
+.relmap-svg .node:hover polygon,
+.relmap-svg .node:hover circle,
+.relmap-svg .node:hover ellipse {
+  filter: brightness(1.15);
+}
 
 .relmap-orphan {
   display: flex; flex-direction: column; align-items: center;
