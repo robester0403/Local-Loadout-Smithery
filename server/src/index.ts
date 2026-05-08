@@ -5,6 +5,7 @@ import os from 'os'
 import { exec, spawn } from 'child_process'
 import { discoverAllSkills } from './scanner'
 import { disableSkill, enableSkill } from './state'
+import { loadUninstalled, uninstallSkill, restoreSkill, permanentDelete } from './state/uninstall'
 import { listProfiles, createProfile, deleteProfile, activateProfile } from './state/profiles'
 import { computeSkillAggregate } from './usage'
 import { getSampleTurn } from './usage/sampleTurn'
@@ -18,6 +19,12 @@ import { writeGroupFile, deleteGroupFile } from './superrouter/routingFile'
 import { updateGlobalClaude, updateProjectClaude } from './superrouter/claudeMdWriter'
 import { installHook, uninstallHook, isHookInstalled } from './superrouter/hookGenerator'
 import { computeDrift } from './superrouter/drift'
+import { buildMCPInventory, refreshMCPInventory } from './mcp/inventory'
+import { computeMCPUsage, computeMCPRelationships } from './mcp/usage'
+import { countTokens } from './usage/tokenizer'
+
+// Warm up the WASM tokenizer — first call is slow.
+countTokens('')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -308,6 +315,76 @@ app.post('/api/skills/:id/open', (req, res) => {
   })
 })
 
+// ── Uninstall / Trash ────────────────────────────────────────────────────────
+
+app.get('/api/uninstalled', (_req, res) => {
+  res.json({ entries: loadUninstalled() })
+})
+
+app.post('/api/skills/:id/uninstall', (req, res) => {
+  let logicalPath: string
+  try {
+    logicalPath = Buffer.from(req.params.id, 'base64').toString('utf-8')
+  } catch {
+    res.status(400).json({ error: 'Invalid id' })
+    return
+  }
+  const home = os.homedir()
+  if (!path.resolve(logicalPath).startsWith(home + path.sep)) {
+    res.status(403).json({ error: 'Path outside home directory' })
+    return
+  }
+
+  const actualPath = fs.existsSync(logicalPath) ? logicalPath
+    : fs.existsSync(logicalPath + '.disabled') ? logicalPath + '.disabled'
+    : null
+  if (!actualPath) {
+    res.status(404).json({ error: 'Skill file not found' })
+    return
+  }
+
+  const inventory = discoverAllSkills()
+  const skill = inventory.find(s => s.realpath === logicalPath || s.path === actualPath)
+  if (!skill) {
+    res.status(404).json({ error: 'Skill not found in inventory' })
+    return
+  }
+
+  // Move the physical file (realpath); storing it so restore puts it back in the right place
+  const physicalPath = skill.realpath || actualPath
+
+  try {
+    uninstallSkill(req.params.id, physicalPath, {
+      name: skill.name,
+      description: skill.description,
+      type: skill.type,
+      scope: skill.scope,
+      account: skill.account,
+    })
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/uninstalled/:id/restore', (req, res) => {
+  try {
+    const restoredPath = restoreSkill(req.params.id)
+    res.json({ ok: true, restoredPath })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.delete('/api/uninstalled/:id', (req, res) => {
+  try {
+    permanentDelete(req.params.id)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
 // ── SuperRouter ──────────────────────────────────────────────────────────────
 
 function syncClaudeMd(allGroups: ReturnType<typeof loadState>['groups']) {
@@ -445,6 +522,46 @@ app.post('/api/superrouter/global-toggle', (req, res) => {
     const state = loadState()
     syncClaudeMd(state.groups)
     res.json({ ok: true, hookInstalled: isHookInstalled() })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+// ── MCP inventory ────────────────────────────────────────────────────────────
+
+app.get('/api/mcp/inventory', async (_req, res) => {
+  try {
+    const servers = await buildMCPInventory()
+    res.json({ servers })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.post('/api/mcp/refresh', async (_req, res) => {
+  try {
+    const servers = await refreshMCPInventory()
+    res.json({ servers })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.get('/api/mcp/usage', (req, res) => {
+  try {
+    const tf = parseTimeframe(req.query.timeframe)
+    const since = sinceDate(tf) ?? undefined
+    const summaries = computeMCPUsage(since)
+    res.json({ summaries })
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message })
+  }
+})
+
+app.get('/api/mcp/relationships', (_req, res) => {
+  try {
+    const relationships = computeMCPRelationships()
+    res.json({ relationships })
   } catch (err) {
     res.status(500).json({ error: (err as Error).message })
   }

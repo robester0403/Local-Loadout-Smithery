@@ -34,6 +34,10 @@ export interface Skill {
   realpath: string
   isSymlink: boolean
   body: string
+  bodyBytes: number
+  bodyTokens: number
+  listingBytes: number
+  listingTokens: number
   frontmatter: Record<string, unknown>
   lastModified: string
   health: HealthResult

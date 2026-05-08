@@ -5,7 +5,25 @@ import { parseFrontmatter } from '../parser/frontmatter'
 import { computeHealth } from './health'
 import { extractReferences } from './references'
 import { inferType } from './classification'
+import { countTokens } from '../usage/tokenizer'
 import type { Skill, SkillType, SkillScope, HealthResult } from './types'
+
+// Mirrors the listing budget constraints from loaded.ts.
+// Cannot import from there — circular dep (loaded imports discoverAllSkills).
+const PER_SKILL_DESC_CAP_BYTES = 1536
+
+function computeListingBytes(name: string, description: string): number {
+  const nameBytes = Buffer.byteLength(name, 'utf-8')
+  if (nameBytes === 0) return 0
+  const descBytes = Math.min(Buffer.byteLength(description, 'utf-8'), PER_SKILL_DESC_CAP_BYTES)
+  return nameBytes + 1 + descBytes
+}
+
+function computeListingTokens(name: string, description: string): number {
+  // Approximate byte-level truncation with char-level slice — fine for ASCII descriptions.
+  const truncated = description.slice(0, PER_SKILL_DESC_CAP_BYTES)
+  return countTokens(`${name} ${truncated}`.trimEnd())
+}
 
 function listDir(dir: string): string[] {
   try {
@@ -95,10 +113,11 @@ function buildSkill(
       path.basename(path.dirname(filePath)) ||
       path.basename(logicalPath, '.md')
 
+    const description = (meta['description'] as string | undefined) || ''
     const base: Omit<Skill, 'health' | 'disabled' | 'suggestedType'> = {
       id: Buffer.from(realpath).toString('base64'),
       name,
-      description: (meta['description'] as string | undefined) || '',
+      description,
       version: (meta['version'] as string | undefined) || '',
       type,
       scope,
@@ -108,6 +127,10 @@ function buildSkill(
       realpath,
       isSymlink,
       body,
+      bodyBytes: Buffer.byteLength(body, 'utf-8'),
+      bodyTokens: countTokens(body),
+      listingBytes: computeListingBytes(name, description),
+      listingTokens: computeListingTokens(name, description),
       frontmatter: meta,
       lastModified: stat.mtime.toISOString(),
       references: [],

@@ -25,6 +25,7 @@
   "author": "Robert So",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
     "express": "^5.2.1"
   },
   "devDependencies": {
