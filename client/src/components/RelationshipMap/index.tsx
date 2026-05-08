@@ -81,6 +81,13 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   const railSkill: Skill =
     (hoveredName && skillsByNameRef.current.get(hoveredName)) || skill
 
+  // Set of every artifact name in the loadout. Used by the info rail to
+  // highlight mentions inside descriptions. Stable across re-renders.
+  const knownNames = useMemo<ReadonlySet<string>>(
+    () => new Set(allSkills.map(s => s.name)),
+    [allSkills],
+  )
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className={`modal relmap-modal ${fullscreen ? 'relmap-modal-fullscreen' : ''}`}>
@@ -131,6 +138,7 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
             skill={railSkill}
             isHovering={hoveredName != null}
             isRoot={railSkill.name === skill.name}
+            knownNames={knownNames}
           />
         </div>
       </div>

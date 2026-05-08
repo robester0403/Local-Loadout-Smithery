@@ -1,6 +1,7 @@
 // Small presentational subcomponents extracted from the RelationshipMap.
 // Kept as named exports in one file to avoid file-explosion for trivial UI.
 
+import { Fragment, type ReactNode } from 'react'
 import type { Skill } from '../../types'
 import {
   type Direction,
@@ -136,9 +137,12 @@ interface InfoRailProps {
   skill: Skill
   isHovering: boolean
   isRoot: boolean
+  /** Every artifact name in the loadout, used to highlight mentions in the
+   *  description. Self-references are skipped. */
+  knownNames: ReadonlySet<string>
 }
 
-export function RelmapInfoRail({ skill, isHovering, isRoot }: InfoRailProps) {
+export function RelmapInfoRail({ skill, isHovering, isRoot, knownNames }: InfoRailProps) {
   const refCount = (skill.references ?? []).length
   return (
     <aside className="relmap-rail">
@@ -149,7 +153,9 @@ export function RelmapInfoRail({ skill, isHovering, isRoot }: InfoRailProps) {
       </div>
       <h3 className="relmap-rail-title">{skill.name}</h3>
       {skill.description ? (
-        <p className="relmap-rail-desc">{skill.description}</p>
+        <p className="relmap-rail-desc">
+          {highlightMentions(skill.description, knownNames, skill.name)}
+        </p>
       ) : (
         <p className="relmap-rail-desc relmap-rail-desc-empty">No description.</p>
       )}
@@ -179,6 +185,42 @@ function Stat({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   )
+}
+
+// Bold every occurrence in `text` of any name in `names`, except `selfName`.
+// Longest-first matching prevents partial hits (e.g. "gh" matching inside
+// "gh-cli"). Boundaries use [\w:-] so hyphens and colons inside a name don't
+// fragment matches, but adjacent letters/dashes still keep us from matching
+// substrings.
+function highlightMentions(
+  text: string,
+  names: ReadonlySet<string>,
+  selfName: string,
+): ReactNode {
+  if (!text || names.size === 0) return text
+  const candidates = Array.from(names)
+    .filter(n => n.length > 1 && n !== selfName)
+    .sort((a, b) => b.length - a.length)
+  if (candidates.length === 0) return text
+
+  const pattern = candidates.map(escapeRegex).join('|')
+  const re = new RegExp(`(?<![\\w:-])(?:${pattern})(?![\\w:-])`, 'g')
+
+  const out: ReactNode[] = []
+  let lastIdx = 0
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIdx) out.push(text.slice(lastIdx, match.index))
+    out.push(<strong key={`m${match.index}`} className="relmap-rail-mention">{match[0]}</strong>)
+    lastIdx = re.lastIndex
+  }
+  if (lastIdx < text.length) out.push(text.slice(lastIdx))
+  // Wrap in a Fragment so callers can render directly.
+  return <Fragment>{out}</Fragment>
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function fmtDollars(n: number): string {

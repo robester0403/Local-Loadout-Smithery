@@ -1363,6 +1363,14 @@ td.col-totalDollars { color: var(--text); }
   margin: 0;
 }
 .relmap-rail-desc-empty { color: var(--text-dim); font-style: italic; }
+.relmap-rail-mention {
+  font-weight: 600;
+  color: var(--text-head);
+  /* Hint that these are graph nodes you can find in the canvas. */
+  background: rgba(154,117,234,.10);
+  padding: 0 2px;
+  border-radius: 2px;
+}
 .relmap-rail-stats {
   display: grid;
   grid-template-columns: 1fr;
