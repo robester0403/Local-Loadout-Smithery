@@ -240,37 +240,52 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     return () => { cancelled = true }
   }, [mermaidSrc])
 
-  // Reset zoom whenever a new graph is rendered (different skill, different
-  // depth/direction). Otherwise a zoomed-in view would persist into a graph
-  // it doesn't fit, leaving the user lost.
-  useEffect(() => {
-    setZoom(1)
-  }, [mermaidSrc])
+  // Tracks the last svgHtml we processed so we can detect "new graph" vs
+  // "user changed zoom" inside the same effect.
+  const lastSvgRef = useRef<string | null>(null)
 
-  // Apply zoom by setting the svg's width/height attributes. Capture natural
-  // dimensions from the viewBox the first time we see a given svgHtml.
+  // Apply zoom by setting the svg's width/height. On a brand-new graph,
+  // auto-fit so the default view always frames the whole thing — the user
+  // can then zoom in for detail without losing their place.
   useEffect(() => {
     if (!svgHtml || !graphRef.current) return
     const svgEl = graphRef.current.querySelector('svg') as SVGSVGElement | null
     if (!svgEl) return
 
-    // Re-capture natural dims from the viewBox each time the svg changes.
-    const viewBox = svgEl.getAttribute('viewBox')
-    if (viewBox) {
-      const parts = viewBox.split(/\s+/).map(Number)
-      if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
-        naturalDimRef.current = { w: parts[2], h: parts[3] }
+    const isNewGraph = lastSvgRef.current !== svgHtml
+    lastSvgRef.current = svgHtml
+
+    if (isNewGraph) {
+      // Re-capture natural dims from the viewBox each time mermaid emits a new svg.
+      const viewBox = svgEl.getAttribute('viewBox')
+      if (viewBox) {
+        const parts = viewBox.split(/\s+/).map(Number)
+        if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
+          naturalDimRef.current = { w: parts[2], h: parts[3] }
+        }
       }
     }
 
     const dim = naturalDimRef.current
-    if (dim) {
-      svgEl.setAttribute('width', String(dim.w * zoom))
-      svgEl.setAttribute('height', String(dim.h * zoom))
-      // Drop max-width style mermaid sometimes adds — would otherwise cap our zoom.
-      svgEl.style.maxWidth = 'none'
-      svgEl.style.maxHeight = 'none'
+    if (!dim) return
+
+    // Pick the zoom we'll apply this pass: on a new graph, compute fit-to-screen
+    // and use that directly so we never paint at the wrong scale even briefly.
+    let effectiveZoom = zoom
+    if (isNewGraph) {
+      const { width, height } = graphRef.current.getBoundingClientRect()
+      const availW = Math.max(40, width - 24)   // 12px padding each side
+      const availH = Math.max(40, height - 24)
+      const fit = Math.min(availW / dim.w, availH / dim.h)
+      effectiveZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, +fit.toFixed(2)))
+      if (effectiveZoom !== zoom) setZoom(effectiveZoom)
     }
+
+    svgEl.setAttribute('width', String(dim.w * effectiveZoom))
+    svgEl.setAttribute('height', String(dim.h * effectiveZoom))
+    // Drop any max-width style mermaid sometimes adds — would otherwise cap zoom.
+    svgEl.style.maxWidth = 'none'
+    svgEl.style.maxHeight = 'none'
   }, [svgHtml, zoom])
 
   const ZOOM_MIN = 0.2
