@@ -189,6 +189,10 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   const [maxDepth, setMaxDepth] = useState<number>(2)
   const [direction, setDirection] = useState<Direction>('both')
 
+  // Name of the node currently under the cursor. Falls back to the root
+  // artifact when nothing is hovered, so the info rail always shows something.
+  const [hoveredName, setHoveredName] = useState<string | null>(null)
+
   const { nodes, edges } = useMemo(
     () => buildChain(skill, allSkills, maxDepth, direction),
     [skill, allSkills, maxDepth, direction],
@@ -222,48 +226,60 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     return () => { cancelled = true }
   }, [mermaidSrc])
 
-  // Click handling via DOM event delegation on the outer (always-mounted)
-  // container. Previous approaches relied on Mermaid's `click` directive plus
-  // bindFunctions(host) — they failed intermittently because the SVG host div
-  // unmounts/remounts when toggling between graph and orphan states, and
-  // useEffect[svgHtml] doesn't re-fire if svgHtml is unchanged across the
-  // remount. With delegation on the outer container, the handler is attached
-  // once for the life of the modal and reads the artifact name from each
-  // clicked node's visible text — no rebinding, no stale-id parsing.
+  // DOM event delegation on the outer (always-mounted) container. Click
+  // dispatches navigation; mouseover/mouseleave drives the info rail. Handlers
+  // attach once for the modal's lifetime so graph re-renders, depth/direction
+  // changes, and orphan-state transitions are all transparent — no rebinding.
   useEffect(() => {
-    if (!onSelect) return
     const root = containerRef.current
     if (!root) return
 
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Element | null
-      const node = target?.closest('.node') as SVGElement | null
-      if (!node) return
-
-      // Mermaid renders the label as either an HTML span (htmlLabels: true) or
-      // a plain <text>. textContent on the node group catches both.
+    function nameFromNode(node: Element): string | null {
       const labelEl = node.querySelector('.nodeLabel, foreignObject, .label, text')
       const label = (labelEl?.textContent ?? node.textContent ?? '').trim()
-      if (!label) return
-
-      // Direct match by name. Most artifacts have no quotes so this hits.
-      const direct = skillsByNameRef.current.get(label)
-      if (direct) {
-        onSelect(direct)
-        return
+      if (!label) return null
+      if (skillsByNameRef.current.has(label)) return label
+      for (const name of skillsByNameRef.current.keys()) {
+        if (escapeMermaidLabel(name) === label) return name
       }
-      // Fallback: names with `"` got escaped to `'` in escapeMermaidLabel.
-      for (const [name, s] of skillsByNameRef.current) {
-        if (escapeMermaidLabel(name) === label) {
-          onSelect(s)
-          return
-        }
-      }
+      return null
     }
 
-    root.addEventListener('click', handler)
-    return () => root.removeEventListener('click', handler)
+    const onClick = (e: MouseEvent) => {
+      if (!onSelect) return
+      const target = e.target as Element | null
+      const node = target?.closest('.node')
+      if (!node) return
+      const name = nameFromNode(node)
+      if (!name) return
+      const s = skillsByNameRef.current.get(name)
+      if (s) onSelect(s)
+    }
+
+    const onMouseOver = (e: MouseEvent) => {
+      const target = e.target as Element | null
+      const node = target?.closest('.node')
+      if (!node) return
+      const name = nameFromNode(node)
+      setHoveredName(name)  // null is fine — rail falls back to root
+    }
+
+    const onMouseLeave = () => setHoveredName(null)
+
+    root.addEventListener('click', onClick)
+    root.addEventListener('mouseover', onMouseOver)
+    root.addEventListener('mouseleave', onMouseLeave)
+    return () => {
+      root.removeEventListener('click', onClick)
+      root.removeEventListener('mouseover', onMouseOver)
+      root.removeEventListener('mouseleave', onMouseLeave)
+    }
   }, [onSelect])
+
+  // Whatever the rail should show right now: hovered node, or the root when
+  // nothing is being hovered.
+  const railSkill: Skill =
+    (hoveredName && skillsByNameRef.current.get(hoveredName)) || skill
 
   const isOrphan = nodes.size === 1 && edges.length === 0
 
@@ -329,31 +345,94 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
         </div>
 
         <div className="relmap-body" ref={containerRef}>
-          {isOrphan ? (
-            <div className="relmap-orphan">
-              <div className="relmap-orphan-icon">◉</div>
-              <div>No relationships visible at the current depth and direction.</div>
-              <div className="relmap-orphan-sub">Try increasing depth, switching direction, or this artifact is genuinely an island.</div>
-            </div>
-          ) : error ? (
-            <div className="sr-form-error">{error}</div>
-          ) : svgHtml ? (
-            <div
-              className="relmap-svg"
-              dangerouslySetInnerHTML={{ __html: svgHtml }}
-            />
-          ) : (
-            <div className="empty-state" style={{ minHeight: 120 }}>
-              <div className="spinner" />
-            </div>
-          )}
-        </div>
+          <div className="relmap-graph">
+            {isOrphan ? (
+              <div className="relmap-orphan">
+                <div className="relmap-orphan-icon">◉</div>
+                <div>No relationships visible at the current depth and direction.</div>
+                <div className="relmap-orphan-sub">Try increasing depth, switching direction, or this artifact is genuinely an island.</div>
+              </div>
+            ) : error ? (
+              <div className="sr-form-error">{error}</div>
+            ) : svgHtml ? (
+              <div
+                className="relmap-svg"
+                dangerouslySetInnerHTML={{ __html: svgHtml }}
+              />
+            ) : (
+              <div className="empty-state" style={{ minHeight: 120 }}>
+                <div className="spinner" />
+              </div>
+            )}
+          </div>
 
-        <div className="relmap-footer">
-          <span className="relmap-src-label">Mermaid source</span>
-          <pre className="relmap-src">{mermaidSrc}</pre>
+          <RelmapInfoRail skill={railSkill} isHovering={hoveredName != null} isRoot={railSkill.name === skill.name} />
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── Info rail ────────────────────────────────────────────────────────────────
+function fmtDollars(n: number): string {
+  if (n === 0) return '$0'
+  if (n >= 0.0001) return '$' + n.toFixed(4)
+  return '$' + n.toFixed(6)
+}
+
+function fmtDate(iso: string | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+function RelmapInfoRail({ skill, isHovering, isRoot }: { skill: Skill; isHovering: boolean; isRoot: boolean }) {
+  const refCount = (skill.references ?? []).length
+  return (
+    <aside className="relmap-rail">
+      <div className="relmap-rail-header">
+        <span className={`type-badge type-${skill.type}`}>{skill.type}</span>
+        {isRoot && !isHovering && (
+          <span className="relmap-rail-tag">selected</span>
+        )}
+        {isHovering && (
+          <span className="relmap-rail-tag relmap-rail-tag-hover">hovering</span>
+        )}
+      </div>
+      <h3 className="relmap-rail-title">{skill.name}</h3>
+      {skill.description ? (
+        <p className="relmap-rail-desc">{skill.description}</p>
+      ) : (
+        <p className="relmap-rail-desc relmap-rail-desc-empty">No description.</p>
+      )}
+
+      <dl className="relmap-rail-stats">
+        <div>
+          <dt>Active $</dt>
+          <dd>{fmtDollars(skill.activeDollars ?? 0)}</dd>
+        </div>
+        <div>
+          <dt>Loaded $</dt>
+          <dd>{fmtDollars(skill.loadedDollars ?? 0)}</dd>
+        </div>
+        <div>
+          <dt>Last invoked</dt>
+          <dd>{fmtDate(skill.lastInvoked)}</dd>
+        </div>
+        <div>
+          <dt>References</dt>
+          <dd>{refCount}{refCount === 1 ? ' out' : ' out'}</dd>
+        </div>
+        <div>
+          <dt>Scope</dt>
+          <dd>{skill.scope}{skill.account && skill.account !== 'default' ? ` · ${skill.account}` : ''}</dd>
+        </div>
+      </dl>
+
+      <p className="relmap-rail-hint">
+        Hover any node to preview · click to switch detail view
+      </p>
+    </aside>
   )
 }

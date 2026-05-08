@@ -1107,8 +1107,8 @@ td.col-totalDollars { color: var(--text); }
 
 /* ─── Relationship map modal ────────────────────────────────────────────── */
 .relmap-modal {
-  max-width: 900px;
-  width: 92vw;
+  max-width: 1100px;
+  width: 94vw;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -1193,16 +1193,97 @@ td.col-totalDollars { color: var(--text); }
 
 .relmap-body {
   flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+}
+.relmap-graph {
+  flex: 1;
+  min-width: 0;
   overflow: auto;
-  min-height: 200px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
+  padding: 12px;
 }
 
 .relmap-svg {
   width: 100%;
   overflow: auto;
+}
+
+/* ─── Info rail (right side of relmap-body) ─────────────────────────────── */
+.relmap-rail {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding: 16px 18px;
+  overflow-y: auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.relmap-rail-header {
+  display: flex; align-items: center; gap: 8px;
+}
+.relmap-rail-tag {
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .8px;
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.relmap-rail-tag-hover {
+  color: #c4a8ff;
+  background: rgba(154,117,234,.15);
+  border-color: rgba(154,117,234,.45);
+}
+.relmap-rail-title {
+  font: 600 14px var(--mono);
+  color: var(--text-head);
+  word-break: break-word;
+  margin: 0;
+}
+.relmap-rail-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+}
+.relmap-rail-desc-empty { color: var(--text-dim); font-style: italic; }
+.relmap-rail-stats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+}
+.relmap-rail-stats > div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+.relmap-rail-stats dt {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.relmap-rail-stats dd {
+  color: var(--text);
+  margin: 0;
+  font-family: var(--mono);
+}
+.relmap-rail-hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin: auto 0 0;  /* push to bottom */
+  padding-top: 8px;
 }
 .relmap-svg svg {
   max-width: 100%;
@@ -1225,23 +1306,6 @@ td.col-totalDollars { color: var(--text); }
 }
 .relmap-orphan-icon { font-size: 24px; color: var(--text-dim); }
 .relmap-orphan-sub { font-size: 11px; }
-
-.relmap-footer {
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  margin-top: 12px;
-}
-.relmap-src-label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .6px; color: var(--text-dim); display: block; margin-bottom: 6px;
-}
-.relmap-src {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 10px 12px;
-  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
-  overflow-x: auto; white-space: pre; max-height: 120px; overflow-y: auto;
-}
 
 /* ─── Clickable dollar value ────────────────────────────────────────────── */
 .dollar-link {
