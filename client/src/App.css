@@ -27,7 +27,7 @@
   --radius:        6px;
   --header-h:      52px;
   --sidebar-w:     240px;
-  --drawer-w:      520px;
+  --drawer-w:      760px;
 }
 
 html, body, #root { height: 100%; }
@@ -513,13 +513,19 @@ td.col-totalDollars { color: var(--text); }
 .drawer-title-row { display: flex; align-items: center; gap: 10px; }
 .drawer-title { font-size: 17px; font-weight: 600; color: var(--text-head); font-family: var(--mono); }
 .drawer-desc { font-size: 13px; color: var(--text-dim); }
-.drawer-actions { display: flex; gap: 8px; padding-top: 4px; }
+.drawer-actions { display: flex; gap: 8px; padding-top: 4px; flex-wrap: wrap; }
+
+/* Scroll container: all sections below the header scroll together. */
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+}
 
 /* ─── Drawer issues accordion ───────────────────────────────────────────── */
 .drawer-accordion {
-  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
+.accordion-trigger-default { color: var(--text); }
 
 .accordion-trigger {
   width: 100%;
@@ -621,8 +627,6 @@ td.col-totalDollars { color: var(--text); }
 
 .drawer-meta {
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
 }
 .meta-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .meta-table th {
@@ -636,7 +640,6 @@ td.col-totalDollars { color: var(--text); }
 }
 
 .drawer-body {
-  flex: 1; overflow-y: auto;
   padding: 20px;
 }
 
