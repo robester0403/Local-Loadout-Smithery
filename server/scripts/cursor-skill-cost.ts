@@ -120,12 +120,20 @@ function extractSkillName(params: unknown, rawArgs: unknown): string | null {
   return segments[segments.length - 2]
 }
 
+// Walk the value tree looking for a string that ENDS with '/SKILL.md'. The
+// leaf check must be `endsWith` rather than `includes`: a JSON-encoded
+// envelope like `{"targetFile":"…/SKILL.md","limit":30}` contains the
+// substring but isn't itself a path, so an `includes` check short-circuits
+// before recursing into the object and returns garbage to the caller.
 function pickPathLike(v: unknown): string | null {
   if (typeof v === 'string') {
-    if (v.includes('/SKILL.md')) return v
-    // Some rawArgs are JSON-encoded strings.
+    if (v.endsWith('/SKILL.md')) return v
+    // Otherwise try parsing as JSON and recurse into the parsed structure.
+    // params and rawArgs are sometimes stringified, sometimes not.
     try {
       const inner = JSON.parse(v) as unknown
+      // Guard against trivial loops: JSON.parse('"foo"') → 'foo'.
+      if (typeof inner === 'string' && inner === v) return null
       return pickPathLike(inner)
     } catch {
       return null
