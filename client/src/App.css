@@ -27,7 +27,7 @@
   --radius:        6px;
   --header-h:      52px;
   --sidebar-w:     240px;
-  --drawer-w:      520px;
+  --drawer-w:      760px;
 }
 
 html, body, #root { height: 100%; }
@@ -513,13 +513,19 @@ td.col-totalDollars { color: var(--text); }
 .drawer-title-row { display: flex; align-items: center; gap: 10px; }
 .drawer-title { font-size: 17px; font-weight: 600; color: var(--text-head); font-family: var(--mono); }
 .drawer-desc { font-size: 13px; color: var(--text-dim); }
-.drawer-actions { display: flex; gap: 8px; padding-top: 4px; }
+.drawer-actions { display: flex; gap: 8px; padding-top: 4px; flex-wrap: wrap; }
+
+/* Scroll container: all sections below the header scroll together. */
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+}
 
 /* ─── Drawer issues accordion ───────────────────────────────────────────── */
 .drawer-accordion {
-  flex-shrink: 0;
   border-bottom: 1px solid var(--border);
 }
+.accordion-trigger-default { color: var(--text); }
 
 .accordion-trigger {
   width: 100%;
@@ -621,8 +627,6 @@ td.col-totalDollars { color: var(--text); }
 
 .drawer-meta {
   padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
 }
 .meta-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .meta-table th {
@@ -636,7 +640,6 @@ td.col-totalDollars { color: var(--text); }
 }
 
 .drawer-body {
-  flex: 1; overflow-y: auto;
   padding: 20px;
 }
 
@@ -1104,12 +1107,26 @@ td.col-totalDollars { color: var(--text); }
 
 /* ─── Relationship map modal ────────────────────────────────────────────── */
 .relmap-modal {
-  max-width: 900px;
-  width: 92vw;
+  max-width: 1100px;
+  width: 94vw;
+  /* Min-height locks the modal to a consistent size so the centered overlay
+     doesn't shift up/down when the info rail's content grows on hover. */
+  min-height: 78vh;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
 }
+/* Fullscreen mode — overrides max-width / max-height so the modal fills the
+   viewport. !important is needed because the base .relmap-modal sets these. */
+.relmap-modal-fullscreen {
+  max-width: 100vw !important;
+  width: 100vw !important;
+  max-height: 100vh !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
 
 .relmap-type-legend {
   display: flex; align-items: center; gap: 16px;
@@ -1149,22 +1166,299 @@ td.col-totalDollars { color: var(--text); }
 .relmap-legend { display: inline-flex; gap: 0; }
 .relmap-legend-item { font-size: 11px; color: var(--text-dim); }
 
+/* Depth + direction control row above the graph */
+.relmap-controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 0 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.relmap-control-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.relmap-control-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: var(--text-dim);
+  margin-right: 4px;
+}
+.relmap-control-btn {
+  font: 11px var(--mono);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.relmap-control-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.relmap-control-btn.is-active {
+  background: rgba(154,117,234,.18);
+  border-color: rgba(154,117,234,.55);
+  color: #c4a8ff;
+}
+
 .relmap-body {
   flex: 1;
-  overflow: auto;
-  min-height: 200px;
+  min-height: 320px;
   display: flex;
-  align-items: flex-start;
+  flex-direction: row;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+}
+/* Wrap that provides a positioning context for the zoom overlay. The wrap
+   doesn't scroll — only .relmap-graph inside does — so the overlay stays put
+   in the bottom-right of the visible graph area regardless of scroll state. */
+.relmap-graph-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+.relmap-graph {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;             /* lets the flex item shrink so overflow:auto kicks in */
+  overflow: auto;
+  display: flex;
+  /* `safe center` keeps centering when content fits, but falls back to `start`
+     so the user can still scroll to the top/left of an overflowing graph. */
+  align-items: safe center;
+  justify-content: safe center;
+  padding: 12px;
+  /* Click-and-drag panning affordance. Becomes 'grabbing' while a drag is in
+     progress (set by useGraphPanning via the .is-panning class). Nodes
+     override to 'pointer' below since they're navigation targets. */
+  cursor: grab;
+}
+.relmap-graph.is-panning,
+.relmap-graph.is-panning * {
+  cursor: grabbing !important;
+  /* Disable text/element selection during a drag so the browser doesn't try
+     to highlight node labels as the mouse moves. */
+  user-select: none;
+}
+
+/* ─── Zoom controls overlay (bottom-right of the graph pane) ────────────── */
+.relmap-zoom {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  z-index: 5;
+}
+
+/* Fullscreen toggle in the top-right of the graph pane — visual sibling of
+   the zoom toolbar so the two graph-pane controls feel like a set. */
+.relmap-fullscreen-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  font-size: 14px;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  cursor: pointer;
+  z-index: 5;
+  transition: background .1s, color .1s;
+}
+.relmap-fullscreen-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.relmap-zoom-btn {
+  font: 600 12px var(--mono);
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.relmap-zoom-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.relmap-zoom-btn:disabled { opacity: .35; cursor: not-allowed; }
+.relmap-zoom-fit { font-size: 10.5px; }
+.relmap-zoom-level {
+  font: 11px var(--mono);
+  color: var(--text-dim);
+  min-width: 38px;
+  text-align: center;
 }
 
 .relmap-svg {
-  width: 100%;
-  overflow: auto;
+  /* Size is React state-driven via inline width/height (in pixels); the
+     inner svg fills this wrapper. Doing it this way keeps zoom under React
+     control so unrelated re-renders (hover, etc.) can't perturb the rendered
+     scale via mermaid's own inline styles or CSS auto-sizing. */
+  flex-shrink: 0;
+}
+
+/* ─── Info rail (right side of relmap-body) ─────────────────────────────── */
+.relmap-rail {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding: 16px 18px;
+  overflow-y: auto;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.relmap-rail-header {
+  display: flex; align-items: center; gap: 8px;
+}
+.relmap-rail-tag {
+  font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .8px;
+  color: var(--text-dim);
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.relmap-rail-tag-hover {
+  color: #c4a8ff;
+  background: rgba(154,117,234,.15);
+  border-color: rgba(154,117,234,.45);
+}
+.relmap-rail-title {
+  font: 600 14px var(--mono);
+  color: var(--text-head);
+  word-break: break-word;
+  margin: 0;
+}
+.relmap-rail-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+}
+.relmap-rail-desc-empty { color: var(--text-dim); font-style: italic; }
+.relmap-rail-mention {
+  font-weight: 600;
+  color: var(--text-head);
+  /* Hint that these are graph nodes you can find in the canvas. */
+  background: rgba(154,117,234,.10);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Body mention snippets — small surrounding-context cards stacked under
+   the description, one per occurrence (capped at MAX_BODY_MENTIONS). */
+.relmap-rail-snippets {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.relmap-rail-snippets-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--text-dim);
+}
+.relmap-rail-snippets-count { font-weight: 500; opacity: .8; }
+.relmap-rail-snippets-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.relmap-rail-snippet {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  /* Don't let one long unbroken token (URL etc.) blow out the rail. */
+  word-break: break-word;
+}
+.relmap-rail-snippet .relmap-rail-mention {
+  /* Pop a touch more inside snippets since the surrounding text is dimmed. */
+  color: var(--text);
+}
+.relmap-rail-stats {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+}
+.relmap-rail-stats > div {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+.relmap-rail-stats dt {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.relmap-rail-stats dd {
+  color: var(--text);
+  margin: 0;
+  font-family: var(--mono);
+}
+.relmap-rail-hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin: auto 0 0;  /* push to bottom */
+  padding-top: 8px;
 }
 .relmap-svg svg {
-  max-width: 100%;
-  height: auto;
+  /* Fill the wrapper exactly. !important needed because mermaid sometimes
+     inlines max-width on the svg element. */
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+/* Clickable nodes: pointer cursor + subtle hover so it's obvious they
+   navigate to the corresponding artifact's detail view. */
+.relmap-svg .node { cursor: pointer; }
+.relmap-svg .node:hover rect,
+.relmap-svg .node:hover polygon,
+.relmap-svg .node:hover circle,
+.relmap-svg .node:hover ellipse {
+  filter: brightness(1.15);
 }
 
 .relmap-orphan {
@@ -1174,23 +1468,6 @@ td.col-totalDollars { color: var(--text); }
 }
 .relmap-orphan-icon { font-size: 24px; color: var(--text-dim); }
 .relmap-orphan-sub { font-size: 11px; }
-
-.relmap-footer {
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  padding-top: 10px;
-  margin-top: 12px;
-}
-.relmap-src-label {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .6px; color: var(--text-dim); display: block; margin-bottom: 6px;
-}
-.relmap-src {
-  background: var(--bg); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 10px 12px;
-  font-family: var(--mono); font-size: 11px; color: var(--text-dim);
-  overflow-x: auto; white-space: pre; max-height: 120px; overflow-y: auto;
-}
 
 /* ─── Clickable dollar value ────────────────────────────────────────────── */
 .dollar-link {

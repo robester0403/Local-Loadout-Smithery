@@ -1,7 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { Skill, SkillType, SkillUsageSummary, Insight, SortKey, SortDir, Filters, Timeframe, MCPRow } from './types'
+import type { Skill, SkillType, SkillUsageSummary, SortKey, SortDir, Filters, Timeframe, MCPRow } from './types'
 import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude, reclassifySkill, fetchUninstalled, uninstallSkillApi, restoreSkillApi, fetchMCPInventory, fetchMCPUsage, fetchMCPRelationships } from './api'
 import type { ProfilesData, UninstalledEntry, MCPUsageSummary, MCPRelationship } from './api'
+import {
+  DORMANT_DAYS,
+  HEALTH_ORDER,
+  INSIGHT_RANK,
+  computeTotals,
+  countReview,
+  fmtUsd,
+  mergeWithCost,
+  toMCPSkill,
+} from './lib/cost'
 import { getBundledPrompt } from './prompts'
 import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
@@ -16,94 +26,6 @@ import UninstalledPanel from './components/UninstalledPanel'
 import './App.css'
 
 type ActiveTab = 'inventory' | 'superrouter'
-
-// Thresholds for diagnostic insights.
-// Future: read from ~/.loadoutsmith/config.json
-const LOADED_HIGH_USD = 0.001   // skills costing > $0.001 in loaded context are "high loaded"
-const ACTIVE_HIGH_USD = 0.0001  // treat active < $0.0001 as "zero active" (float safety)
-const DORMANT_DAYS = 90
-const GRACE_PERIOD_DAYS = 10    // newly modified skills are exempt from removal-candidate flag
-
-const HEALTH_ORDER: Record<string, number> = { error: 0, warn: 1, ok: 2 }
-const INSIGHT_RANK = (s: Skill): number =>
-  s.insight === 'removal-candidate' ? 0 : s.dormant ? 1 : s.insight === 'winner' ? 2 : 3
-
-function toMCPSkill(entry: MCPRow, usage?: MCPUsageSummary): Skill {
-  const statusMap: Record<MCPRow['status'], Skill['health']['status']> = {
-    ok: 'ok', unavailable: 'error', unknown: 'warn',
-  }
-  const toolCount = entry.tools.length
-  const transport = entry.transport ?? 'stdio'
-  const now = Date.now()
-  const dormant = !!(
-    usage?.lastInvoked &&
-    (now - new Date(usage.lastInvoked).getTime()) / 86_400_000 > DORMANT_DAYS
-  )
-  return {
-    id: `mcp::${entry.name}`,
-    name: entry.name,
-    description: `${toolCount} tool${toolCount !== 1 ? 's' : ''} · ${transport}`,
-    version: '',
-    type: 'mcp',
-    scope: entry.scope ?? 'global',
-    account: '',
-    path: entry.source ?? '',
-    realpath: entry.source ?? '',
-    isSymlink: false,
-    body: '',
-    frontmatter: {},
-    lastModified: '',
-    health: {
-      status: statusMap[entry.status],
-      issues: entry.statusReason
-        ? [{ severity: entry.status === 'unavailable' ? 'error' : 'warn', message: entry.statusReason }]
-        : [],
-    },
-    disabled: false,
-    references: [],
-    activeDollars: usage?.dollars ?? 0,
-    loadedDollars: 0,
-    totalDollars: usage?.dollars ?? 0,
-    insight: null,
-    dormant,
-    lastInvoked: usage?.lastInvoked ?? '',
-    bloat: false,
-    descLen: 0,
-    mcpData: entry,
-  }
-}
-
-function mergeWithCost(skills: Skill[], summaries: SkillUsageSummary[]): Skill[] {
-  const costMap = new Map(summaries.map(s => [s.skillName, s]))
-  const now = Date.now()
-  return skills.map(s => {
-    const c = costMap.get(s.name)
-    const activeDollars = c?.active.dollars ?? 0
-    const loadedDollars = c?.loaded.dollars ?? 0
-    const totalDollars = c?.total.dollars ?? 0
-
-    const isNew = (now - new Date(s.lastModified).getTime()) / 86_400_000 < GRACE_PERIOD_DAYS
-
-    let insight: Insight = null
-    if (loadedDollars >= LOADED_HIGH_USD) {
-      if (activeDollars >= ACTIVE_HIGH_USD) {
-        insight = 'winner'
-      } else if (!isNew) {
-        insight = 'removal-candidate'
-      }
-    }
-
-    const dormant = !!(
-      c?.lastInvoked &&
-      (now - new Date(c.lastInvoked).getTime()) / 86_400_000 > DORMANT_DAYS
-    )
-
-    const descLen = s.description.length
-    const bloat = s.type !== 'command' && descLen > 150
-
-    return { ...s, activeDollars, loadedDollars, totalDollars, insight, dormant, lastInvoked: c?.lastInvoked ?? '', bloat, descLen }
-  })
-}
 
 export default function App() {
   const [skills, setSkills] = useState<Skill[]>([])
@@ -357,7 +279,11 @@ export default function App() {
       return true
     })
     .sort((a, b) => {
-      if (a.disabled !== b.disabled) return a.disabled ? 1 : -1
+      // Note: we intentionally do NOT push disabled rows to the bottom here.
+      // Toggling a skill should be a quiet, in-place state change — shoving the
+      // row to the end of the list creates a jarring shift and loses the user's
+      // place. The .row-disabled style already makes disabled rows visually
+      // distinct; users who want them grouped can sort by an explicit column.
 
       let cmp: number
       if (sortKey === 'health') {
@@ -386,20 +312,9 @@ export default function App() {
     mcp: skills.filter(s => s.type === 'mcp').length,
   }
 
-  const totals = skills.reduce(
-    (acc, s) => ({
-      active: acc.active + s.activeDollars,
-      loaded: acc.loaded + s.loadedDollars,
-    }),
-    { active: 0, loaded: 0 },
-  )
-  const totalDollars = totals.active + totals.loaded
-  const fmt = (n: number) => n >= 0.01 ? `$${n.toFixed(2)}` : n > 0 ? `$${n.toFixed(4)}` : '$0.00'
-
-  const removalCount = skills.filter(s => s.insight === 'removal-candidate').length
-  const dormantCount = skills.filter(s => s.dormant && s.insight !== 'removal-candidate').length
-  const reviewCount = removalCount + dormantCount
-  const showBanner = !loading && !error && reviewCount > 0 && !filters.reviewOnly
+  const totals = computeTotals(skills)
+  const review = countReview(skills)
+  const showBanner = !loading && !error && review.total > 0 && !filters.reviewOnly
 
   return (
     <div className="app">
@@ -408,16 +323,16 @@ export default function App() {
           <span className="header-title">Local Loadout Smithery</span>
           <span className="header-motto">Win little and win big</span>
           <span className="header-count">{skills.length} total</span>
-          <span className="header-cost" title={`Active ${fmt(totals.active)} · Loaded ${fmt(totals.loaded)} (${totalDollars > 0 ? Math.round((totals.loaded / totalDollars) * 100) : 0}% of total)`}>
+          <span className="header-cost" title={`Active ${fmtUsd(totals.active)} · Loaded ${fmtUsd(totals.loaded)} (${totals.total > 0 ? Math.round((totals.loaded / totals.total) * 100) : 0}% of total)`}>
             <span className="header-cost-label">Total</span>
-            <span className="header-cost-value">{fmt(totalDollars)}</span>
+            <span className="header-cost-value">{fmtUsd(totals.total)}</span>
             <span className="header-cost-split">
-              <span className="header-cost-active">A {fmt(totals.active)}</span>
+              <span className="header-cost-active">A {fmtUsd(totals.active)}</span>
               <span className="header-cost-sep">·</span>
               <span className="header-cost-loaded">
-                L {fmt(totals.loaded)}
-                {totalDollars > 0 && (
-                  <span className="header-cost-pct"> ({Math.round((totals.loaded / totalDollars) * 100)}%)</span>
+                L {fmtUsd(totals.loaded)}
+                {totals.total > 0 && (
+                  <span className="header-cost-pct"> ({Math.round((totals.loaded / totals.total) * 100)}%)</span>
                 )}
               </span>
             </span>
@@ -517,12 +432,12 @@ export default function App() {
             {showBanner && (
               <div className="insight-banner">
                 <span className="insight-banner-text">
-                  {removalCount > 0 && (
-                    <span><span className="banner-em">🚨 {removalCount} removal {removalCount === 1 ? 'candidate' : 'candidates'}</span> — loaded but never invoked</span>
+                  {review.removal > 0 && (
+                    <span><span className="banner-em">🚨 {review.removal} removal {review.removal === 1 ? 'candidate' : 'candidates'}</span> — loaded but never invoked</span>
                   )}
-                  {removalCount > 0 && dormantCount > 0 && <span className="banner-sep"> · </span>}
-                  {dormantCount > 0 && (
-                    <span><span className="banner-em">💤 {dormantCount} dormant</span> — not invoked in {DORMANT_DAYS}+ days</span>
+                  {review.removal > 0 && review.dormant > 0 && <span className="banner-sep"> · </span>}
+                  {review.dormant > 0 && (
+                    <span><span className="banner-em">💤 {review.dormant} dormant</span> — not invoked in {DORMANT_DAYS}+ days</span>
                   )}
                 </span>
                 <button

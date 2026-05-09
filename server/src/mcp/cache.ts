@@ -1,7 +1,7 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import type { MCPTool } from './types'
+import { LOADOUT_DIR } from '../lib/paths'
 
 const OK_MAX_AGE_MS = 24 * 60 * 60 * 1000
 // Unavailable results expire faster — docker might not have been running
@@ -26,7 +26,7 @@ export interface CachedProbeResult {
 }
 
 function cacheFilePath(): string {
-  return path.join(os.homedir(), '.loadoutsmith', 'mcp-cache.json')
+  return path.join(LOADOUT_DIR, 'mcp-cache.json')
 }
 
 function loadFile(): CacheFile {

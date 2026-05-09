@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
 import type { MCPUsageSummary, MCPRelationship } from '../api'
@@ -40,10 +40,40 @@ const META_ROWS: { label: string; getValue: (s: Skill) => string }[] = [
 
 const SEVERITY_ICON: Record<string, string> = { error: '✗', warn: '⚠' }
 
+// Collapsible section that reuses the existing .drawer-accordion / .accordion-trigger
+// styles so all sections look native. Each section owns its own open state.
+function Section({
+  title,
+  defaultOpen = true,
+  kind = 'default',
+  rightSlot,
+  children,
+}: {
+  title: ReactNode
+  defaultOpen?: boolean
+  kind?: 'default' | 'warn' | 'error' | 'rel'
+  rightSlot?: ReactNode
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="drawer-accordion">
+      <button
+        className={`accordion-trigger accordion-trigger-${kind}`}
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+      >
+        <span className="accordion-icon">{open ? '▾' : '▸'}</span>
+        <span style={{ flex: 1 }}>{title}</span>
+        {rightSlot}
+      </button>
+      {open && children}
+    </div>
+  )
+}
+
 export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships }: Props) {
-  const [issuesOpen, setIssuesOpen] = useState(skill.health.status !== 'ok')
   const [showMap, setShowMap] = useState(false)
-  const [relsOpen, setRelsOpen] = useState(true)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -52,6 +82,10 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  // Note: we intentionally don't reset showMap on skill change — when the user
+  // clicks a node inside the relationship map, the drawer skill switches but
+  // the map should stay open so they can keep navigating the graph.
 
   const bodyHtml = skill.body
     ? (marked(skill.body) as string)
@@ -66,16 +100,6 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
   const inbound = allSkills.filter(s =>
     s.id !== skill.id && s.references?.some(r => r.name === skill.name)
   )
-
-  // Auto-reset when a different skill is opened
-  useEffect(() => {
-    setIssuesOpen(skill.health.status !== 'ok')
-    setRelsOpen(outgoing.length > 0 || inbound.length > 0)
-    setShowMap(false)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skill.id])
-
-  // (allSkillNames used inline in JSX for broken-ref detection)
 
   const isMCP = skill.type === 'mcp' && !!skill.mcpData
   const mcp = skill.mcpData
@@ -102,97 +126,104 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             </div>
           </div>
 
-          <div className="mcp-status-banner" style={{ borderColor: statusColor[mcp.status], color: statusColor[mcp.status] }}>
-            <span className="mcp-status-icon">{statusIcon[mcp.status]}</span>
-            <span className="mcp-status-text">
-              {mcp.status === 'ok' ? 'Connected' : mcp.status === 'unavailable' ? 'Unavailable' : 'Unknown'}
-              {mcp.statusReason && <span className="mcp-status-reason"> — {mcp.statusReason}</span>}
-            </span>
-          </div>
-
-          {mcp.kind === 'session-injected' && (
-            <div className="mcp-bridge-warning">
-              Bridge server (session-injected) — proxied via Claude.ai; configure in ~/.claude.json to persist
+          <div className="drawer-content" key={skill.id}>
+            <div className="mcp-status-banner" style={{ borderColor: statusColor[mcp.status], color: statusColor[mcp.status] }}>
+              <span className="mcp-status-icon">{statusIcon[mcp.status]}</span>
+              <span className="mcp-status-text">
+                {mcp.status === 'ok' ? 'Connected' : mcp.status === 'unavailable' ? 'Unavailable' : 'Unknown'}
+                {mcp.statusReason && <span className="mcp-status-reason"> — {mcp.statusReason}</span>}
+              </span>
             </div>
-          )}
 
-          <div className="mcp-meta-row">
-            {mcp.source && <span className="mcp-meta-item"><span className="mcp-meta-label">Source</span> {mcp.source}</span>}
-            <span className="mcp-meta-item"><span className="mcp-meta-label">Transport</span> {mcp.transport ?? 'stdio'}</span>
-            <span className="mcp-meta-item"><span className="mcp-meta-label">Kind</span> {mcp.kind}</span>
-            {mcp.scope && <span className="mcp-meta-item"><span className="mcp-meta-label">Scope</span> {mcp.scope}</span>}
-          </div>
-
-          <div className="mcp-tools-section">
-            <span className="mcp-tools-heading">{sortedTools.length} tool{sortedTools.length !== 1 ? 's' : ''}</span>
-            <table className="mcp-tools-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th className="col-numeric">Schema bytes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedTools.map(tool => (
-                  <tr key={tool.name}>
-                    <td className="mcp-tool-name">{tool.name}</td>
-                    <td className="col-numeric mcp-schema-bytes">{tool.schemaBytes.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {usage && (
-            <div className="mcp-usage-section">
-              <span className="mcp-tools-heading">Usage</span>
-              <div className="mcp-usage-summary">
-                <span><span className="mcp-meta-label">Invocations</span> {usage.invocations}</span>
-                <span><span className="mcp-meta-label">Cost</span> ${usage.dollars.toFixed(4)}</span>
-                <span><span className="mcp-meta-label">Last invoked</span> {formatDate(usage.lastInvoked)}</span>
+            {mcp.kind === 'session-injected' && (
+              <div className="mcp-bridge-warning">
+                Bridge server (session-injected) — proxied via Claude.ai; configure in ~/.claude.json to persist
               </div>
-              {usage.tools.length > 0 && (
+            )}
+
+            <Section title="Server info" defaultOpen>
+              <div className="mcp-meta-row">
+                {mcp.source && <span className="mcp-meta-item"><span className="mcp-meta-label">Source</span> {mcp.source}</span>}
+                <span className="mcp-meta-item"><span className="mcp-meta-label">Transport</span> {mcp.transport ?? 'stdio'}</span>
+                <span className="mcp-meta-item"><span className="mcp-meta-label">Kind</span> {mcp.kind}</span>
+                {mcp.scope && <span className="mcp-meta-item"><span className="mcp-meta-label">Scope</span> {mcp.scope}</span>}
+              </div>
+            </Section>
+
+            <Section title={`Tools — ${sortedTools.length}`} defaultOpen>
+              <div className="mcp-tools-section">
                 <table className="mcp-tools-table">
                   <thead>
                     <tr>
-                      <th>Tool</th>
-                      <th className="col-numeric">Calls</th>
-                      <th>Last invoked</th>
+                      <th>Name</th>
+                      <th className="col-numeric">Schema bytes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {usage.tools.map(t => (
-                      <tr key={t.name}>
-                        <td className="mcp-tool-name">{t.name}</td>
-                        <td className="col-numeric">{t.calls}</td>
-                        <td>{t.lastInvoked ? formatDate(t.lastInvoked) : '—'}</td>
+                    {sortedTools.map(tool => (
+                      <tr key={tool.name}>
+                        <td className="mcp-tool-name">{tool.name}</td>
+                        <td className="col-numeric mcp-schema-bytes">{tool.schemaBytes.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
-          )}
+              </div>
+            </Section>
 
-          {calledBy.length > 0 && (
-            <div className="mcp-called-by-section">
-              <span className="mcp-tools-heading">Called by</span>
-              <ul className="rel-list">
-                {calledBy.map(r => {
-                  const callerSkill = allSkills.find(s => s.name === r.skillName)
-                  return (
-                    <li key={r.skillName} className="rel-item">
-                      {callerSkill
-                        ? <button className="rel-link" onClick={() => onSelect(callerSkill)}>{r.skillName}</button>
-                        : <span className="rel-broken-name">{r.skillName}</span>
-                      }
-                      <span className="rel-source">{r.calls} call{r.calls !== 1 ? 's' : ''}</span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
+            {usage && (
+              <Section title="Usage" defaultOpen>
+                <div className="mcp-usage-section">
+                  <div className="mcp-usage-summary">
+                    <span><span className="mcp-meta-label">Invocations</span> {usage.invocations}</span>
+                    <span><span className="mcp-meta-label">Cost</span> ${usage.dollars.toFixed(4)}</span>
+                    <span><span className="mcp-meta-label">Last invoked</span> {formatDate(usage.lastInvoked)}</span>
+                  </div>
+                  {usage.tools.length > 0 && (
+                    <table className="mcp-tools-table">
+                      <thead>
+                        <tr>
+                          <th>Tool</th>
+                          <th className="col-numeric">Calls</th>
+                          <th>Last invoked</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usage.tools.map(t => (
+                          <tr key={t.name}>
+                            <td className="mcp-tool-name">{t.name}</td>
+                            <td className="col-numeric">{t.calls}</td>
+                            <td>{t.lastInvoked ? formatDate(t.lastInvoked) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </Section>
+            )}
+
+            {calledBy.length > 0 && (
+              <Section title={`Called by — ${calledBy.length}`} defaultOpen>
+                <div className="mcp-called-by-section">
+                  <ul className="rel-list">
+                    {calledBy.map(r => {
+                      const callerSkill = allSkills.find(s => s.name === r.skillName)
+                      return (
+                        <li key={r.skillName} className="rel-item">
+                          {callerSkill
+                            ? <button className="rel-link" onClick={() => onSelect(callerSkill)}>{r.skillName}</button>
+                            : <span className="rel-broken-name">{r.skillName}</span>
+                          }
+                          <span className="rel-source">{r.calls} call{r.calls !== 1 ? 's' : ''}</span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              </Section>
+            )}
+          </div>
         </aside>
       </>
     )
@@ -242,19 +273,20 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           </div>
         </div>
 
-        {issues.length > 0 && (
-          <div className="drawer-accordion">
-            <button
-              className={`accordion-trigger accordion-trigger-${skill.health.status}`}
-              onClick={() => setIssuesOpen(o => !o)}
-              aria-expanded={issuesOpen}
+        {/* `key={skill.id}` resets every Section's open state when the user
+            opens a different skill — clean slate per skill. */}
+        <div className="drawer-content" key={skill.id}>
+          {issues.length > 0 && (
+            <Section
+              title={
+                <>
+                  {skill.health.status === 'error' ? '✗' : '⚠'}{' '}
+                  {issues.length} {issues.length === 1 ? 'issue' : 'issues'}
+                </>
+              }
+              defaultOpen={skill.health.status !== 'ok'}
+              kind={skill.health.status === 'error' ? 'error' : 'warn'}
             >
-              <span className="accordion-icon">{issuesOpen ? '▾' : '▸'}</span>
-              <span>
-                {skill.health.status === 'error' ? '✗' : '⚠'} {issues.length} {issues.length === 1 ? 'issue' : 'issues'}
-              </span>
-            </button>
-            {issuesOpen && (
               <ul className="accordion-issue-list">
                 {issues.map((issue, i) => (
                   <li key={i} className={`accordion-issue accordion-issue-${issue.severity}`}>
@@ -266,25 +298,18 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                   <CopyPromptButton getPrompt={() => generateFixHealthPrompt(skill)} label="Fix with Claude Code" />
                 </li>
               </ul>
-            )}
-          </div>
-        )}
+            </Section>
+          )}
 
-        <div className="drawer-accordion">
-          <button
-            className="accordion-trigger accordion-trigger-rel"
-            onClick={() => setRelsOpen(o => !o)}
-            aria-expanded={relsOpen}
-          >
-            <span className="accordion-icon">{relsOpen ? '▾' : '▸'}</span>
-            <span>
-              {outgoing.length === 0 && inbound.length === 0
+          <Section
+            title={
+              outgoing.length === 0 && inbound.length === 0
                 ? 'Relationships — none'
-                : `Relationships — ${outgoing.length} out, ${inbound.length} in`}
-            </span>
-          </button>
-
-          {relsOpen && (
+                : `Relationships — ${outgoing.length} out, ${inbound.length} in`
+            }
+            defaultOpen={outgoing.length > 0 || inbound.length > 0}
+            kind="rel"
+          >
             <div className="drawer-relationships">
               {outgoing.length === 0 && inbound.length === 0 ? (
                 <span className="rel-orphan">No relationships found — this skill is an island</span>
@@ -329,31 +354,35 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                 </>
               )}
             </div>
-          )}
-        </div>
+          </Section>
 
-        <div className="drawer-meta">
-          <table className="meta-table">
-            <tbody>
-              {META_ROWS
-                .filter(r => {
-                  const v = r.getValue(skill)
-                  return v && v !== '—'
-                })
-                .map(r => (
-                  <tr key={r.label}>
-                    <th>{r.label}</th>
-                    <td>{r.getValue(skill)}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
+          <Section title="Metadata" defaultOpen>
+            <div className="drawer-meta">
+              <table className="meta-table">
+                <tbody>
+                  {META_ROWS
+                    .filter(r => {
+                      const v = r.getValue(skill)
+                      return v && v !== '—'
+                    })
+                    .map(r => (
+                      <tr key={r.label}>
+                        <th>{r.label}</th>
+                        <td>{r.getValue(skill)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
 
-        <div
-          className="drawer-body markdown-body"
-          dangerouslySetInnerHTML={{ __html: bodyHtml }}
-        />
+          <Section title="Documentation" defaultOpen>
+            <div
+              className="drawer-body markdown-body"
+              dangerouslySetInnerHTML={{ __html: bodyHtml }}
+            />
+          </Section>
+        </div>
       </aside>
 
       {showMap && (
@@ -361,6 +390,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           skill={skill}
           allSkills={allSkills}
           onClose={() => setShowMap(false)}
+          onSelect={onSelect}
         />
       )}
     </>

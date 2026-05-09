@@ -1,8 +1,7 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
+import { LOADOUT_DIR } from '../lib/paths'
 
-const LOADOUT_DIR = path.join(os.homedir(), '.loadoutsmith')
 const UNINSTALLED_DIR = path.join(LOADOUT_DIR, 'uninstalled')
 const UNINSTALLED_LOG = path.join(LOADOUT_DIR, 'uninstalled.json')
 
