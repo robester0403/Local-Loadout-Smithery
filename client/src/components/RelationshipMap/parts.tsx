@@ -171,10 +171,87 @@ export function RelmapInfoRail({ skill, isHovering, isRoot, knownNames }: InfoRa
         />
       </dl>
 
+      <BodyMentions skill={skill} knownNames={knownNames} />
+
       <p className="relmap-rail-hint">
         Hover to preview · click to switch detail view · drag to pan
       </p>
     </aside>
+  )
+}
+
+// Number of mention snippets shown before truncating. The rail has finite
+// vertical space; beyond ~8 the panel becomes a wall of text.
+const MAX_BODY_MENTIONS = 8
+// Characters of context shown on each side of a mention.
+const BODY_MENTION_CONTEXT = 50
+
+interface BodySnippet {
+  before: string
+  match: string
+  after: string
+  /** True when `before` was truncated from the body's start. */
+  hasMore: boolean
+  /** True when `after` was truncated to the body's end. */
+  hasMoreAfter: boolean
+}
+
+// Find every occurrence of any known artifact name in `body` (excluding
+// `selfName`), returning each as a snippet with up to BODY_MENTION_CONTEXT
+// characters of leading and trailing context. Capped at MAX_BODY_MENTIONS so
+// a body that mentions one skill 200 times doesn't overwhelm the rail.
+function findBodyMentions(
+  body: string,
+  names: ReadonlySet<string>,
+  selfName: string,
+): BodySnippet[] {
+  if (!body || names.size === 0) return []
+  const candidates = Array.from(names)
+    .filter(n => n.length > 1 && n !== selfName)
+    .sort((a, b) => b.length - a.length)
+  if (candidates.length === 0) return []
+
+  const pattern = candidates.map(escapeRegex).join('|')
+  const re = new RegExp(`(?<![\\w:-])(?:${pattern})(?![\\w:-])`, 'g')
+
+  const out: BodySnippet[] = []
+  let match: RegExpExecArray | null
+  while ((match = re.exec(body)) !== null && out.length < MAX_BODY_MENTIONS) {
+    const start = Math.max(0, match.index - BODY_MENTION_CONTEXT)
+    const end = Math.min(body.length, match.index + match[0].length + BODY_MENTION_CONTEXT)
+    out.push({
+      before: body.slice(start, match.index),
+      match: match[0],
+      after: body.slice(match.index + match[0].length, end),
+      hasMore: start > 0,
+      hasMoreAfter: end < body.length,
+    })
+  }
+  return out
+}
+
+function BodyMentions({ skill, knownNames }: { skill: Skill; knownNames: ReadonlySet<string> }) {
+  const snippets = findBodyMentions(skill.body ?? '', knownNames, skill.name)
+  if (snippets.length === 0) return null
+
+  return (
+    <div className="relmap-rail-snippets">
+      <div className="relmap-rail-snippets-header">
+        Body mentions <span className="relmap-rail-snippets-count">· {snippets.length}{snippets.length === MAX_BODY_MENTIONS ? '+' : ''}</span>
+      </div>
+      <ul className="relmap-rail-snippets-list">
+        {snippets.map((s, i) => (
+          <li key={i} className="relmap-rail-snippet">
+            {s.hasMore && '…'}
+            {/* Collapse internal whitespace so multi-line markdown doesn't blow up vertically. */}
+            {s.before.replace(/\s+/g, ' ')}
+            <strong className="relmap-rail-mention">{s.match}</strong>
+            {s.after.replace(/\s+/g, ' ')}
+            {s.hasMoreAfter && '…'}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

@@ -1371,6 +1371,48 @@ td.col-totalDollars { color: var(--text); }
   padding: 0 2px;
   border-radius: 2px;
 }
+
+/* Body mention snippets — small surrounding-context cards stacked under
+   the description, one per occurrence (capped at MAX_BODY_MENTIONS). */
+.relmap-rail-snippets {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.relmap-rail-snippets-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--text-dim);
+}
+.relmap-rail-snippets-count { font-weight: 500; opacity: .8; }
+.relmap-rail-snippets-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.relmap-rail-snippet {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  /* Don't let one long unbroken token (URL etc.) blow out the rail. */
+  word-break: break-word;
+}
+.relmap-rail-snippet .relmap-rail-mention {
+  /* Pop a touch more inside snippets since the surrounding text is dimmed. */
+  color: var(--text);
+}
 .relmap-rail-stats {
   display: grid;
   grid-template-columns: 1fr;
