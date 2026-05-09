@@ -279,7 +279,11 @@ export default function App() {
       return true
     })
     .sort((a, b) => {
-      if (a.disabled !== b.disabled) return a.disabled ? 1 : -1
+      // Note: we intentionally do NOT push disabled rows to the bottom here.
+      // Toggling a skill should be a quiet, in-place state change — shoving the
+      // row to the end of the list creates a jarring shift and loses the user's
+      // place. The .row-disabled style already makes disabled rows visually
+      // distinct; users who want them grouped can sort by an explicit column.
 
       let cmp: number
       if (sortKey === 'health') {
