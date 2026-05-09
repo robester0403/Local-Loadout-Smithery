@@ -1,6 +1,6 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
+import { LOADOUT_DIR } from '../lib/paths'
 
 export interface ModelPricing {
   inputPerM: number
@@ -23,7 +23,7 @@ const DEFAULTS: Record<string, ModelPricing> = {
   '<synthetic>':       { inputPerM:  0,    outputPerM:  0,    cacheWritePerM:  0,    cacheReadPerM: 0    },
 }
 
-const PRICING_FILE = path.join(os.homedir(), '.loadoutsmith', 'pricing.json')
+const PRICING_FILE = path.join(LOADOUT_DIR, 'pricing.json')
 
 function loadPricingFile(): Record<string, ModelPricing> {
   try {
@@ -58,7 +58,7 @@ export function toDollars(tokens: number, ratePerM: number): number {
 }
 
 export function writePricingTemplate(): void {
-  const dir = path.join(os.homedir(), '.loadoutsmith')
+  const dir = LOADOUT_DIR
   fs.mkdirSync(dir, { recursive: true })
   const template: PricingFile = {
     _note: 'Prices in USD per million tokens. Edit to keep current. See https://www.anthropic.com/pricing',

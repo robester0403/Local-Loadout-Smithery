@@ -1,10 +1,10 @@
 import fs from 'fs'
 import path from 'path'
-import os from 'os'
 import crypto from 'crypto'
 import type { RoutingGroup, SuperRouterState, GroupMember } from './types'
+import { LOADOUT_DIR } from '../lib/paths'
 
-export const SUPERROUTER_DIR = path.join(os.homedir(), '.loadoutsmith', 'superrouter')
+export const SUPERROUTER_DIR = path.join(LOADOUT_DIR, 'superrouter')
 const GROUPS_FILE = path.join(SUPERROUTER_DIR, 'groups.json')
 
 function ensureDirs(): void {

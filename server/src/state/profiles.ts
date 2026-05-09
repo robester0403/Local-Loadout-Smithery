@@ -1,9 +1,9 @@
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { disableSkill, enableSkill } from './index'
+import { LOADOUT_DIR } from '../lib/paths'
 
-const STATE_DIR = path.join(os.homedir(), '.loadoutsmith')
+const STATE_DIR = LOADOUT_DIR
 const STATE_FILE = path.join(STATE_DIR, 'state.json')
 
 interface State {
