@@ -15,6 +15,13 @@
 //
 // This is the "first activation" signal only — it doesn't propagate forward
 // across follow-up turns. Good enough to validate the approach.
+//
+// Token-count caveat: tokenCount in Cursor lives on the *head* assistant
+// bubble of a request (1,771 of ~40k bubbles), not on individual tool-call
+// bubbles. So this script's token columns will read 0 for most activations.
+// Producing a real token cost requires joining each tool-call bubble back to
+// its request's head bubble (likely via composerData.conversationMap or the
+// requestId field) — see Phase Cursor-B in the project notes.
 
 import { execFileSync } from 'child_process'
 import os from 'os'
@@ -105,15 +112,16 @@ function readBubbles(): Bubble[] {
 
 const SKILL_TOOL_NAMES = new Set(['read_file', 'read_file_v2', 'Read'])
 
+// Match only paths inside a recognized loadout directory. Filters out random
+// SKILL.md files the agent reads outside the user's actual skill library
+// (e.g. one in ~/Downloads, sample files in cloned repos).
+const LOADOUT_DIR_RE = /\/(?:skills|skills-cursor|agents|commands)\//
+
 function extractSkillName(params: unknown, rawArgs: unknown): string | null {
-  // Look for a SKILL.md path in either field. They can be objects or strings.
-  const candidate = (() => {
-    const fromParams = pickPathLike(params)
-    if (fromParams) return fromParams
-    return pickPathLike(rawArgs)
-  })()
+  const candidate = pickPathLike(params) ?? pickPathLike(rawArgs)
   if (!candidate) return null
   if (!candidate.endsWith('/SKILL.md')) return null
+  if (!LOADOUT_DIR_RE.test(candidate)) return null
   // path: .../skills-cursor/foo/SKILL.md → 'foo'
   const segments = candidate.split('/')
   if (segments.length < 2) return null
