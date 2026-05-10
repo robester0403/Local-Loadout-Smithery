@@ -4,6 +4,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import path from 'path'
 import api from './routes'
 import { countTokens } from './usage/tokenizer'
+import { startCursorPoller, stopCursorPoller } from './cursor/poller'
 
 // Warm up the tokenizer — builds the cached Tiktoken instance at startup,
 // not on first request.
@@ -46,10 +47,16 @@ const server = app.listen(PORT, () => {
     console.log(`\x1b[36m│\x1b[0m  \x1b[1m\x1b[32mOpen in browser → http://localhost:5173\x1b[0m     \x1b[36m│\x1b[0m`)
   }
   console.log(`\x1b[36m└${line}┘\x1b[0m\n`)
+
+  // Cursor activity poller — silent no-op when Cursor isn't installed.
+  if (startCursorPoller()) {
+    console.log('[loadoutsmith] cursor poller started')
+  }
 })
 
 function shutdown(signal: NodeJS.Signals) {
   console.log(`\n[loadoutsmith] received ${signal}, shutting down…`)
+  stopCursorPoller()
   server.close(() => process.exit(0))
   // Force-exit if any open keep-alive connection holds the server open.
   setTimeout(() => process.exit(0), 1000).unref()
