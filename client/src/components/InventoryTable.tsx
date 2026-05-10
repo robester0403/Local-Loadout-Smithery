@@ -123,6 +123,11 @@ export default function InventoryTable({
         <tbody>
           {skills.map(skill => {
             const isMCP = skill.type === 'mcp'
+            const isCursor = skill.account === 'cursor'
+            // Cursor skills carry no Claude Code cost (their invocations land
+            // in Cursor's own SQLite, not ~/.claude/projects). Show `—` in the
+            // cost columns rather than a misleading $0.0000.
+            const cursorCostTitle = "Cursor's local SQLite carries no authoritative cost — see Cursor tab for activation count"
             return (
               <tr
                 key={skill.id}
@@ -178,7 +183,9 @@ export default function InventoryTable({
                     : formatDate(skill.lastModified)}
                 </td>
                 <td className="col-activeDollars col-numeric">
-                  {isMCP ? (
+                  {isCursor ? (
+                    <span className="col-mcp-dash" title={cursorCostTitle}>—</span>
+                  ) : isMCP ? (
                     skill.activeDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost">{fmtDollars(skill.activeDollars)}</span>
                       : <span className="col-mcp-dash">—</span>
@@ -193,7 +200,9 @@ export default function InventoryTable({
                   )}
                 </td>
                 <td className="col-loadedDollars col-numeric">
-                  {isMCP ? <span className="col-mcp-dash">—</span> : (
+                  {isCursor ? (
+                    <span className="col-mcp-dash" title={cursorCostTitle}>—</span>
+                  ) : isMCP ? <span className="col-mcp-dash">—</span> : (
                     <span
                       className="dollar-link"
                       onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
@@ -204,7 +213,9 @@ export default function InventoryTable({
                   )}
                 </td>
                 <td className="col-totalDollars col-numeric">
-                  {isMCP ? (
+                  {isCursor ? (
+                    <span className="col-mcp-dash" title={cursorCostTitle}>—</span>
+                  ) : isMCP ? (
                     skill.totalDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>
                       : <span className="col-mcp-dash">—</span>
@@ -219,7 +230,9 @@ export default function InventoryTable({
                   )}
                 </td>
                 <td className="col-enabled" onClick={e => e.stopPropagation()}>
-                  {isMCP ? (
+                  {isCursor ? (
+                    <span className="col-mcp-dash" title="Cursor manages skill activation through its own UI">—</span>
+                  ) : isMCP ? (
                     <span className="col-mcp-dash" title="Configure in ~/.claude.json">—</span>
                   ) : (
                     <ToggleSwitch

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
-import type { MCPUsageSummary, MCPRelationship } from '../api'
+import type { MCPUsageSummary, MCPRelationship, CursorUsageReport } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
@@ -18,6 +18,7 @@ interface Props {
   onUninstall?: (skill: Skill) => void
   mcpUsageMap?: Map<string, MCPUsageSummary>
   mcpRelationships?: MCPRelationship[]
+  cursorUsage?: CursorUsageReport | null
 }
 
 function formatDate(iso: string): string {
@@ -72,7 +73,7 @@ function Section({
   )
 }
 
-export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships }: Props) {
+export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships, cursorUsage }: Props) {
   const [showMap, setShowMap] = useState(false)
 
   useEffect(() => {
@@ -300,6 +301,38 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
               </ul>
             </Section>
           )}
+
+          {skill.account === 'cursor' && (() => {
+            const u = cursorUsage?.skills.find(x => x.skill === skill.name)
+            const activations = u?.activations ?? 0
+            const sessions = u?.sessions ?? 0
+            const lastInvoked = u?.lastInvoked ?? 0
+            return (
+              <Section
+                title={`Cursor activity — ${activations} activation${activations === 1 ? '' : 's'}`}
+                defaultOpen={activations > 0}
+              >
+                <div className="drawer-meta">
+                  <table className="meta-table">
+                    <tbody>
+                      <tr><th>Activations</th><td>{activations}</td></tr>
+                      <tr><th>Distinct sessions</th><td>{sessions}</td></tr>
+                      <tr>
+                        <th>Last invoked</th>
+                        <td>{lastInvoked ? formatDate(new Date(lastInvoked).toISOString()) : '—'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {activations === 0 && (
+                    <p style={{ marginTop: 8, fontSize: 12, color: 'var(--text-dim)' }}>
+                      Not yet invoked from Cursor — activation signal is read from
+                      Cursor's local SQLite (<code>toolFormerData</code> events).
+                    </p>
+                  )}
+                </div>
+              </Section>
+            )
+          })()}
 
           <Section
             title={

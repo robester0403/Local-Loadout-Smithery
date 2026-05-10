@@ -287,3 +287,26 @@ export async function removeSRMember(groupId: string, skillId: string): Promise<
   )
   await parseResponse<{ ok: boolean }>(res)
 }
+
+// ─── Cursor activity ────────────────────────────────────────────────────────
+
+export interface CursorSkillUsage {
+  skill: string
+  activations: number
+  sessions: number
+  /** ms epoch; 0 if no timestamp available. */
+  lastInvoked: number
+}
+
+export interface CursorUsageReport {
+  /** True when the Cursor SQLite was found on the host. */
+  available: boolean
+  skills: CursorSkillUsage[]
+  totalActivations: number
+  distinctSessions: number
+}
+
+export async function fetchCursorUsage(): Promise<CursorUsageReport> {
+  const res = await fetch('/api/cursor/usage')
+  return parseResponse<CursorUsageReport>(res)
+}

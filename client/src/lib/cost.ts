@@ -95,8 +95,8 @@ export function toMCPSkill(entry: MCPRow, usage?: { dollars: number; lastInvoked
  * the usage summaries the server returns.
  *
  * Cost summaries from /api/usage/aggregate are computed exclusively from
- * Claude Code session logs (~/.claude*/projects/**\/*.jsonl) — Cursor skills
- * never appear in those logs. Without the account guard a Cursor skill named
+ * Claude Code session logs under the user's ~/.claude projects directory —
+ * Cursor skills never appear in those logs. Without the account guard a Cursor skill named
  * `morning-plan` would falsely inherit the Claude Code `morning-plan`'s cost
  * data because the join key was just the skill name.
  */

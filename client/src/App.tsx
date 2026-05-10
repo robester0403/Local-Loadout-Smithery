@@ -23,9 +23,11 @@ import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
 import SuperRouterTab from './components/SuperRouterTab'
 import UninstalledPanel from './components/UninstalledPanel'
+import CursorTab from './components/CursorTab'
+import { fetchCursorUsage, type CursorUsageReport } from './api'
 import './App.css'
 
-type ActiveTab = 'inventory' | 'superrouter'
+type ActiveTab = 'inventory' | 'superrouter' | 'cursor'
 
 export default function App() {
   const [skills, setSkills] = useState<Skill[]>([])
@@ -55,6 +57,7 @@ export default function App() {
   const uninstallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mcpUsageMap, setMcpUsageMap] = useState<Map<string, MCPUsageSummary>>(new Map())
   const [mcpRelationships, setMcpRelationships] = useState<MCPRelationship[]>([])
+  const [cursorUsage, setCursorUsage] = useState<CursorUsageReport | null>(null)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -69,13 +72,17 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
+      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels, cursorReport] = await Promise.all([
         fetchInventory(),
         fetchProfiles().catch(() => ({ profiles: {}, activeProfile: null })),
         fetchUninstalled().catch(() => [] as UninstalledEntry[]),
         fetchMCPInventory().catch(() => [] as MCPRow[]),
         fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
         fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
+        // Tolerate Cursor being absent — non-fatal.
+        fetchCursorUsage().catch((): CursorUsageReport => ({
+          available: false, skills: [], totalActivations: 0, distinctSessions: 0,
+        })),
       ])
       let summaries: SkillUsageSummary[] = []
       try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
@@ -83,6 +90,7 @@ export default function App() {
       const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
       setMcpUsageMap(usageMap)
       setMcpRelationships(mcpRels)
+      setCursorUsage(cursorReport)
       setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
       setProfilesData(pd)
       setTrashCount(uninstalled.length)
@@ -266,7 +274,10 @@ export default function App() {
     }
   }
 
+  // The Cursor tab gets its own table with the same filter/search/sort
+  // pipeline. Branch on activeTab so each table sees only its own rows.
   const filtered = skills
+    .filter(s => activeTab === 'cursor' ? s.account === 'cursor' : s.account !== 'cursor')
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
       if (filters.scope.length > 0 && !filters.scope.includes(s.scope)) return false
@@ -342,11 +353,16 @@ export default function App() {
           <button
             className={`header-tab${activeTab === 'inventory' ? ' active' : ''}`}
             onClick={() => setActiveTab('inventory')}
-          >Inventory</button>
+          >Claude Code</button>
           <button
             className={`header-tab${activeTab === 'superrouter' ? ' active' : ''}`}
             onClick={() => setActiveTab('superrouter')}
           >SuperRouter</button>
+          <button
+            className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
+            onClick={() => setActiveTab('cursor')}
+            title="Cursor skills + activation data scraped from Cursor's local SQLite"
+          >Cursor{cursorUsage?.totalActivations ? ` · ${cursorUsage.totalActivations}` : ''}</button>
         </div>
 
         <div className="header-right">
@@ -427,6 +443,29 @@ export default function App() {
       <main className="main">
         {activeTab === 'superrouter' ? (
           <SuperRouterTab skills={skills} onToast={showToast} />
+        ) : activeTab === 'cursor' ? (
+          loading ? (
+            <EmptyState variant="loading" />
+          ) : error ? (
+            <EmptyState variant="error" message={error} onRetry={load} />
+          ) : (
+            <CursorTab
+              skills={filtered}
+              usage={cursorUsage}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={handleSort}
+              selected={selected}
+              onSelect={setSelected}
+              onToggle={handleToggle}
+              onBreakdown={setBreakdownSkill}
+              timeframe={timeframe}
+              selectedIds={selectedIds}
+              onSelectId={handleSelectId}
+              onSelectAll={handleSelectAll}
+              onReclassify={handleReclassify}
+            />
+          )
         ) : (
           <>
             {showBanner && (
@@ -515,6 +554,7 @@ export default function App() {
           onUninstall={handleUninstall}
           mcpUsageMap={mcpUsageMap}
           mcpRelationships={mcpRelationships}
+          cursorUsage={cursorUsage}
         />
       )}
 
