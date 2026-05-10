@@ -72,11 +72,32 @@ export function findAccounts(): string[] {
       continue
     }
   }
+
+  // Cursor inhabits a single ~/.cursor/ tree (no multi-account concept like
+  // Claude Code's .claude / .claude-work). Cursor doesn't ship a settings.json
+  // we can sentinel against, so we instead require at least one of the known
+  // skill subdirs to exist before treating the directory as a loadout source.
+  const cursorDir = path.join(home, '.cursor')
+  try {
+    if (fs.statSync(cursorDir).isDirectory()) {
+      const hasLoadout = (
+        isDir(path.join(cursorDir, 'skills')) ||
+        isDir(path.join(cursorDir, 'skills-cursor')) ||
+        isDir(path.join(cursorDir, 'commands')) ||
+        isDir(path.join(cursorDir, 'agents'))
+      )
+      if (hasLoadout) accounts.push(cursorDir)
+    }
+  } catch {
+    // .cursor missing or unreadable — fine, just skip.
+  }
+
   return accounts
 }
 
 export function accountLabel(accountDir: string): string {
   const base = path.basename(accountDir)
+  if (base === '.cursor') return 'cursor'
   return base === '.claude' ? 'default' : base.slice('.claude-'.length)
 }
 
@@ -250,6 +271,13 @@ function discoverInAccount(accountDir: string, account: string): Skill[] {
   skills.push(...discoverSkillsDir(path.join(accountDir, 'skills'), 'global', account))
   skills.push(...discoverCommandsDir(path.join(accountDir, 'commands'), 'global', account))
   skills.push(...discoverAgentsDir(path.join(accountDir, 'agents'), 'global', account))
+
+  // Cursor ships a separate `skills-cursor/` tree alongside the user's
+  // `skills/`. Same structure (one dir per skill, with SKILL.md), so we can
+  // reuse discoverSkillsDir.
+  if (account === 'cursor') {
+    skills.push(...discoverSkillsDir(path.join(accountDir, 'skills-cursor'), 'global', account))
+  }
 
   // Project-local discovery.
   // Claude Code stores project-local commands/skills in {cwd}/.claude/ — not in the
