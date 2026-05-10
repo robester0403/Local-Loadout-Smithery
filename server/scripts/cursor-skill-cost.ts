@@ -6,21 +6,17 @@
 //   tsx server/scripts/cursor-skill-cost.ts
 //
 // Why no dollar cost column:
-//   We investigated three potential cost sources in Cursor's local SQLite:
-//     1. bubble.tokenCount.{input,output}Tokens — populated only on the
-//        head assistant bubble per request (~1,771 of ~40k bubbles), and
-//        never on tool-call bubbles. In observed data, the composers that
-//        contain skill activations have token counts of zero on every
-//        bubble.
-//     2. composerData.usageData — { [model]: { costInCents, amount } }.
-//        Cursor's billing rollup. Populated for 174/370 composers in the
-//        test data, but ALL cost-bearing composers are from before
-//        2026-02-24. Cursor stopped writing this field in newer sessions
-//        — billing now lives server-side, inaccessible without an API.
-//     3. ItemTable rolling lists (cursor.skills.recentlyUsed etc.) — no
-//        timestamps, no per-session attribution, no cost.
-//   Conclusion: per-skill dollar cost is not extractable from current
-//   Cursor local data. Activation volume is.
+//   Cursor's local persistence is fading. composerData.usageData (per-session
+//   billing) emptied ~Feb 2026; bubble.tokenCount went to zero on recent
+//   sessions; bubble persistence itself dropped from 81% (Jan 2026) to 0%
+//   (May 2026). Last persisted bubble: 2026-05-06. Cursor 2.0 moved
+//   conversation state server-side as a base64 token clients can't
+//   reconstruct (see Cursor forum threads on conversationState corruption).
+//
+//   Per-skill dollar cost is therefore not extractable from current local
+//   data. Activation volume on the historical window is — that's what this
+//   report shows. For per-skill cost characterization see the static
+//   bodyTokens/listingTokens fields rendered in the LSM Cursor tab.
 
 import { computeCursorSkillUsage } from '../src/cursor/usage'
 

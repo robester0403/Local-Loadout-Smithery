@@ -1,12 +1,19 @@
-// Per-skill usage rollup for Cursor activations. Cursor's local SQLite
-// stopped carrying authoritative cost data after ~2026-02-24 (composerData
-// .usageData is empty in newer sessions), so we surface what's reliably
-// extractable: activation count, distinct-session reach, and last-invoked
-// timestamp.
+// Per-skill usage rollup for Cursor activations.
 //
-// This module is the source of truth for the /api/cursor/usage route. The
-// diagnostic script under server/scripts/ uses it too — single
-// implementation, no duplication.
+// Cursor's local persistence is being phased out:
+//   - composerData.usageData (per-session billing) emptied around Feb 2026
+//   - bubble.tokenCount populated 0% of recent bubbles
+//   - bubble persistence itself: 81% of Jan 2026 composers, 0% of May 2026
+//     (last persisted bubble observed: 2026-05-06)
+//
+// What remains reliably extractable on the historical window is activation
+// signal: which skill was loaded, when, in which composer. That's what this
+// module returns — bounded by the persistence window, not live for new
+// sessions. For current per-skill cost characterization see the static
+// bodyTokens/listingTokens fields populated by the scanner instead.
+//
+// Source of truth for the /api/cursor/usage route; also used by the
+// diagnostic CLI under server/scripts/.
 
 import { extractSkillName } from './attribution'
 import { type CursorBubble, isCursorDatabaseAvailable, readSkillReadingBubbles } from './db'

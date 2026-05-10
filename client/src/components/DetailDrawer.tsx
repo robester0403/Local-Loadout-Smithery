@@ -329,8 +329,10 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                   </table>
                   {activations === 0 && (
                     <p style={{ marginTop: 8, fontSize: 12, color: 'var(--text-dim)' }}>
-                      Not yet invoked from Cursor — activation signal is read from
-                      Cursor's local SQLite (<code>toolFormerData</code> events).
+                      No activations recorded. Activation signal comes from
+                      Cursor's local SQLite (<code>toolFormerData</code> events),
+                      which is being phased out — recent sessions may have
+                      invoked this skill without leaving a trace here.
                     </p>
                   )}
                 </div>
