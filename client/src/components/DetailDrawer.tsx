@@ -97,9 +97,13 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
   // Outgoing references (from this skill's body/frontmatter)
   const outgoing = skill.references ?? []
 
-  // Inbound references (other skills that mention this skill)
+  // Inbound references (other skills that mention this skill). Account-scoped
+  // because Claude Code and Cursor are independent ecosystems — a same-named
+  // skill in the other account is not a real referencer.
   const inbound = allSkills.filter(s =>
-    s.id !== skill.id && s.references?.some(r => r.name === skill.name)
+    s.id !== skill.id
+    && s.account === skill.account
+    && s.references?.some(r => r.name === skill.name)
   )
 
   const isMCP = skill.type === 'mcp' && !!skill.mcpData

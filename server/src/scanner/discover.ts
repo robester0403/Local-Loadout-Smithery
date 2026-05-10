@@ -327,12 +327,20 @@ export function discoverAllSkills(): Skill[] {
     descriptionCounts.set(key, (descriptionCounts.get(key) ?? 0) + 1)
   }
 
-  const allNames = new Set(deduped.map(s => s.name))
+  // Reference resolution is scoped per-account so a Cursor skill cannot
+  // reference a same-named Claude Code skill (and vice versa). The two
+  // ecosystems are independent — a `morning-plan` in ~/.claude is a different
+  // artifact than a `morning-plan` in ~/.cursor, even when the names collide.
+  const namesByAccount = new Map<string, Set<string>>()
+  for (const s of deduped) {
+    let set = namesByAccount.get(s.account)
+    if (!set) { set = new Set(); namesByAccount.set(s.account, set) }
+    set.add(s.name)
+  }
   return deduped.map(skill => {
-    // Strip 'health' out so we can rebuild the base object for computeHealth
     const { health: _health, ...base } = skill
     const health = computeHealth(base, { descriptionCounts })
-    const references = extractReferences(skill, allNames)
+    const references = extractReferences(skill, namesByAccount.get(skill.account) ?? new Set())
     const suggestedType = inferType(skill)
     return { ...skill, health, references, suggestedType }
   })

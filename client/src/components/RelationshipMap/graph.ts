@@ -49,7 +49,12 @@ export function buildChain(
   maxDepth: number,
   direction: Direction,
 ): GraphData {
-  const byName = new Map(allSkills.map(s => [s.name, s]))
+  // Scope traversal to the root's account. The two ecosystems
+  // (Claude Code under ~/.claude and Cursor under ~/.cursor) are independent;
+  // a `morning-plan` in one is unrelated to a `morning-plan` in the other,
+  // so name-based byName lookups must not cross accounts.
+  const sameAccount = allSkills.filter(s => s.account === root.account)
+  const byName = new Map(sameAccount.map(s => [s.name, s]))
   const nodes = new Map<string, Skill>()
   const edges: GraphEdge[] = []
   const edgeKeys = new Set<string>()
@@ -69,7 +74,7 @@ export function buildChain(
     expandForward(root, byName, nodes, addEdge, maxDepth)
   }
   if (direction === 'in' || direction === 'both') {
-    expandBackward(root, allSkills, byName, nodes, addEdge, maxDepth)
+    expandBackward(root, sameAccount, byName, nodes, addEdge, maxDepth)
   }
 
   return { nodes, edges }
