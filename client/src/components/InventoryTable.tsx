@@ -49,6 +49,12 @@ function fmtDollars(n: number): string {
   return '$' + n.toFixed(4)
 }
 
+function fmtTokens(n: number | undefined): string {
+  if (n == null) return '—'
+  if (n < 1000) return `${n}`
+  return `${(n / 1000).toFixed(1)}K`
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -124,10 +130,13 @@ export default function InventoryTable({
           {skills.map(skill => {
             const isMCP = skill.type === 'mcp'
             const isCursor = skill.account === 'cursor'
-            // Cursor skills carry no Claude Code cost (their invocations land
-            // in Cursor's own SQLite, not ~/.claude/projects). Show `—` in the
-            // cost columns rather than a misleading $0.0000.
-            const cursorCostTitle = "Cursor's local SQLite carries no authoritative cost — see Cursor tab for activation count"
+            // Cursor skills don't carry Claude Code cost (no per-turn billing
+            // accessible). We surface static per-turn TOKEN estimates instead:
+            // bodyTokens for active-style cost, listingTokens for loaded-style.
+            // These are skill characterizations, not historical attributions.
+            const cursorActiveTitle = `Per-turn token cost while in context after invocation: ${skill.bodyTokens ?? 0} tokens. Static estimate from skill body.`
+            const cursorLoadedTitle = `Per-turn token cost while listed in system prompt: ${skill.listingTokens ?? 0} tokens. Assumes Cursor lists skills similarly to Claude Code.`
+            const cursorTotalTitle = 'Active and Loaded are per-turn quantities — sum is not meaningful for Cursor.'
             return (
               <tr
                 key={skill.id}
@@ -184,7 +193,9 @@ export default function InventoryTable({
                 </td>
                 <td className="col-activeDollars col-numeric">
                   {isCursor ? (
-                    <span className="col-mcp-dash" title={cursorCostTitle}>—</span>
+                    <span className="cursor-token-estimate" title={cursorActiveTitle}>
+                      {fmtTokens(skill.bodyTokens)}
+                    </span>
                   ) : isMCP ? (
                     skill.activeDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost">{fmtDollars(skill.activeDollars)}</span>
@@ -201,7 +212,9 @@ export default function InventoryTable({
                 </td>
                 <td className="col-loadedDollars col-numeric">
                   {isCursor ? (
-                    <span className="col-mcp-dash" title={cursorCostTitle}>—</span>
+                    <span className="cursor-token-estimate" title={cursorLoadedTitle}>
+                      {fmtTokens(skill.listingTokens)}
+                    </span>
                   ) : isMCP ? <span className="col-mcp-dash">—</span> : (
                     <span
                       className="dollar-link"
@@ -214,7 +227,7 @@ export default function InventoryTable({
                 </td>
                 <td className="col-totalDollars col-numeric">
                   {isCursor ? (
-                    <span className="col-mcp-dash" title={cursorCostTitle}>—</span>
+                    <span className="col-mcp-dash" title={cursorTotalTitle}>—</span>
                   ) : isMCP ? (
                     skill.totalDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>

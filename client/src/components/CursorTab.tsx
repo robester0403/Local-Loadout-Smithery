@@ -73,8 +73,10 @@ export default function CursorTab(props: Props) {
           <span><strong>{usedCount}</strong> used</span>
           <span><strong>{totalActivations}</strong> total activations</span>
           <span className="cursor-tab-note">
-            Cursor's local SQLite no longer carries authoritative cost data.
-            Cost columns are blank — open a row for activation count.
+            Cost columns show static per-turn token estimates (Active = body
+            tokens, Loaded = listing tokens). Cursor's local persistence
+            doesn't expose per-session billing, so we characterize each skill
+            rather than attribute historical spend.
           </span>
         </div>
       </header>
