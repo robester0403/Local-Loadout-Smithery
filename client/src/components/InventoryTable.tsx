@@ -17,6 +17,13 @@ interface Props {
   onSelectId?: (id: string, checked: boolean) => void
   onSelectAll?: (checked: boolean) => void
   onReclassify?: (skill: Skill) => void
+  /**
+   * When present, indicates this table is rendering the Cursor tab; the cost
+   * cells switch to live-usage cells (count + last-used) for cursor rows.
+   * Map keys are skill names; entries are absent when a skill has no
+   * recorded activations since polling began.
+   */
+  cursorLiveUsage?: Map<string, { count: number; lastSeen: number }>
 }
 
 function tfLabel(tf: Timeframe): string {
@@ -49,10 +56,15 @@ function fmtDollars(n: number): string {
   return '$' + n.toFixed(4)
 }
 
-function fmtTokens(n: number | undefined): string {
-  if (n == null) return '—'
-  if (n < 1000) return `${n}`
-  return `${(n / 1000).toFixed(1)}K`
+function fmtRelative(ms: number): string {
+  if (!ms) return '—'
+  const days = Math.floor((Date.now() - ms) / 86_400_000)
+  if (days < 0) return 'future'
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
 }
 
 function formatDate(iso: string): string {
@@ -80,7 +92,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 
 export default function InventoryTable({
   skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
-  selectedIds, onSelectId, onSelectAll, onReclassify,
+  selectedIds, onSelectId, onSelectAll, onReclassify, cursorLiveUsage,
 }: Props) {
   const suffix = timeframe ? tfLabel(timeframe) : ''
   const COLUMNS = BASE_COLUMNS.map(col => {
@@ -130,13 +142,19 @@ export default function InventoryTable({
           {skills.map(skill => {
             const isMCP = skill.type === 'mcp'
             const isCursor = skill.account === 'cursor'
-            // Cursor skills don't carry Claude Code cost (no per-turn billing
-            // accessible). We surface static per-turn TOKEN estimates instead:
-            // bodyTokens for active-style cost, listingTokens for loaded-style.
-            // These are skill characterizations, not historical attributions.
-            const cursorActiveTitle = `Per-turn token cost while in context after invocation: ${skill.bodyTokens ?? 0} tokens. Static estimate from skill body.`
-            const cursorLoadedTitle = `Per-turn token cost while listed in system prompt: ${skill.listingTokens ?? 0} tokens. Assumes Cursor lists skills similarly to Claude Code.`
-            const cursorTotalTitle = 'Active and Loaded are per-turn quantities — sum is not meaningful for Cursor.'
+            // For cursor rows: Active/Loaded columns repurposed as live usage.
+            //   Active$  → "Used" cell    (count of activations since polling)
+            //   Loaded$  → "Last used"    (relative date of last activation)
+            //   Total$   → "—"            (no meaningful per-skill total)
+            const cursorLive = isCursor ? cursorLiveUsage?.get(skill.name) : undefined
+            const cursorUsedCount = cursorLive?.count ?? 0
+            const cursorLastSeen = cursorLive?.lastSeen ?? 0
+            const cursorUsedTitle = cursorUsedCount > 0
+              ? `${cursorUsedCount} activation${cursorUsedCount === 1 ? '' : 's'} recorded since LSM started polling Cursor's recently-used lists.`
+              : 'No activations recorded since polling began. Body/listing token sizes are visible in the detail drawer.'
+            const cursorLastSeenTitle = cursorLastSeen
+              ? `Last activation: ${new Date(cursorLastSeen).toLocaleString()}`
+              : 'No activations recorded yet.'
             return (
               <tr
                 key={skill.id}
@@ -193,9 +211,13 @@ export default function InventoryTable({
                 </td>
                 <td className="col-activeDollars col-numeric">
                   {isCursor ? (
-                    <span className="cursor-token-estimate" title={cursorActiveTitle}>
-                      {fmtTokens(skill.bodyTokens)}
-                    </span>
+                    cursorUsedCount > 0 ? (
+                      <span className="cursor-live-count" title={cursorUsedTitle}>
+                        {cursorUsedCount}
+                      </span>
+                    ) : (
+                      <span className="col-mcp-dash" title={cursorUsedTitle}>0</span>
+                    )
                   ) : isMCP ? (
                     skill.activeDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost">{fmtDollars(skill.activeDollars)}</span>
@@ -212,8 +234,8 @@ export default function InventoryTable({
                 </td>
                 <td className="col-loadedDollars col-numeric">
                   {isCursor ? (
-                    <span className="cursor-token-estimate" title={cursorLoadedTitle}>
-                      {fmtTokens(skill.listingTokens)}
+                    <span className={cursorLastSeen ? '' : 'col-mcp-dash'} title={cursorLastSeenTitle}>
+                      {fmtRelative(cursorLastSeen)}
                     </span>
                   ) : isMCP ? <span className="col-mcp-dash">—</span> : (
                     <span
@@ -227,7 +249,7 @@ export default function InventoryTable({
                 </td>
                 <td className="col-totalDollars col-numeric">
                   {isCursor ? (
-                    <span className="col-mcp-dash" title={cursorTotalTitle}>—</span>
+                    <span className="col-mcp-dash" title="Cursor billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
                   ) : isMCP ? (
                     skill.totalDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>

@@ -1571,6 +1571,17 @@ td.col-totalDollars { color: var(--text); }
   margin-left: 2px;
 }
 
+.cursor-live-count {
+  color: var(--text-head);
+  font-weight: 600;
+  font-family: var(--mono);
+}
+.cursor-tab-substat {
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
 .cursor-tab-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   padding: 80px 24px; text-align: center;

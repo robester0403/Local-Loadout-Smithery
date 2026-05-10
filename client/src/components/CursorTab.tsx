@@ -6,12 +6,13 @@
 // authoritative tokenCount data.
 
 import type { Skill, SortKey, SortDir, Timeframe } from '../types'
-import type { CursorUsageReport } from '../api'
+import type { CursorUsageReport, CursorRecentUsageReport } from '../api'
 import InventoryTable from './InventoryTable'
 
 interface Props {
   skills: Skill[]            // already filtered to cursor account
   usage: CursorUsageReport | null
+  recent: CursorRecentUsageReport | null
   sortKey: SortKey
   sortDir: SortDir
   onSort: (key: SortKey) => void
@@ -26,8 +27,19 @@ interface Props {
   onReclassify?: (skill: Skill) => void
 }
 
+function fmtRelative(ms: number): string {
+  if (!ms) return '—'
+  const days = Math.floor((Date.now() - ms) / 86_400_000)
+  if (days < 0) return 'future'
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}
+
 export default function CursorTab(props: Props) {
-  const { skills, usage } = props
+  const { skills, usage, recent } = props
 
   if (skills.length === 0 && usage?.available === false) {
     return (
@@ -57,31 +69,47 @@ export default function CursorTab(props: Props) {
     )
   }
 
-  // Build per-skill activation lookup from the usage report so the stats line
-  // can show how many skills have ever fired.
-  const usedNames = new Set(
-    (usage?.skills ?? []).filter(u => u.activations > 0).map(u => u.skill),
-  )
-  const usedCount = skills.filter(s => usedNames.has(s.name)).length
-  const totalActivations = usage?.totalActivations ?? 0
+  // Live activity from the local poller — keyed by name (only 'skill' kind
+  // here; commands and subagents come through other surfaces).
+  const liveByName = new Map<string, { count: number; lastSeen: number }>()
+  for (const item of recent?.items ?? []) {
+    if (item.kind !== 'skill') continue
+    liveByName.set(item.name, { count: item.count, lastSeen: item.lastSeen })
+  }
+
+  // Stats line totals: live activity is the user-relevant number now;
+  // historical bubble activations get a smaller secondary mention.
+  const liveTotal = recent?.totalEvents ?? 0
+  const trackingSince = recent?.trackingSince ?? 0
+  const historicalTotal = usage?.totalActivations ?? 0
 
   return (
     <div className="cursor-tab">
       <header className="cursor-tab-header">
         <div className="cursor-tab-stats">
           <span><strong>{skills.length}</strong> artifacts</span>
-          <span><strong>{usedCount}</strong> used</span>
-          <span><strong>{totalActivations}</strong> total activations</span>
+          <span>
+            <strong>{liveTotal}</strong> live activations
+            {trackingSince > 0 && (
+              <span className="cursor-tab-substat"> (tracking since {fmtRelative(trackingSince)})</span>
+            )}
+          </span>
+          {historicalTotal > 0 && (
+            <span>
+              <strong>{historicalTotal}</strong> historical
+              <span className="cursor-tab-substat"> (from bubble persistence window)</span>
+            </span>
+          )}
           <span className="cursor-tab-note">
-            Cost columns show static per-turn token estimates (Active = body
-            tokens, Loaded = listing tokens). Cursor's local persistence
-            doesn't expose per-session billing, so we characterize each skill
-            rather than attribute historical spend.
+            "Used" / "Last used" reflect activity recorded since LSM started
+            polling Cursor's recently-used lists. Skill body and listing token
+            sizes (the previous per-turn estimates) are now in the detail
+            drawer.
           </span>
         </div>
       </header>
 
-      <InventoryTable {...props} />
+      <InventoryTable {...props} cursorLiveUsage={liveByName} />
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
-import type { MCPUsageSummary, MCPRelationship, CursorUsageReport } from '../api'
+import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
@@ -19,6 +19,7 @@ interface Props {
   mcpUsageMap?: Map<string, MCPUsageSummary>
   mcpRelationships?: MCPRelationship[]
   cursorUsage?: CursorUsageReport | null
+  cursorRecent?: CursorRecentUsageReport | null
 }
 
 function formatDate(iso: string): string {
@@ -73,7 +74,7 @@ function Section({
   )
 }
 
-export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships, cursorUsage }: Props) {
+export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
   const [showMap, setShowMap] = useState(false)
 
   useEffect(() => {
@@ -307,34 +308,80 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           )}
 
           {skill.account === 'cursor' && (() => {
-            const u = cursorUsage?.skills.find(x => x.skill === skill.name)
-            const activations = u?.activations ?? 0
-            const sessions = u?.sessions ?? 0
-            const lastInvoked = u?.lastInvoked ?? 0
+            const histU = cursorUsage?.skills.find(x => x.skill === skill.name)
+            const histActivations = histU?.activations ?? 0
+            const histSessions = histU?.sessions ?? 0
+            const histLast = histU?.lastInvoked ?? 0
+            const liveU = cursorRecent?.items.find(x => x.kind === 'skill' && x.name === skill.name)
+            const liveCount = liveU?.count ?? 0
+            const liveLast = liveU?.lastSeen ?? 0
+            const liveFirst = liveU?.firstSeen ?? 0
+            const trackingSince = cursorRecent?.trackingSince ?? 0
+            const totalActivity = liveCount + histActivations
             return (
               <Section
-                title={`Cursor activity — ${activations} activation${activations === 1 ? '' : 's'}`}
-                defaultOpen={activations > 0}
+                title={`Cursor activity — ${totalActivity} total (${liveCount} live, ${histActivations} historical)`}
+                defaultOpen={totalActivity > 0}
               >
                 <div className="drawer-meta">
+                  <h4 style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                    Live (since LSM polling started)
+                  </h4>
                   <table className="meta-table">
                     <tbody>
-                      <tr><th>Activations</th><td>{activations}</td></tr>
-                      <tr><th>Distinct sessions</th><td>{sessions}</td></tr>
+                      <tr><th>Activations</th><td>{liveCount}</td></tr>
                       <tr>
-                        <th>Last invoked</th>
-                        <td>{lastInvoked ? formatDate(new Date(lastInvoked).toISOString()) : '—'}</td>
+                        <th>First observed</th>
+                        <td>{liveFirst ? formatDate(new Date(liveFirst).toISOString()) : '—'}</td>
+                      </tr>
+                      <tr>
+                        <th>Last observed</th>
+                        <td>{liveLast ? formatDate(new Date(liveLast).toISOString()) : '—'}</td>
+                      </tr>
+                      <tr>
+                        <th>Tracking since</th>
+                        <td>{trackingSince ? formatDate(new Date(trackingSince).toISOString()) : 'just started'}</td>
                       </tr>
                     </tbody>
                   </table>
-                  {activations === 0 && (
+
+                  <h4 style={{ margin: '14px 0 6px', fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                    Historical (Cursor bubble persistence window)
+                  </h4>
+                  <table className="meta-table">
+                    <tbody>
+                      <tr><th>Activations</th><td>{histActivations}</td></tr>
+                      <tr><th>Distinct sessions</th><td>{histSessions}</td></tr>
+                      <tr>
+                        <th>Last invoked</th>
+                        <td>{histLast ? formatDate(new Date(histLast).toISOString()) : '—'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  {histActivations === 0 && liveCount === 0 && (
                     <p style={{ marginTop: 8, fontSize: 12, color: 'var(--text-dim)' }}>
-                      No activations recorded. Activation signal comes from
-                      Cursor's local SQLite (<code>toolFormerData</code> events),
-                      which is being phased out — recent sessions may have
-                      invoked this skill without leaving a trace here.
+                      No activations recorded in either source. Live tracking
+                      depends on Cursor updating its <code>recentlyUsed</code>
+                      list when the skill is invoked; historical depends on
+                      bubbles in the local SQLite (which Cursor is phasing out).
                     </p>
                   )}
+
+                  <h4 style={{ margin: '14px 0 6px', fontSize: 12, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                    Per-turn size (static)
+                  </h4>
+                  <table className="meta-table">
+                    <tbody>
+                      <tr>
+                        <th>Body tokens</th>
+                        <td>{skill.bodyTokens ?? '—'}<span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>per turn after invocation</span></td>
+                      </tr>
+                      <tr>
+                        <th>Listing tokens</th>
+                        <td>{skill.listingTokens ?? '—'}<span style={{ color: 'var(--text-dim)', marginLeft: 6 }}>per turn while in loadout</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </Section>
             )

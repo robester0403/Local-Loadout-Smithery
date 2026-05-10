@@ -24,7 +24,7 @@ import TimeframePicker from './components/TimeframePicker'
 import SuperRouterTab from './components/SuperRouterTab'
 import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
-import { fetchCursorUsage, type CursorUsageReport } from './api'
+import { fetchCursorUsage, fetchCursorRecentUsage, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
 
 type ActiveTab = 'inventory' | 'superrouter' | 'cursor'
@@ -58,6 +58,7 @@ export default function App() {
   const [mcpUsageMap, setMcpUsageMap] = useState<Map<string, MCPUsageSummary>>(new Map())
   const [mcpRelationships, setMcpRelationships] = useState<MCPRelationship[]>([])
   const [cursorUsage, setCursorUsage] = useState<CursorUsageReport | null>(null)
+  const [cursorRecent, setCursorRecent] = useState<CursorRecentUsageReport | null>(null)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -72,7 +73,7 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels, cursorReport] = await Promise.all([
+      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels, cursorReport, cursorRecentReport] = await Promise.all([
         fetchInventory(),
         fetchProfiles().catch(() => ({ profiles: {}, activeProfile: null })),
         fetchUninstalled().catch(() => [] as UninstalledEntry[]),
@@ -83,6 +84,9 @@ export default function App() {
         fetchCursorUsage().catch((): CursorUsageReport => ({
           available: false, skills: [], totalActivations: 0, distinctSessions: 0,
         })),
+        fetchCursorRecentUsage().catch((): CursorRecentUsageReport => ({
+          hasData: false, trackingSince: 0, items: [], totalEvents: 0,
+        })),
       ])
       let summaries: SkillUsageSummary[] = []
       try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
@@ -91,6 +95,7 @@ export default function App() {
       setMcpUsageMap(usageMap)
       setMcpRelationships(mcpRels)
       setCursorUsage(cursorReport)
+      setCursorRecent(cursorRecentReport)
       setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
       setProfilesData(pd)
       setTrashCount(uninstalled.length)
@@ -498,6 +503,7 @@ export default function App() {
               <CursorTab
                 skills={filtered}
                 usage={cursorUsage}
+                recent={cursorRecent}
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -602,6 +608,7 @@ export default function App() {
           mcpUsageMap={mcpUsageMap}
           mcpRelationships={mcpRelationships}
           cursorUsage={cursorUsage}
+          cursorRecent={cursorRecent}
         />
       )}
 
