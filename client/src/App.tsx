@@ -362,7 +362,7 @@ export default function App() {
             className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
             onClick={() => setActiveTab('cursor')}
             title="Cursor skills + activation data scraped from Cursor's local SQLite"
-          >Cursor{cursorUsage?.totalActivations ? ` · ${cursorUsage.totalActivations}` : ''}</button>
+          >Cursor</button>
         </div>
 
         <div className="header-right">
