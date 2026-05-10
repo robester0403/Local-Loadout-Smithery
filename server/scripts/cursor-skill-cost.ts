@@ -1,27 +1,27 @@
 #!/usr/bin/env tsx
-// Cursor per-skill attribution proof. Run against the user's actual Cursor
-// SQLite to verify the toolFormerData signal works end-to-end before we
-// build out a full Cursor module on the server.
+// Cursor per-skill activation report. Reads the user's Cursor globalStorage
+// SQLite, finds every assistant turn that loaded a skill (via the
+// read_file_v2 / read_file / Read tool reading a SKILL.md inside a recognized
+// loadout dir), and reports per-skill activation counts, last-invoked dates,
+// and composer reach.
 //
 //   tsx server/scripts/cursor-skill-cost.ts
 //
-// Algorithm (derived from research, see PR description):
-//   1. Open Cursor's globalStorage state.vscdb.
-//   2. Stream every cursorDiskKV row whose key starts with 'bubbleId:'.
-//   3. For each bubble whose toolFormerData.name is read_file / read_file_v2 /
-//      Read AND whose params reference '/SKILL.md', extract the skill name
-//      from the path component immediately preceding '/SKILL.md'.
-//   4. Attribute that bubble's tokenCount.{input,output}Tokens to that skill.
-//
-// This is the "first activation" signal only — it doesn't propagate forward
-// across follow-up turns. Good enough to validate the approach.
-//
-// Token-count caveat: tokenCount in Cursor lives on the *head* assistant
-// bubble of a request (1,771 of ~40k bubbles), not on individual tool-call
-// bubbles. So this script's token columns will read 0 for most activations.
-// Producing a real token cost requires joining each tool-call bubble back to
-// its request's head bubble (likely via composerData.conversationMap or the
-// requestId field) — see Phase Cursor-B in the project notes.
+// Why no dollar cost column:
+//   We investigated three potential cost sources in Cursor's local SQLite:
+//     1. bubble.tokenCount.{input,output}Tokens — populated only on the head
+//        assistant bubble per request (~1,771 of ~40k bubbles), and never on
+//        tool-call bubbles. In observed data, the composers that contain
+//        skill activations have token counts of zero on every bubble.
+//     2. composerData.usageData — { [model]: { costInCents, amount } }.
+//        Cursor's billing rollup. Populated for 174/370 composers, but ALL
+//        cost-bearing composers in the test data are from before
+//        2026-02-24. Cursor stopped writing this field in newer sessions —
+//        billing now lives server-side, inaccessible without an API.
+//     3. ItemTable rolling lists (cursor.skills.recentlyUsed etc.) — no
+//        timestamps, no per-session attribution, no cost.
+//   Conclusion: per-skill dollar cost is not extractable from current
+//   Cursor local data. Activation volume is.
 
 import { execFileSync } from 'child_process'
 import os from 'os'
@@ -29,38 +29,27 @@ import path from 'path'
 
 const DB = path.join(
   os.homedir(),
-  'Library',
-  'Application Support',
-  'Cursor',
-  'User',
-  'globalStorage',
-  'state.vscdb',
+  'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb',
 )
 
-interface Bubble {
+const SKILL_TOOL_NAMES = new Set(['read_file', 'read_file_v2', 'Read'])
+// Filter false positives: only count SKILL.md reads inside a recognized
+// loadout directory (avoids picking up sample files in cloned repos, files
+// in ~/Downloads, etc.).
+const LOADOUT_DIR_RE = /\/(?:skills|skills-cursor|agents|commands)\//
+
+interface ToolCall { name?: string; params?: unknown; rawArgs?: unknown }
+interface BubbleRow {
   composerId: string
-  bubbleId: string
-  type?: number               // 1 = user, 2 = assistant
-  tokenCount?: { inputTokens?: number; outputTokens?: number }
-  toolFormerData?: {
-    name?: string
-    params?: unknown
-    rawArgs?: unknown
-  }
-  modelInfo?: { modelName?: string } | null
+  type: number
+  createdAt: number   // ms epoch, 0 if unparseable
+  toolFormerData: ToolCall | null
 }
 
-interface SkillHit {
-  skill: string
-  inputTokens: number
-  outputTokens: number
-  activations: number
-}
-
-function readBubbles(): Bubble[] {
-  // Pre-filter at the SQL layer to bubbles that mention SKILL.md — there are
-  // only ~hundreds of these out of tens of thousands. Use sqlite's -json mode
-  // so the output is a single, valid JSON array (no per-line escaping issues).
+// Pre-filter at the SQL layer to bubbles mentioning SKILL.md — only ~hundreds
+// of those vs ~40k assistant bubbles total, so streaming everything would be
+// wasteful.
+function readSkillReadingBubbles(): BubbleRow[] {
   const out = execFileSync(
     'sqlite3',
     [
@@ -68,38 +57,36 @@ function readBubbles(): Bubble[] {
       DB,
       `SELECT key,
               json_extract(value, '$.type') AS type,
-              json_extract(value, '$.tokenCount.inputTokens') AS inputTokens,
-              json_extract(value, '$.tokenCount.outputTokens') AS outputTokens,
+              json_extract(value, '$.createdAt') AS createdAt,
               json_extract(value, '$.toolFormerData.name') AS toolName,
               json_extract(value, '$.toolFormerData.params') AS toolParams,
               json_extract(value, '$.toolFormerData.rawArgs') AS toolRawArgs
-       FROM cursorDiskKV
-       WHERE key LIKE 'bubbleId:%' AND value LIKE '%SKILL.md%';`,
+         FROM cursorDiskKV
+        WHERE key LIKE 'bubbleId:%' AND value LIKE '%SKILL.md%';`,
     ],
     { maxBuffer: 1024 * 1024 * 256, encoding: 'utf-8' },
   )
-
   if (!out.trim()) return []
-  let rows: Array<Record<string, unknown>>
-  try {
-    rows = JSON.parse(out) as Array<Record<string, unknown>>
-  } catch {
-    return []
-  }
 
-  const bubbles: Bubble[] = []
+  const rows = JSON.parse(out) as Array<Record<string, unknown>>
+  const bubbles: BubbleRow[] = []
   for (const row of rows) {
     const key = row['key'] as string
     const parts = key.split(':')
     if (parts.length < 3) continue
+    // createdAt is stored as an ISO string in modern Cursor data; very old
+    // sessions sometimes used a numeric epoch. Handle both.
+    const ca = row['createdAt']
+    let createdAt = 0
+    if (typeof ca === 'number') createdAt = ca
+    else if (typeof ca === 'string') {
+      const t = Date.parse(ca)
+      if (Number.isFinite(t)) createdAt = t
+    }
     bubbles.push({
       composerId: parts[1],
-      bubbleId: parts.slice(2).join(':'),
-      type: row['type'] as number | undefined,
-      tokenCount: {
-        inputTokens: (row['inputTokens'] as number | null) ?? 0,
-        outputTokens: (row['outputTokens'] as number | null) ?? 0,
-      },
+      type: (row['type'] as number | null) ?? 0,
+      createdAt,
       toolFormerData: {
         name: row['toolName'] as string | undefined,
         params: row['toolParams'] as unknown,
@@ -110,37 +97,17 @@ function readBubbles(): Bubble[] {
   return bubbles
 }
 
-const SKILL_TOOL_NAMES = new Set(['read_file', 'read_file_v2', 'Read'])
+// ─── Attribution ────────────────────────────────────────────────────────────
 
-// Match only paths inside a recognized loadout directory. Filters out random
-// SKILL.md files the agent reads outside the user's actual skill library
-// (e.g. one in ~/Downloads, sample files in cloned repos).
-const LOADOUT_DIR_RE = /\/(?:skills|skills-cursor|agents|commands)\//
-
-function extractSkillName(params: unknown, rawArgs: unknown): string | null {
-  const candidate = pickPathLike(params) ?? pickPathLike(rawArgs)
-  if (!candidate) return null
-  if (!candidate.endsWith('/SKILL.md')) return null
-  if (!LOADOUT_DIR_RE.test(candidate)) return null
-  // path: .../skills-cursor/foo/SKILL.md → 'foo'
-  const segments = candidate.split('/')
-  if (segments.length < 2) return null
-  return segments[segments.length - 2]
-}
-
-// Walk the value tree looking for a string that ENDS with '/SKILL.md'. The
-// leaf check must be `endsWith` rather than `includes`: a JSON-encoded
-// envelope like `{"targetFile":"…/SKILL.md","limit":30}` contains the
-// substring but isn't itself a path, so an `includes` check short-circuits
-// before recursing into the object and returns garbage to the caller.
+// Walk a value tree looking for a string ending in '/SKILL.md'. Leaf check is
+// `endsWith` not `includes` — a JSON-encoded envelope like
+// `{"targetFile":"…/SKILL.md","limit":30}` contains the substring but isn't
+// itself a path; without the strict suffix check we'd return the envelope.
 function pickPathLike(v: unknown): string | null {
   if (typeof v === 'string') {
     if (v.endsWith('/SKILL.md')) return v
-    // Otherwise try parsing as JSON and recurse into the parsed structure.
-    // params and rawArgs are sometimes stringified, sometimes not.
     try {
       const inner = JSON.parse(v) as unknown
-      // Guard against trivial loops: JSON.parse('"foo"') → 'foo'.
       if (typeof inner === 'string' && inner === v) return null
       return pickPathLike(inner)
     } catch {
@@ -156,59 +123,92 @@ function pickPathLike(v: unknown): string | null {
   return null
 }
 
-function main(): void {
-  console.log(`Reading ${DB}…`)
-  const bubbles = readBubbles()
-  console.log(`Loaded ${bubbles.length} bubbles.`)
+function extractSkillName(tool: ToolCall): string | null {
+  if (!tool.name || !SKILL_TOOL_NAMES.has(tool.name)) return null
+  const candidate = pickPathLike(tool.params) ?? pickPathLike(tool.rawArgs)
+  if (!candidate) return null
+  if (!LOADOUT_DIR_RE.test(candidate)) return null
+  // .../skills-cursor/foo/SKILL.md  →  foo
+  const segments = candidate.split('/')
+  if (segments.length < 2) return null
+  return segments[segments.length - 2]
+}
 
-  const tally = new Map<string, SkillHit>()
-  let assistantBubbles = 0
-  let toolBubbles = 0
-  let skillReadBubbles = 0
+interface SkillRollup {
+  skill: string
+  activations: number
+  composers: Set<string>
+  lastInvoked: number   // ms epoch, 0 if unknown
+}
 
+function rollup(bubbles: BubbleRow[]): SkillRollup[] {
+  const tally = new Map<string, SkillRollup>()
   for (const b of bubbles) {
-    if (b.type !== 2) continue
-    assistantBubbles++
-    const tfd = b.toolFormerData
-    if (!tfd?.name) continue
-    toolBubbles++
-    if (!SKILL_TOOL_NAMES.has(tfd.name)) continue
-    const skill = extractSkillName(tfd.params, tfd.rawArgs)
+    if (b.type !== 2 || !b.toolFormerData) continue
+    const skill = extractSkillName(b.toolFormerData)
     if (!skill) continue
-    skillReadBubbles++
 
     const entry = tally.get(skill) ?? {
-      skill, inputTokens: 0, outputTokens: 0, activations: 0,
+      skill, activations: 0, composers: new Set<string>(), lastInvoked: 0,
     }
-    entry.inputTokens += b.tokenCount?.inputTokens ?? 0
-    entry.outputTokens += b.tokenCount?.outputTokens ?? 0
     entry.activations += 1
+    entry.composers.add(b.composerId)
+    if (b.createdAt > entry.lastInvoked) entry.lastInvoked = b.createdAt
     tally.set(skill, entry)
   }
+  return Array.from(tally.values())
+}
+
+// ─── Output ─────────────────────────────────────────────────────────────────
+
+function fmtRelativeDate(ms: number): string {
+  if (!ms) return '—'
+  const days = Math.floor((Date.now() - ms) / 86_400_000)
+  if (days < 0) return 'future'
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}
+
+function main(): void {
+  console.log(`Reading ${DB}…`)
+  const bubbles = readSkillReadingBubbles()
+  console.log(`Skill-mentioning bubbles: ${bubbles.length}`)
+
+  const rolled = rollup(bubbles).sort(
+    (a, b) => b.activations - a.activations || b.lastInvoked - a.lastInvoked,
+  )
+  const totalActivations = rolled.reduce((sum, r) => sum + r.activations, 0)
+  const distinctComposers = new Set<string>()
+  for (const r of rolled) for (const c of r.composers) distinctComposers.add(c)
 
   console.log('')
-  console.log(`Assistant bubbles:        ${assistantBubbles}`)
-  console.log(`With tool calls:          ${toolBubbles}`)
-  console.log(`SKILL.md reads detected:  ${skillReadBubbles}`)
-  console.log(`Distinct skills attributed: ${tally.size}`)
+  console.log(`Total activations:        ${totalActivations}`)
+  console.log(`Distinct skills:          ${rolled.length}`)
+  console.log(`Distinct composers:       ${distinctComposers.size}`)
   console.log('')
 
-  const rows = Array.from(tally.values()).sort((a, b) => b.activations - a.activations)
-  if (rows.length === 0) {
-    console.log('No skill activations found in this database.')
+  if (rolled.length === 0) {
+    console.log('No skill activations found.')
     return
   }
 
-  // Print a tidy table.
   const w = (s: string, n: number) => s.padEnd(n)
-  console.log(w('SKILL', 38) + w('ACTIVATIONS', 14) + w('INPUT TOKENS', 16) + 'OUTPUT TOKENS')
-  console.log('─'.repeat(96))
-  for (const r of rows) {
+  console.log(
+    w('SKILL', 38) +
+    w('ACTIVATIONS', 14) +
+    w('SESSIONS', 12) +
+    'LAST INVOKED',
+  )
+  console.log('─'.repeat(82))
+  for (const r of rolled) {
     console.log(
       w(r.skill, 38) +
       w(String(r.activations), 14) +
-      w(r.inputTokens.toLocaleString(), 16) +
-      r.outputTokens.toLocaleString(),
+      w(String(r.composers.size), 12) +
+      fmtRelativeDate(r.lastInvoked),
     )
   }
 }
