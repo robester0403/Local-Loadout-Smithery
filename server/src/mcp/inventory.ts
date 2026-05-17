@@ -1,6 +1,6 @@
 import { discoverMCPServers } from './discover'
 import { probeMCPStdio } from './stdioClient'
-import { loadCached, saveCache, clearCache } from './cache'
+import { loadCached, saveCache } from './cache'
 import { detectSessionInjected } from './sessionInjected'
 import type { MCPServerEntry, MCPTool } from './types'
 
@@ -93,9 +93,4 @@ export async function buildMCPInventory(skipCache = false): Promise<MCPServerEnt
   })
 
   return entries
-}
-
-export async function refreshMCPInventory(): Promise<MCPServerEntry[]> {
-  clearCache()
-  return buildMCPInventory(true)
 }

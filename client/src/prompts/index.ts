@@ -1,22 +1,10 @@
+// Public surface of the prompts module.
+//
+// Per-issue prompt builders (fixHealth, fixRemovalCandidate, etc.) are
+// imported directly from their files by the badge / drawer components.
+// Only the multi-skill bundler is consumed through this barrel.
+
 import type { Skill } from '../types'
-import { generateFixHealthPrompt } from './fixHealthPrompt'
-import { generateFixRemovalCandidatePrompt } from './fixRemovalCandidatePrompt'
-import { generateFixDormantPrompt } from './fixDormantPrompt'
-import { generateFixDescriptionQualityPrompt } from './fixDescriptionQualityPrompt'
-import { generateFixScopeMismatchPrompt } from './fixScopeMismatchPrompt'
-export { generateReclassifyPrompt } from './reclassifyPrompt'
-
-export type PromptKey = 'health' | 'removal-candidate' | 'dormant' | 'description-quality' | 'scope-mismatch'
-
-export function getFixPrompt(key: PromptKey, skill: Skill): string {
-  switch (key) {
-    case 'health': return generateFixHealthPrompt(skill)
-    case 'removal-candidate': return generateFixRemovalCandidatePrompt(skill)
-    case 'dormant': return generateFixDormantPrompt(skill)
-    case 'description-quality': return generateFixDescriptionQualityPrompt(skill)
-    case 'scope-mismatch': return generateFixScopeMismatchPrompt(skill)
-  }
-}
 
 export function getBundledPrompt(skills: Skill[]): string {
   const items = skills.map((skill, i) => {
@@ -44,8 +32,4 @@ Address every issue for each skill above. For each one:
 - Work through them sequentially — confirm each fix before moving on
 - Preserve all body logic unless the body itself is broken
 - Don't leave any skill in the same broken state it started in`
-}
-
-export async function copyToClipboard(text: string): Promise<void> {
-  await navigator.clipboard.writeText(text)
 }

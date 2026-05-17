@@ -77,7 +77,7 @@ export default function UninstalledPanel({ onClose, onRestored, onCountChange }:
         </div>
 
         {error && (
-          <div className="sr-form-error" style={{ marginBottom: 16 }}>{error}</div>
+          <div className="form-error" style={{ marginBottom: 16 }}>{error}</div>
         )}
 
         {loading ? (

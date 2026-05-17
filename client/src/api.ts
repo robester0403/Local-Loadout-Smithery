@@ -164,11 +164,6 @@ export async function fetchMCPInventory(): Promise<MCPRow[]> {
   return (await parseResponse<{ servers: MCPRow[] }>(res)).servers
 }
 
-export async function refreshMCPInventory(): Promise<MCPRow[]> {
-  const res = await fetch('/api/mcp/refresh', { method: 'POST' })
-  return (await parseResponse<{ servers: MCPRow[] }>(res)).servers
-}
-
 // ─── Uninstall / Trash ───────────────────────────────────────────────────────
 
 export interface UninstalledEntry {
@@ -199,92 +194,6 @@ export async function restoreSkillApi(id: string): Promise<void> {
 
 export async function permanentDeleteApi(id: string): Promise<void> {
   const res = await fetch(`/api/uninstalled/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  await parseResponse<{ ok: boolean }>(res)
-}
-
-// ─── SuperRouter ─────────────────────────────────────────────────────────────
-
-export interface SRGroupMember {
-  skillId: string
-  addedAt: string
-  contentHash: string
-}
-
-export interface SRGroup {
-  id: string
-  name: string
-  description: string
-  keywords: string[]
-  scope: 'global' | 'project'
-  projectPath?: string
-  enabled: boolean
-  members: SRGroupMember[]
-  driftedMembers?: string[]
-}
-
-export interface SuperRouterStateData {
-  globalEnabled: boolean
-  useHook: boolean
-  groups: SRGroup[]
-  hookInstalled: boolean
-}
-
-export async function fetchSuperRouterState(): Promise<SuperRouterStateData> {
-  const res = await fetch('/api/superrouter/state')
-  return parseResponse<SuperRouterStateData>(res)
-}
-
-export async function superRouterGlobalToggle(opts: { enabled?: boolean; useHook?: boolean }): Promise<void> {
-  const res = await fetch('/api/superrouter/global-toggle', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(opts),
-  })
-  await parseResponse<{ ok: boolean }>(res)
-}
-
-export async function createSRGroup(data: {
-  name: string; description: string; keywords: string[]
-  scope: 'global' | 'project'; projectPath?: string
-}): Promise<SRGroup> {
-  const res = await fetch('/api/superrouter/groups', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  return (await parseResponse<{ group: SRGroup }>(res)).group
-}
-
-export async function updateSRGroup(
-  id: string,
-  data: Partial<{ name: string; description: string; keywords: string[]; scope: 'global' | 'project'; projectPath: string; enabled: boolean }>,
-): Promise<SRGroup> {
-  const res = await fetch(`/api/superrouter/groups/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  return (await parseResponse<{ group: SRGroup }>(res)).group
-}
-
-export async function deleteSRGroup(id: string): Promise<void> {
-  const res = await fetch(`/api/superrouter/groups/${encodeURIComponent(id)}`, { method: 'DELETE' })
-  await parseResponse<{ ok: boolean }>(res)
-}
-
-export async function addSRMember(groupId: string, skillId: string, name: string, description: string): Promise<void> {
-  const res = await fetch(
-    `/api/superrouter/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(skillId)}`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description }) },
-  )
-  await parseResponse<{ member: SRGroupMember }>(res)
-}
-
-export async function removeSRMember(groupId: string, skillId: string): Promise<void> {
-  const res = await fetch(
-    `/api/superrouter/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(skillId)}`,
-    { method: 'DELETE' },
-  )
   await parseResponse<{ ok: boolean }>(res)
 }
 
