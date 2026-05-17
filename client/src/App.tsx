@@ -145,6 +145,16 @@ export default function App() {
     }
   }
 
+  // Inline description/body edit confirmed by the server. Patch local state
+  // immediately so every surface — drawer, rail, table — reflects the change
+  // without waiting for the full inventory refetch, then trigger that refetch
+  // in the background so derived fields (health, token counts, references)
+  // re-resolve canonically.
+  function handleSkillEdited(id: string, patch: { description?: string; body?: string }) {
+    setSkills(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
+    void load()
+  }
+
   function handleSelectId(id: string, checked: boolean) {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -598,6 +608,7 @@ export default function App() {
           onSelect={setSelected}
           onReclassify={handleReclassify}
           onUninstall={handleUninstall}
+          onSkillChanged={handleSkillEdited}
           mcpUsageMap={mcpUsageMap}
           mcpRelationships={mcpRelationships}
           cursorUsage={cursorUsage}

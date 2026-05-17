@@ -6,6 +6,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { Skill } from '../../types'
+import EditableText from '../EditableText'
 import {
   type Direction,
   DEPTH_OPTIONS,
@@ -216,6 +217,14 @@ interface InfoRailProps {
   /** Called when a snippet is clicked. Parent uses this to navigate the
    *  graph and dispatch the body-scroll via `bodyJump`. */
   onJumpToMention?: (name: string, offset: number) => void
+  /** Persist a description / body edit. When provided, the rail renders
+   *  inline edit affordances on those two sections. */
+  onSaveDescription?: (next: string) => Promise<void>
+  onSaveBody?: (next: string) => Promise<void>
+  /** Fired when the rail enters / leaves an edit. The parent uses this to
+   *  freeze the rail on the current skill so hover-driven previews don't
+   *  swap the rail out from under an in-flight edit. */
+  onEditingChange?: (editing: boolean) => void
 }
 
 export function RelmapInfoRail({
@@ -225,7 +234,15 @@ export function RelmapInfoRail({
   knownNames,
   bodyJump,
   onJumpToMention,
+  onSaveDescription,
+  onSaveBody,
+  onEditingChange,
 }: InfoRailProps) {
+  // Edits only fire on the currently-focused root: when the rail is showing
+  // a hover preview, a pencil click on it would still operate on the actual
+  // skill behind the preview, which is confusing. Skip MCPs entirely — they
+  // aren't file-backed.
+  const canEdit = isRoot && skill.type !== 'mcp'
   const refCount = (skill.references ?? []).length
   const hasBody = !!(skill.body && skill.body.trim().length > 0)
 
@@ -242,7 +259,19 @@ export function RelmapInfoRail({
       <h3 className="relmap-rail-title">{skill.name}</h3>
 
       <RailSection label="Description" defaultOpen>
-        {skill.description ? (
+        {canEdit && onSaveDescription ? (
+          <EditableText
+            className="relmap-rail-desc"
+            variant="line"
+            value={skill.description ?? ''}
+            emptyText="No description."
+            label="Edit description"
+            onSave={onSaveDescription}
+            onEditStart={() => onEditingChange?.(true)}
+            onEditEnd={() => onEditingChange?.(false)}
+            renderValue={v => highlightMentions(v, knownNames, skill.name)}
+          />
+        ) : skill.description ? (
           <p className="relmap-rail-desc">
             {highlightMentions(skill.description, knownNames, skill.name)}
           </p>
@@ -256,7 +285,23 @@ export function RelmapInfoRail({
         open={bodyOpen}
         onOpenChange={setBodyOpen}
       >
-        {hasBody ? (
+        {canEdit && onSaveBody ? (
+          <EditableText
+            className="relmap-rail-body-edit"
+            variant="block"
+            value={skill.body ?? ''}
+            emptyText="No body."
+            label="Edit body"
+            onSave={onSaveBody}
+            onEditStart={() => onEditingChange?.(true)}
+            onEditEnd={() => onEditingChange?.(false)}
+            renderValue={v => (
+              <pre className="relmap-rail-body" ref={bodyRef}>
+                {highlightMentions(v, knownNames, skill.name)}
+              </pre>
+            )}
+          />
+        ) : hasBody ? (
           <pre className="relmap-rail-body" ref={bodyRef}>
             {highlightMentions(skill.body, knownNames, skill.name)}
           </pre>

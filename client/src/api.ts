@@ -65,6 +65,20 @@ export async function setSkillDisabled(id: string, disabled: boolean): Promise<v
   await parseResponse<{ ok: boolean }>(res)
 }
 
+// Update the description and/or body of a file-backed skill. The server
+// rejects unsupported types (MCP) and bad descriptions with HTTP 400.
+export async function updateSkillContent(
+  id: string,
+  patch: { description?: string; body?: string },
+): Promise<void> {
+  const res = await fetch(`/api/skills/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  await parseResponse<{ ok: boolean }>(res)
+}
+
 export async function fetchSampleTurn(timeframe?: Timeframe): Promise<SampleTurn | null> {
   const qs = timeframe && timeframe !== 'all' ? `?timeframe=${timeframe}` : ''
   const res = await fetch(`/api/usage/sample-turn${qs}`)
