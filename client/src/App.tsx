@@ -21,13 +21,12 @@ import CostExplainerModal from './components/CostExplainerModal'
 import ProfileSwitcher from './components/ProfileSwitcher'
 import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
-import SuperRouterTab from './components/SuperRouterTab'
 import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
 import { fetchCursorUsage, fetchCursorRecentUsage, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
 
-type ActiveTab = 'inventory' | 'superrouter' | 'cursor'
+type ActiveTab = 'inventory' | 'cursor'
 
 export default function App() {
   const [skills, setSkills] = useState<Skill[]>([])
@@ -372,10 +371,6 @@ export default function App() {
             onClick={() => setActiveTab('inventory')}
           >Claude Code</button>
           <button
-            className={`header-tab${activeTab === 'superrouter' ? ' active' : ''}`}
-            onClick={() => setActiveTab('superrouter')}
-          >SuperRouter</button>
-          <button
             className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
             onClick={() => setActiveTab('cursor')}
             title="Cursor skills + activation data scraped from Cursor's local SQLite"
@@ -466,9 +461,7 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {activeTab === 'superrouter' ? (
-          <SuperRouterTab skills={skills} onToast={showToast} />
-        ) : activeTab === 'cursor' ? (
+        {activeTab === 'cursor' ? (
           loading ? (
             <EmptyState variant="loading" />
           ) : error ? (

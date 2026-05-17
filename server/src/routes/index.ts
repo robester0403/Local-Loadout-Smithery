@@ -8,7 +8,6 @@ import skillsRouter from './skills'
 import uninstalledRouter from './uninstalled'
 import usageRouter from './usage'
 import profilesRouter from './profiles'
-import superrouterRouter from './superrouter'
 import mcpRouter from './mcp'
 import cursorRouter from './cursor'
 import launchClaudeRouter from './launchClaude'
@@ -21,7 +20,6 @@ api.use(skillsRouter)
 api.use(uninstalledRouter)
 api.use(usageRouter)
 api.use(profilesRouter)
-api.use(superrouterRouter)
 api.use(mcpRouter)
 api.use(cursorRouter)
 api.use(launchClaudeRouter)

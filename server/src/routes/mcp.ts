@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { buildMCPInventory, refreshMCPInventory } from '../mcp/inventory'
+import { buildMCPInventory } from '../mcp/inventory'
 import { computeMCPRelationships, computeMCPUsage } from '../mcp/usage'
 import { parseTimeframe, sinceDate } from '../usage/timeframe'
 import { asyncHandler } from '../lib/asyncHandler'
@@ -8,11 +8,6 @@ const router = Router()
 
 router.get('/mcp/inventory', asyncHandler(async (_req, res) => {
   const servers = await buildMCPInventory()
-  res.json({ servers })
-}))
-
-router.post('/mcp/refresh', asyncHandler(async (_req, res) => {
-  const servers = await refreshMCPInventory()
   res.json({ servers })
 }))
 

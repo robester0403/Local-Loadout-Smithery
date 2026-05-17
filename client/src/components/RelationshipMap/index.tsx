@@ -237,7 +237,7 @@ function GraphContent({ isOrphan, error, svgHtml, naturalDim, zoom }: GraphConte
       </div>
     )
   }
-  if (error) return <div className="sr-form-error">{error}</div>
+  if (error) return <div className="form-error">{error}</div>
   if (!svgHtml) {
     return (
       <div className="empty-state" style={{ minHeight: 120 }}>
