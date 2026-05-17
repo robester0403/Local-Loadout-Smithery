@@ -64,25 +64,30 @@ export function computeHealth(
     issues.push({ severity: 'error', message: 'Missing name' })
   }
 
-  // Missing or very short description
-  if (!skill.description) {
-    issues.push({ severity: 'warn', message: 'Missing description' })
-  } else if (skill.description.length < 20) {
-    issues.push({ severity: 'warn', message: "Description too short — Claude can't match it for progressive disclosure" })
-  } else {
-    // No verb in first 10 words
-    const first10 = skill.description.split(/\s+/).slice(0, 10).map(w => w.toLowerCase().replace(/[^a-z]/g, ''))
-    const hasVerb = first10.some(w => COMMON_VERBS.has(w))
-    if (!hasVerb) {
-      issues.push({ severity: 'warn', message: 'Description has no clear action verb — add one so Claude knows when to use this skill' })
-    }
+  // Description-quality checks only apply to artifacts that get auto-routed
+  // by Claude's progressive disclosure (skills, subagents). Slash commands
+  // fire on explicit `/name` invocation, so a missing/short/verb-less
+  // description is not a defect — flagging it just creates noise.
+  if (skill.type !== 'command') {
+    if (!skill.description) {
+      issues.push({ severity: 'warn', message: 'Missing description' })
+    } else if (skill.description.length < 20) {
+      issues.push({ severity: 'warn', message: "Description too short — Claude can't match it for progressive disclosure" })
+    } else {
+      // No verb in first 10 words
+      const first10 = skill.description.split(/\s+/).slice(0, 10).map(w => w.toLowerCase().replace(/[^a-z]/g, ''))
+      const hasVerb = first10.some(w => COMMON_VERBS.has(w))
+      if (!hasVerb) {
+        issues.push({ severity: 'warn', message: 'Description has no clear action verb — add one so Claude knows when to use this skill' })
+      }
 
-    // Duplicate description
-    if (context) {
-      const key = skill.description.toLowerCase().trim()
-      const count = context.descriptionCounts.get(key) ?? 0
-      if (count >= 2) {
-        issues.push({ severity: 'warn', message: 'Description is identical to another skill — Claude may load the wrong one' })
+      // Duplicate description
+      if (context) {
+        const key = skill.description.toLowerCase().trim()
+        const count = context.descriptionCounts.get(key) ?? 0
+        if (count >= 2) {
+          issues.push({ severity: 'warn', message: 'Description is identical to another skill — Claude may load the wrong one' })
+        }
       }
     }
   }

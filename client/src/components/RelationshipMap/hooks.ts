@@ -1,6 +1,10 @@
-// Custom hooks for the RelationshipMap. Each is focused on one concern so the
-// orchestrating component reads as composition rather than 400 lines of
-// imperative effects.
+// Custom hooks for the RelationshipMap graph surface: mermaid render lifecycle,
+// auto-fit + manual zoom, click-and-drag panning, and click/hover navigation.
+// Each hook is focused on one concern so the orchestrating component reads as
+// composition rather than 400 lines of imperative effects.
+//
+// Sibling modules:
+//   nodeDiagnostics.ts — overlay warning badges + tooltips on rendered nodes
 
 import {
   useCallback,
@@ -14,6 +18,8 @@ import {
 import type { Skill } from '../../types'
 import { mermaid, escapeMermaidLabel } from './mermaid'
 import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from './graph'
+
+export { useNodeDiagnostics } from './nodeDiagnostics'
 
 // ─── Mermaid render lifecycle ────────────────────────────────────────────────
 //

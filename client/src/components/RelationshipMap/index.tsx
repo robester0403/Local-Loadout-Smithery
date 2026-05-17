@@ -9,14 +9,15 @@
 //                    useNodeInteractions
 //   parts.tsx      — small presentational subcomponents
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Skill } from '../../types'
 import { type Direction, buildChain } from './graph'
-import { buildMermaid } from './mermaid'
+import { buildMermaid, escapeMermaidLabel } from './mermaid'
 import {
   useGraphPanning,
   useGraphZoom,
   useMermaidRender,
+  useNodeDiagnostics,
   useNodeInteractions,
 } from './hooks'
 import {
@@ -25,6 +26,7 @@ import {
   RelmapInfoRail,
   RelmapTypeLegend,
   RelmapZoomToolbar,
+  type BodyJump,
 } from './parts'
 
 interface Props {
@@ -77,6 +79,10 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     wasDraggingRef,
   })
 
+  // Overlay diagnostic / warning icons onto each rendered node so the same
+  // signals shown in the main table's Health + Diag columns are visible here.
+  useNodeDiagnostics({ containerRef, svgHtml, allSkills })
+
   const isOrphan = nodes.size === 1 && edges.length === 0
   const railSkill: Skill =
     (hoveredName && skillsByNameRef.current.get(hoveredName)) || skill
@@ -88,6 +94,33 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
     [allSkills],
   )
 
+  // Body-mention click bridge: scroll the graph to the mentioned artifact's
+  // node and dispatch a BodyJump so the rail's Body section auto-opens and
+  // scrolls to that exact occurrence. Nonce ensures repeated clicks re-fire.
+  const [bodyJump, setBodyJump] = useState<BodyJump | null>(null)
+  const jumpToMention = useCallback((name: string, offset: number) => {
+    const graphEl = graphRef.current
+    if (graphEl) {
+      const candidates = graphEl.querySelectorAll<SVGGElement>('.node')
+      let target: SVGGElement | null = null
+      for (const node of candidates) {
+        const labelEl = node.querySelector('.nodeLabel, foreignObject, .label, text')
+        const label = (labelEl?.textContent ?? node.textContent ?? '').trim()
+        if (label === name || escapeMermaidLabel(name) === label) {
+          target = node
+          break
+        }
+      }
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+        // Brief flash so the user's eye lands on the right node.
+        target.classList.add('relmap-node-flash')
+        window.setTimeout(() => target?.classList.remove('relmap-node-flash'), 1400)
+      }
+    }
+    setBodyJump(prev => ({ name, offset, nonce: (prev?.nonce ?? 0) + 1 }))
+  }, [])
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className={`modal relmap-modal ${fullscreen ? 'relmap-modal-fullscreen' : ''}`}>
@@ -98,14 +131,15 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
           onClose={onClose}
         />
 
-        <RelmapControls
-          direction={direction}
-          onDirectionChange={setDirection}
-          maxDepth={maxDepth}
-          onDepthChange={setMaxDepth}
-        />
-
-        <RelmapTypeLegend />
+        <div className="relmap-toprow">
+          <RelmapControls
+            direction={direction}
+            onDirectionChange={setDirection}
+            maxDepth={maxDepth}
+            onDepthChange={setMaxDepth}
+          />
+          <RelmapTypeLegend />
+        </div>
 
         <div className="relmap-body" ref={containerRef}>
           <div className="relmap-graph-wrap">
@@ -139,6 +173,8 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
             isHovering={hoveredName != null}
             isRoot={railSkill.name === skill.name}
             knownNames={knownNames}
+            bodyJump={bodyJump}
+            onJumpToMention={jumpToMention}
           />
         </div>
       </div>
@@ -161,11 +197,7 @@ function Header({ rootName, nodeCount, edgeCount, onClose }: HeaderProps) {
         <div className="modal-title">{rootName} — relationship map</div>
         <div className="modal-subtitle">
           {nodeCount} {nodeCount === 1 ? 'artifact' : 'artifacts'} ·{' '}
-          {edgeCount} edge{edgeCount !== 1 ? 's' : ''} ·{' '}
-          <span className="relmap-legend">
-            <span className="relmap-legend-item">── direct &nbsp;</span>
-            <span className="relmap-legend-item">·· body mention</span>
-          </span>
+          {edgeCount} edge{edgeCount !== 1 ? 's' : ''}
         </div>
       </div>
       <button className="btn btn-sm modal-close" onClick={onClose} aria-label="Close">×</button>
@@ -183,6 +215,17 @@ interface GraphContentProps {
 }
 
 function GraphContent({ isOrphan, error, svgHtml, naturalDim, zoom }: GraphContentProps) {
+  // Imperative innerHTML so React leaves the SVG subtree alone after we set
+  // it. With `dangerouslySetInnerHTML`, unrelated re-renders (hover state in
+  // the parent, zoom changes) can cause React to re-apply the HTML, which
+  // wipes any DOM we've injected into the rendered SVG — notably the
+  // diagnostic flag badges added by useNodeDiagnostics.
+  const svgRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    if (!svgRef.current) return
+    svgRef.current.innerHTML = svgHtml ?? ''
+  }, [svgHtml])
+
   if (isOrphan) {
     return (
       <div className="relmap-orphan">
@@ -204,9 +247,9 @@ function GraphContent({ isOrphan, error, svgHtml, naturalDim, zoom }: GraphConte
   }
   return (
     <div
+      ref={svgRef}
       className="relmap-svg"
       style={naturalDim ? { width: naturalDim.w * zoom, height: naturalDim.h * zoom } : undefined}
-      dangerouslySetInnerHTML={{ __html: svgHtml }}
     />
   )
 }

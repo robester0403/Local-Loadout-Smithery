@@ -104,7 +104,7 @@ export default function CostBreakdownPanel({ skill, onClose, timeframe }: Props)
         )}
 
         {!loading && error && (
-          <div className="modal-section" style={{ color: '#f57a7a' }}>
+          <div className="modal-section" style={{ color: 'var(--c-danger)' }}>
             Error: {error}
           </div>
         )}

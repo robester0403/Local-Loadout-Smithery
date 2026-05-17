@@ -90,6 +90,17 @@ describe('computeHealth', () => {
     expect(result.issues.every(i => !/allowed-tools/i.test(i.message))).toBe(true)
   })
 
+  it('does not flag description issues for commands', () => {
+    // Commands fire on explicit /name invocation, so description quality
+    // doesn't affect routing — missing / short / verb-less should all pass.
+    const missing = computeHealth(base({ type: 'command', description: '' }))
+    expect(missing.issues.every(i => !/description/i.test(i.message))).toBe(true)
+    const short = computeHealth(base({ type: 'command', description: 'tiny' }))
+    expect(short.issues.every(i => !/description/i.test(i.message))).toBe(true)
+    const verbless = computeHealth(base({ type: 'command', description: 'the quick brown fox over a lazy dog and stuff' }))
+    expect(verbless.issues.every(i => !/description/i.test(i.message))).toBe(true)
+  })
+
   it('error takes precedence over warn in status', () => {
     const result = computeHealth(base({ name: '', description: '' }))
     expect(result.status).toBe('error')
