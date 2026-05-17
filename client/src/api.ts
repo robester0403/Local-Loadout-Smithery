@@ -287,3 +287,49 @@ export async function removeSRMember(groupId: string, skillId: string): Promise<
   )
   await parseResponse<{ ok: boolean }>(res)
 }
+
+// ─── Cursor activity ────────────────────────────────────────────────────────
+
+export interface CursorSkillUsage {
+  skill: string
+  activations: number
+  sessions: number
+  /** ms epoch; 0 if no timestamp available. */
+  lastInvoked: number
+}
+
+export interface CursorUsageReport {
+  /** True when the Cursor SQLite was found on the host. */
+  available: boolean
+  skills: CursorSkillUsage[]
+  totalActivations: number
+  distinctSessions: number
+}
+
+export async function fetchCursorUsage(): Promise<CursorUsageReport> {
+  const res = await fetch('/api/cursor/usage')
+  return parseResponse<CursorUsageReport>(res)
+}
+
+// Live activity recorded by the local poller (not bubble-based). Accumulates
+// from the moment the LSM server started watching Cursor's recently-used
+// lists.
+export interface CursorRecentSkillUsage {
+  name: string
+  kind: 'skill' | 'command' | 'subagent'
+  count: number
+  firstSeen: number
+  lastSeen: number
+}
+
+export interface CursorRecentUsageReport {
+  hasData: boolean
+  trackingSince: number
+  items: CursorRecentSkillUsage[]
+  totalEvents: number
+}
+
+export async function fetchCursorRecentUsage(): Promise<CursorRecentUsageReport> {
+  const res = await fetch('/api/cursor/recent-usage')
+  return parseResponse<CursorRecentUsageReport>(res)
+}

@@ -76,6 +76,8 @@ export interface Skill {
   activeDollars: number
   loadedDollars: number
   totalDollars: number
+  bodyTokens?: number
+  listingTokens?: number
   insight: Insight
   dormant: boolean
   lastInvoked: string

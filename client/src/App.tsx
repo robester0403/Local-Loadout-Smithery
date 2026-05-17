@@ -23,9 +23,11 @@ import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
 import SuperRouterTab from './components/SuperRouterTab'
 import UninstalledPanel from './components/UninstalledPanel'
+import CursorTab from './components/CursorTab'
+import { fetchCursorUsage, fetchCursorRecentUsage, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
 
-type ActiveTab = 'inventory' | 'superrouter'
+type ActiveTab = 'inventory' | 'superrouter' | 'cursor'
 
 export default function App() {
   const [skills, setSkills] = useState<Skill[]>([])
@@ -55,6 +57,8 @@ export default function App() {
   const uninstallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mcpUsageMap, setMcpUsageMap] = useState<Map<string, MCPUsageSummary>>(new Map())
   const [mcpRelationships, setMcpRelationships] = useState<MCPRelationship[]>([])
+  const [cursorUsage, setCursorUsage] = useState<CursorUsageReport | null>(null)
+  const [cursorRecent, setCursorRecent] = useState<CursorRecentUsageReport | null>(null)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -69,13 +73,20 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
+      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels, cursorReport, cursorRecentReport] = await Promise.all([
         fetchInventory(),
         fetchProfiles().catch(() => ({ profiles: {}, activeProfile: null })),
         fetchUninstalled().catch(() => [] as UninstalledEntry[]),
         fetchMCPInventory().catch(() => [] as MCPRow[]),
         fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
         fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
+        // Tolerate Cursor being absent — non-fatal.
+        fetchCursorUsage().catch((): CursorUsageReport => ({
+          available: false, skills: [], totalActivations: 0, distinctSessions: 0,
+        })),
+        fetchCursorRecentUsage().catch((): CursorRecentUsageReport => ({
+          hasData: false, trackingSince: 0, items: [], totalEvents: 0,
+        })),
       ])
       let summaries: SkillUsageSummary[] = []
       try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
@@ -83,6 +94,8 @@ export default function App() {
       const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
       setMcpUsageMap(usageMap)
       setMcpRelationships(mcpRels)
+      setCursorUsage(cursorReport)
+      setCursorRecent(cursorRecentReport)
       setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
       setProfilesData(pd)
       setTrashCount(uninstalled.length)
@@ -266,7 +279,10 @@ export default function App() {
     }
   }
 
+  // The Cursor tab gets its own table with the same filter/search/sort
+  // pipeline. Branch on activeTab so each table sees only its own rows.
   const filtered = skills
+    .filter(s => activeTab === 'cursor' ? s.account === 'cursor' : s.account !== 'cursor')
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
       if (filters.scope.length > 0 && !filters.scope.includes(s.scope)) return false
@@ -305,16 +321,28 @@ export default function App() {
     else { setSortKey(key); setSortDir('asc') }
   }
 
+  // Scope sidebar counts and review banner to the active tab. The Claude
+  // Code tab should not show "5 dormant" if 4 of those are Cursor skills,
+  // and vice versa — the two ecosystems don't share a coherent review
+  // surface.
+  const tabSkills = activeTab === 'cursor'
+    ? skills.filter(s => s.account === 'cursor')
+    : skills.filter(s => s.account !== 'cursor')
+
   const counts = {
-    skill: skills.filter(s => s.type === 'skill').length,
-    command: skills.filter(s => s.type === 'command').length,
-    subagent: skills.filter(s => s.type === 'subagent').length,
-    mcp: skills.filter(s => s.type === 'mcp').length,
+    skill: tabSkills.filter(s => s.type === 'skill').length,
+    command: tabSkills.filter(s => s.type === 'command').length,
+    subagent: tabSkills.filter(s => s.type === 'subagent').length,
+    mcp: tabSkills.filter(s => s.type === 'mcp').length,
   }
 
   const totals = computeTotals(skills)
-  const review = countReview(skills)
-  const showBanner = !loading && !error && review.total > 0 && !filters.reviewOnly
+  const review = countReview(tabSkills)
+  // Insight banner is only meaningful on the Claude Code tab — Cursor's
+  // activation data (which "removal candidate" / "dormant" rely on) is now
+  // bounded by the persistence fade, so banners would flag every Cursor
+  // skill. Skip the banner on the Cursor tab entirely.
+  const showBanner = !loading && !error && review.total > 0 && !filters.reviewOnly && activeTab !== 'cursor'
 
   return (
     <div className="app">
@@ -342,11 +370,16 @@ export default function App() {
           <button
             className={`header-tab${activeTab === 'inventory' ? ' active' : ''}`}
             onClick={() => setActiveTab('inventory')}
-          >Inventory</button>
+          >Claude Code</button>
           <button
             className={`header-tab${activeTab === 'superrouter' ? ' active' : ''}`}
             onClick={() => setActiveTab('superrouter')}
           >SuperRouter</button>
+          <button
+            className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
+            onClick={() => setActiveTab('cursor')}
+            title="Cursor skills + activation data scraped from Cursor's local SQLite"
+          >Cursor</button>
         </div>
 
         <div className="header-right">
@@ -357,7 +390,7 @@ export default function App() {
             onCreate={handleCreateProfile}
             onDelete={handleDeleteProfile}
           />
-          <TimeframePicker value={timeframe} onChange={setTimeframe} />
+          {activeTab !== 'cursor' && <TimeframePicker value={timeframe} onChange={setTimeframe} />}
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             ? How costs work
           </button>
@@ -405,28 +438,87 @@ export default function App() {
         <FilterBar filters={filters} setFilters={setFilters} />
 
         <div className="sidebar-stats">
-          <div className="stat-row">
-            <span className="type-badge type-skill">skill</span>
-            <span>{counts.skill}</span>
-          </div>
-          <div className="stat-row">
-            <span className="type-badge type-command">cmd</span>
-            <span>{counts.command}</span>
-          </div>
-          <div className="stat-row">
-            <span className="type-badge type-subagent">subagent</span>
-            <span>{counts.subagent}</span>
-          </div>
-          <div className="stat-row">
-            <span className="type-badge type-mcp">mcp</span>
-            <span>{counts.mcp}</span>
-          </div>
+          {counts.skill > 0 && (
+            <div className="stat-row">
+              <span className="type-badge type-skill">skill</span>
+              <span>{counts.skill}</span>
+            </div>
+          )}
+          {counts.command > 0 && (
+            <div className="stat-row">
+              <span className="type-badge type-command">cmd</span>
+              <span>{counts.command}</span>
+            </div>
+          )}
+          {counts.subagent > 0 && (
+            <div className="stat-row">
+              <span className="type-badge type-subagent">subagent</span>
+              <span>{counts.subagent}</span>
+            </div>
+          )}
+          {counts.mcp > 0 && (
+            <div className="stat-row">
+              <span className="type-badge type-mcp">mcp</span>
+              <span>{counts.mcp}</span>
+            </div>
+          )}
         </div>
       </aside>
 
       <main className="main">
         {activeTab === 'superrouter' ? (
           <SuperRouterTab skills={skills} onToast={showToast} />
+        ) : activeTab === 'cursor' ? (
+          loading ? (
+            <EmptyState variant="loading" />
+          ) : error ? (
+            <EmptyState variant="error" message={error} onRetry={load} />
+          ) : (
+            <>
+              {selectedIds.size > 0 && (
+                <div className="bulk-bar">
+                  <span className="bulk-count">{selectedIds.size} selected</span>
+                  <button className="btn btn-sm" onClick={async () => {
+                    const targets = filtered.filter(s => selectedIds.has(s.id))
+                    const prompt = getBundledPrompt(targets)
+                    try {
+                      const result = await launchClaude(prompt)
+                      showToast(result.platform === 'unsupported'
+                        ? 'Prompt copied — open Claude Code manually'
+                        : 'Prompt copied + Claude Code launched')
+                    } catch {
+                      await navigator.clipboard.writeText(prompt)
+                      showToast('Prompt copied to clipboard')
+                    }
+                  }}>
+                    Generate combined prompt
+                  </button>
+                  {/* No "Disable selected" — Cursor manages skill activation
+                      through its own UI; we can't toggle it from here. */}
+                  <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
+                    Clear
+                  </button>
+                </div>
+              )}
+              <CursorTab
+                skills={filtered}
+                usage={cursorUsage}
+                recent={cursorRecent}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
+                selected={selected}
+                onSelect={setSelected}
+                onToggle={handleToggle}
+                onBreakdown={setBreakdownSkill}
+                timeframe={timeframe}
+                selectedIds={selectedIds}
+                onSelectId={handleSelectId}
+                onSelectAll={handleSelectAll}
+                onReclassify={handleReclassify}
+              />
+            </>
+          )
         ) : (
           <>
             {showBanner && (
@@ -515,6 +607,8 @@ export default function App() {
           onUninstall={handleUninstall}
           mcpUsageMap={mcpUsageMap}
           mcpRelationships={mcpRelationships}
+          cursorUsage={cursorUsage}
+          cursorRecent={cursorRecent}
         />
       )}
 

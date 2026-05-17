@@ -1542,3 +1542,59 @@ td.col-totalDollars { color: var(--text); }
 .mcp-tools-table td { padding: 4px 8px; border-bottom: 1px solid rgba(42,42,56,.5); }
 .mcp-tool-name { font-family: var(--mono); color: var(--text-head); }
 .mcp-schema-bytes { color: var(--text-dim); font-family: var(--mono); }
+
+.cursor-tab { padding: 16px 24px; }
+.cursor-tab-header { margin-bottom: 12px; }
+.cursor-tab-stats {
+  display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline;
+  font-size: 12px; color: var(--text-dim);
+}
+.cursor-tab-stats strong { color: var(--text-head); font-weight: 600; }
+.cursor-tab-note {
+  flex-basis: 100%;
+  font-size: 11px; font-style: italic; color: var(--text-dim);
+  margin-top: 4px;
+}
+.cursor-tab-note a { color: var(--accent); text-decoration: none; }
+.cursor-tab-note a:hover { text-decoration: underline; }
+
+.cursor-activations { color: var(--text-head); font-weight: 600; }
+.cursor-token-estimate {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.cursor-token-estimate::after {
+  content: ' tok';
+  color: var(--text-dim);
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+.cursor-live-count {
+  color: var(--text-head);
+  font-weight: 600;
+  font-family: var(--mono);
+}
+.cursor-tab-substat {
+  color: var(--text-dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.cursor-tab-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 24px; text-align: center;
+  color: var(--text-dim);
+}
+.cursor-tab-empty-icon { font-size: 48px; margin-bottom: 12px; opacity: .5; }
+.cursor-tab-empty-title {
+  font-size: 16px; font-weight: 600; color: var(--text-head);
+  margin-bottom: 6px;
+}
+.cursor-tab-empty-sub { font-size: 13px; max-width: 480px; line-height: 1.5; }
+.cursor-tab-empty-sub code {
+  font-family: var(--mono); font-size: 12px;
+  padding: 1px 4px; border-radius: 3px;
+  background: var(--surface-hover); color: var(--text);
+}

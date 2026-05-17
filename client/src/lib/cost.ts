@@ -90,12 +90,22 @@ export function toMCPSkill(entry: MCPRow, usage?: { dollars: number; lastInvoked
 
 // ─── Cost merge ──────────────────────────────────────────────────────────────
 
-/** Decorate raw skills with computed cost columns and derived insights from
- *  the usage summaries the server returns. */
+/**
+ * Decorate raw skills with computed cost columns and derived insights from
+ * the usage summaries the server returns.
+ *
+ * Cost summaries from /api/usage/aggregate are computed exclusively from
+ * Claude Code session logs under the user's ~/.claude projects directory —
+ * Cursor skills never appear in those logs. Without the account guard a Cursor skill named
+ * `morning-plan` would falsely inherit the Claude Code `morning-plan`'s cost
+ * data because the join key was just the skill name.
+ */
 export function mergeWithCost(skills: Skill[], summaries: SkillUsageSummary[]): Skill[] {
   const costMap = new Map(summaries.map(s => [s.skillName, s]))
   return skills.map(s => {
-    const c = costMap.get(s.name)
+    // Cursor skills have no Claude Code cost data — skip the lookup so we
+    // don't shadow them with an identically-named Claude Code skill's cost.
+    const c = s.account === 'cursor' ? undefined : costMap.get(s.name)
     const activeDollars = c?.active.dollars ?? 0
     const loadedDollars = c?.loaded.dollars ?? 0
     const totalDollars = c?.total.dollars ?? 0

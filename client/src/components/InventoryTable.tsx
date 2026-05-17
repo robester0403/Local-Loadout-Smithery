@@ -17,6 +17,13 @@ interface Props {
   onSelectId?: (id: string, checked: boolean) => void
   onSelectAll?: (checked: boolean) => void
   onReclassify?: (skill: Skill) => void
+  /**
+   * When present, indicates this table is rendering the Cursor tab; the cost
+   * cells switch to live-usage cells (count + last-used) for cursor rows.
+   * Map keys are skill names; entries are absent when a skill has no
+   * recorded activations since polling began.
+   */
+  cursorLiveUsage?: Map<string, { count: number; lastSeen: number }>
 }
 
 function tfLabel(tf: Timeframe): string {
@@ -49,6 +56,17 @@ function fmtDollars(n: number): string {
   return '$' + n.toFixed(4)
 }
 
+function fmtRelative(ms: number): string {
+  if (!ms) return '—'
+  const days = Math.floor((Date.now() - ms) / 86_400_000)
+  if (days < 0) return 'future'
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 30) return `${days}d ago`
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`
+  return `${Math.floor(days / 365)}y ago`
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
@@ -74,7 +92,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 
 export default function InventoryTable({
   skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
-  selectedIds, onSelectId, onSelectAll, onReclassify,
+  selectedIds, onSelectId, onSelectAll, onReclassify, cursorLiveUsage,
 }: Props) {
   const suffix = timeframe ? tfLabel(timeframe) : ''
   const COLUMNS = BASE_COLUMNS.map(col => {
@@ -123,6 +141,20 @@ export default function InventoryTable({
         <tbody>
           {skills.map(skill => {
             const isMCP = skill.type === 'mcp'
+            const isCursor = skill.account === 'cursor'
+            // For cursor rows: Active/Loaded columns repurposed as live usage.
+            //   Active$  → "Used" cell    (count of activations since polling)
+            //   Loaded$  → "Last used"    (relative date of last activation)
+            //   Total$   → "—"            (no meaningful per-skill total)
+            const cursorLive = isCursor ? cursorLiveUsage?.get(skill.name) : undefined
+            const cursorUsedCount = cursorLive?.count ?? 0
+            const cursorLastSeen = cursorLive?.lastSeen ?? 0
+            const cursorUsedTitle = cursorUsedCount > 0
+              ? `${cursorUsedCount} activation${cursorUsedCount === 1 ? '' : 's'} recorded since LSM started polling Cursor's recently-used lists.`
+              : 'No activations recorded since polling began. Body/listing token sizes are visible in the detail drawer.'
+            const cursorLastSeenTitle = cursorLastSeen
+              ? `Last activation: ${new Date(cursorLastSeen).toLocaleString()}`
+              : 'No activations recorded yet.'
             return (
               <tr
                 key={skill.id}
@@ -178,7 +210,15 @@ export default function InventoryTable({
                     : formatDate(skill.lastModified)}
                 </td>
                 <td className="col-activeDollars col-numeric">
-                  {isMCP ? (
+                  {isCursor ? (
+                    cursorUsedCount > 0 ? (
+                      <span className="cursor-live-count" title={cursorUsedTitle}>
+                        {cursorUsedCount}
+                      </span>
+                    ) : (
+                      <span className="col-mcp-dash" title={cursorUsedTitle}>0</span>
+                    )
+                  ) : isMCP ? (
                     skill.activeDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost">{fmtDollars(skill.activeDollars)}</span>
                       : <span className="col-mcp-dash">—</span>
@@ -193,7 +233,11 @@ export default function InventoryTable({
                   )}
                 </td>
                 <td className="col-loadedDollars col-numeric">
-                  {isMCP ? <span className="col-mcp-dash">—</span> : (
+                  {isCursor ? (
+                    <span className={cursorLastSeen ? '' : 'col-mcp-dash'} title={cursorLastSeenTitle}>
+                      {fmtRelative(cursorLastSeen)}
+                    </span>
+                  ) : isMCP ? <span className="col-mcp-dash">—</span> : (
                     <span
                       className="dollar-link"
                       onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
@@ -204,7 +248,9 @@ export default function InventoryTable({
                   )}
                 </td>
                 <td className="col-totalDollars col-numeric">
-                  {isMCP ? (
+                  {isCursor ? (
+                    <span className="col-mcp-dash" title="Cursor billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
+                  ) : isMCP ? (
                     skill.totalDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>
                       : <span className="col-mcp-dash">—</span>
@@ -219,7 +265,9 @@ export default function InventoryTable({
                   )}
                 </td>
                 <td className="col-enabled" onClick={e => e.stopPropagation()}>
-                  {isMCP ? (
+                  {isCursor ? (
+                    <span className="col-mcp-dash" title="Cursor manages skill activation through its own UI">—</span>
+                  ) : isMCP ? (
                     <span className="col-mcp-dash" title="Configure in ~/.claude.json">—</span>
                   ) : (
                     <ToggleSwitch
