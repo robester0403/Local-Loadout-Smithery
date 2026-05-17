@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Skill } from '../../types'
+import { updateSkillContent } from '../../api'
 import { type Direction, buildChain } from './graph'
 import { buildMermaid, escapeMermaidLabel } from './mermaid'
 import {
@@ -40,9 +41,13 @@ interface Props {
    * allSkills) are silently ignored.
    */
   onSelect?: (skill: Skill) => void
+  /** Called after an inline description/body edit succeeds. The parent both
+   *  applies the patch to local state (so the change shows immediately) and
+   *  kicks off a canonical refetch in the background. */
+  onSkillChanged?: (id: string, patch: { description?: string; body?: string }) => void
 }
 
-export default function RelationshipMap({ skill, allSkills, onClose, onSelect }: Props) {
+export default function RelationshipMap({ skill, allSkills, onClose, onSelect, onSkillChanged }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<HTMLDivElement>(null)
 
@@ -83,9 +88,14 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
   // signals shown in the main table's Health + Diag columns are visible here.
   useNodeDiagnostics({ containerRef, svgHtml, allSkills })
 
+  // Freeze the rail on the focused root while an inline edit is active so a
+  // stray hover doesn't replace the editor's context mid-edit.
+  const [railEditing, setRailEditing] = useState(false)
+
   const isOrphan = nodes.size === 1 && edges.length === 0
-  const railSkill: Skill =
-    (hoveredName && skillsByNameRef.current.get(hoveredName)) || skill
+  const railSkill: Skill = railEditing
+    ? skill
+    : (hoveredName && skillsByNameRef.current.get(hoveredName)) || skill
 
   // Set of every artifact name in the loadout. Used by the info rail to
   // highlight mentions inside descriptions. Stable across re-renders.
@@ -175,6 +185,15 @@ export default function RelationshipMap({ skill, allSkills, onClose, onSelect }:
             knownNames={knownNames}
             bodyJump={bodyJump}
             onJumpToMention={jumpToMention}
+            onEditingChange={setRailEditing}
+            onSaveDescription={async (next) => {
+              await updateSkillContent(railSkill.id, { description: next })
+              onSkillChanged?.(railSkill.id, { description: next })
+            }}
+            onSaveBody={async (next) => {
+              await updateSkillContent(railSkill.id, { body: next })
+              onSkillChanged?.(railSkill.id, { body: next })
+            }}
           />
         </div>
       </div>

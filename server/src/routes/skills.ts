@@ -9,6 +9,7 @@ import { asyncHandler } from '../lib/asyncHandler'
 import { decodeSkillId, encodeSkillId } from '../lib/ids'
 import { pathParam } from '../lib/params'
 import { assertWithinHome, HttpError, LOADOUT_DIR, MOVE_LOG_PATH } from '../lib/paths'
+import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWriter'
 
 const router = Router()
 
@@ -82,6 +83,57 @@ router.post('/skills/:id/open', asyncHandler((req, res) => {
     }
     res.json({ ok: true })
   })
+}))
+
+// Inline edit of description and/or body. Only file-backed artifacts (skill,
+// command, subagent) — MCP servers are config-derived and have no
+// description/body file to rewrite, so they get 400.
+router.patch('/skills/:id', asyncHandler((req, res) => {
+  const { description, body } = req.body as { description?: string; body?: string }
+  if (description === undefined && body === undefined) {
+    throw new HttpError(400, 'Provide description and/or body to update')
+  }
+  if (description !== undefined && typeof description !== 'string') {
+    throw new HttpError(400, 'description must be a string')
+  }
+  if (body !== undefined && typeof body !== 'string') {
+    throw new HttpError(400, 'body must be a string')
+  }
+
+  const logicalPath = decodeSkillId(req.params.id)
+  assertWithinHome(logicalPath)
+
+  // Pick whichever file actually exists (enabled vs. .disabled suffix). The
+  // logical path is what the scanner used to derive the id, so following
+  // either suffix here keeps disabled skills editable too.
+  const targetPath = fs.existsSync(logicalPath)
+    ? logicalPath
+    : fs.existsSync(logicalPath + '.disabled')
+      ? logicalPath + '.disabled'
+      : null
+  if (!targetPath) throw new HttpError(404, 'Skill file not found')
+
+  // Follow symlinks so the user's authoritative source updates, not the
+  // symlink target's mirror. Stat-then-realpath avoids surprises when the
+  // logical path is itself a symlink into another loadout directory.
+  let writePath = targetPath
+  try {
+    if (fs.lstatSync(targetPath).isSymbolicLink()) {
+      writePath = fs.realpathSync(targetPath)
+      assertWithinHome(writePath)
+    }
+  } catch { /* fall back to targetPath */ }
+
+  try {
+    updateSkillFile(writePath, { description, body })
+  } catch (err) {
+    if (err instanceof FrontmatterWriteError) {
+      throw new HttpError(400, err.message)
+    }
+    throw err
+  }
+
+  res.json({ ok: true })
 }))
 
 router.post('/skills/:id/uninstall', asyncHandler((req, res) => {

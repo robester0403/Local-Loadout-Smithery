@@ -2,7 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
 import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport } from '../api'
+import { updateSkillContent } from '../api'
 import CopyPromptButton from './CopyPromptButton'
+import EditableText from './EditableText'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
 import RelationshipMap from './RelationshipMap'
@@ -16,6 +18,11 @@ interface Props {
   onSelect: (skill: Skill) => void
   onReclassify?: (skill: Skill) => void
   onUninstall?: (skill: Skill) => void
+  /** Called after an inline description/body edit succeeds. The parent both
+   *  applies the patch to local state (so the change shows immediately) and
+   *  kicks off a canonical refetch in the background to refresh derived
+   *  fields like token counts and health. */
+  onSkillChanged?: (id: string, patch: { description?: string; body?: string }) => void
   mcpUsageMap?: Map<string, MCPUsageSummary>
   mcpRelationships?: MCPRelationship[]
   cursorUsage?: CursorUsageReport | null
@@ -74,8 +81,20 @@ function Section({
   )
 }
 
-export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
+export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, onSkillChanged, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
   const [showMap, setShowMap] = useState(false)
+
+  // MCP servers are config-derived, not file-backed — no description/body
+  // file exists to rewrite, so the inline editor is hidden for that type.
+  const canEdit = skill.type !== 'mcp'
+  async function saveDescription(next: string) {
+    await updateSkillContent(skill.id, { description: next })
+    onSkillChanged?.(skill.id, { description: next })
+  }
+  async function saveBody(next: string) {
+    await updateSkillContent(skill.id, { body: next })
+    onSkillChanged?.(skill.id, { body: next })
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -127,6 +146,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
               <h2 className="drawer-title">{skill.name}</h2>
             </div>
             {skill.description && <p className="drawer-desc">{skill.description}</p>}
+            {/* MCP servers are config-derived; no inline edit affordance. */}
             <div className="drawer-actions">
               <button className="btn" onClick={onClose}>Close</button>
             </div>
@@ -244,8 +264,16 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             <span className={`type-badge type-${skill.type}`}>{skill.type}</span>
             <h2 className="drawer-title">{skill.name}</h2>
           </div>
-          {skill.description && (
-            <p className="drawer-desc">{skill.description}</p>
+          {(skill.description || canEdit) && (
+            <EditableText
+              className="drawer-desc"
+              variant="line"
+              value={skill.description ?? ''}
+              editable={canEdit}
+              emptyText="No description."
+              label="Edit description"
+              onSave={saveDescription}
+            />
           )}
           <div className="drawer-actions">
             <button className="btn btn-primary" onClick={() => onOpen(skill)}>
@@ -463,9 +491,20 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           </Section>
 
           <Section title="Documentation" defaultOpen>
-            <div
-              className="drawer-body markdown-body"
-              dangerouslySetInnerHTML={{ __html: bodyHtml }}
+            <EditableText
+              className="drawer-body-edit"
+              variant="block"
+              value={skill.body ?? ''}
+              editable={canEdit}
+              emptyText="No body content."
+              label="Edit body"
+              onSave={saveBody}
+              renderValue={() => (
+                <div
+                  className="drawer-body markdown-body"
+                  dangerouslySetInnerHTML={{ __html: bodyHtml }}
+                />
+              )}
             />
           </Section>
         </div>
@@ -477,6 +516,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           allSkills={allSkills}
           onClose={() => setShowMap(false)}
           onSelect={onSelect}
+          onSkillChanged={onSkillChanged}
         />
       )}
     </>

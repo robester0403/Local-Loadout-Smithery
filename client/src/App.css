@@ -902,6 +902,102 @@ td.col-totalDollars { color: var(--text); }
 .header-tab:hover { color: var(--text-head); }
 .header-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
+/* ─── Inline editable text (description / body) ─────────────────────────── */
+.editable {
+  position: relative;
+  display: block;
+}
+.editable-value {
+  display: block;
+}
+/* Single-line variants reserve a gutter so long text doesn't run under the
+   absolutely-positioned edit button. Block variants (body/markdown) don't —
+   the button sits in the top-right corner as an overlay, and the content
+   uses the full width. */
+.editable-line .editable-value {
+  padding-right: 34px;
+}
+.editable-edit-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  /* Always faintly visible so the affordance is discoverable without hover;
+     full opacity + accent tint when the field is hovered or focused. */
+  opacity: .55;
+  transition: opacity .12s, background .12s, color .12s, border-color .12s, box-shadow .12s;
+}
+.editable:hover .editable-edit-btn,
+.editable-edit-btn:focus-visible {
+  opacity: 1;
+}
+.editable-edit-btn:hover,
+.editable-edit-btn:focus-visible {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+.editable.is-editing {
+  /* No pencil while editing; the explicit Save/Cancel buttons take over. */
+  padding-right: 0;
+}
+.editable.is-editing .editable-value { padding-right: 0; }
+
+.editable-empty {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.editable-textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: vertical;
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.editable-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+.editable-block .editable-textarea {
+  /* Block variant uses the mono stack since bodies are markdown / code. */
+  font: 12px/1.5 var(--mono);
+  min-height: 180px;
+}
+.editable-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.editable-hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.editable-error {
+  margin-top: 6px;
+}
+
 /* Generic form/error banner used inside modals and panels. */
 .form-error {
   font-size: 12px;
