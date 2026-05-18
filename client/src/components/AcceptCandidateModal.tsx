@@ -69,7 +69,10 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
     try {
       const result = await synthBodyApi(candidate.id, { model: synthModel })
       setBody(result.candidate.bodyDraft)
-      setSynthMessage(`Body regenerated with ${result.synthesizedWith}.`)
+      const src = result.sourceMode === 'fresh'
+        ? `using ${result.conversationsReExtracted} re-extracted conversation${result.conversationsReExtracted === 1 ? '' : 's'}`
+        : 'using stored excerpts (source conversations unavailable)'
+      setSynthMessage(`Body regenerated with ${result.synthesizedWith} ${src}.`)
     } catch (e) {
       setError((e as Error).message)
     } finally {

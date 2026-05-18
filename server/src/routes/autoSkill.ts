@@ -9,6 +9,8 @@ import { emitFromCandidate } from '../autoSkill/emit'
 import { findExistingMatch } from '../autoSkill/matcher'
 import { compareCandidate } from '../autoSkill/compare'
 import { synthesizeBody } from '../autoSkill/synth'
+import { extractConversationById } from '../extractors'
+import type { ConversationRecord } from '../extractors/types'
 import { findAccounts, accountLabel, discoverAllSkills } from '../scanner/discover'
 import { read as readSettings } from '../state/settings'
 import type { ConversationSource } from '../extractors/types'
@@ -184,9 +186,27 @@ router.post('/auto-skill/candidates/:id/synth-body', asyncHandler(async (req, re
   const match = findExistingMatch(cand, inventory)
   const existing = match ? inventory.find(s => s.id === match.skillId) : undefined
 
-  const { body: synthesized } = await synthesizeBody({ candidate: cand, existing, model })
+  // Re-extract the original conversations behind this candidate, in-memory
+  // only, so the synthesizer has the real source text rather than the
+  // ~120-char excerpts that survive the post-digest purge. Failed lookups
+  // (deleted/moved source files) are silently dropped — synth then falls
+  // back to excerpts for that ref.
+  const conversations: ConversationRecord[] = []
+  for (const ref of cand.sourceRefs) {
+    const rec = extractConversationById(ref.conversationId)
+    if (rec) conversations.push(rec)
+  }
+
+  const { body: synthesized, sourceMode } = await synthesizeBody({
+    candidate: cand, existing, conversations, model,
+  })
   const updated = updateFields(id, { bodyDraft: synthesized })
-  res.json({ candidate: { ...updated, existingMatch: match }, synthesizedWith: model })
+  res.json({
+    candidate: { ...updated, existingMatch: match },
+    synthesizedWith: model,
+    sourceMode,
+    conversationsReExtracted: conversations.length,
+  })
 }))
 
 // Accounts list, used by the accept-modal to populate the dropdown.

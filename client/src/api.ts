@@ -552,7 +552,10 @@ export async function compareCandidateApi(id: string, opts: { model?: string; fo
   return parseResponse(res)
 }
 
-export async function synthBodyApi(id: string, opts: { model?: string } = {}): Promise<{ candidate: Candidate; synthesizedWith: string }> {
+export async function synthBodyApi(
+  id: string,
+  opts: { model?: string } = {},
+): Promise<{ candidate: Candidate; synthesizedWith: string; sourceMode: 'fresh' | 'excerpts'; conversationsReExtracted: number }> {
   const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}/synth-body`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

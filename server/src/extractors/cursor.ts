@@ -54,6 +54,62 @@ function querySqlite(sinceMs: number): CursorRow[] {
   return filtered
 }
 
+// Re-load a single Cursor composer (conversation) by id. Uses the composerId
+// portion of the bubble key — `bubbleId:<composerId>:<bubbleId>` — and pulls
+// every bubble for that composer in one targeted SQL query.
+export function extractCursorConversationById(composerId: string): ConversationRecord | null {
+  if (!isCursorDatabaseAvailable()) return null
+  let out: string
+  try {
+    out = execFileSync(
+      'sqlite3',
+      [
+        '-json',
+        CURSOR_DB_PATH,
+        `SELECT key,
+                json_extract(value, '$.type') AS type,
+                json_extract(value, '$.text') AS text,
+                json_extract(value, '$.createdAt') AS createdAt
+           FROM cursorDiskKV
+          WHERE key LIKE 'bubbleId:${composerId.replace(/'/g, "''")}:%'
+            AND json_extract(value, '$.text') IS NOT NULL
+            AND length(json_extract(value, '$.text')) > 0;`,
+      ],
+      { maxBuffer: 1024 * 1024 * 64, encoding: 'utf-8' },
+    )
+  } catch {
+    return null
+  }
+  if (!out.trim()) return null
+
+  const rows = JSON.parse(out) as Array<Record<string, unknown>>
+  interface Bubble { bubbleId: string; role: 'user' | 'assistant'; content: string; timestamp: string; ts: number }
+  const bubbles: Bubble[] = []
+  for (const r of rows) {
+    const type = (r['type'] as number | null) ?? 0
+    const text = (r['text'] as string | null) ?? ''
+    if ((type !== 1 && type !== 2) || !text) continue
+    const key = r['key'] as string
+    const parts = key.split(':')
+    if (parts.length < 3) continue
+    const role: 'user' | 'assistant' = type === 1 ? 'user' : 'assistant'
+    const timestamp = (r['createdAt'] as string | null) ?? ''
+    const ts = timestamp ? Date.parse(timestamp) : 0
+    bubbles.push({ bubbleId: parts.slice(2).join(':'), role, content: text, timestamp, ts })
+  }
+  if (bubbles.length === 0) return null
+  bubbles.sort((a, b) => a.ts - b.ts)
+  return {
+    id: `cursor:${composerId}`,
+    source: 'cursor',
+    sessionId: composerId,
+    projectPath: '',
+    startedAt: bubbles[0].timestamp,
+    endedAt: bubbles[bubbles.length - 1].timestamp,
+    messages: bubbles.map(b => ({ id: b.bubbleId, role: b.role, content: b.content, timestamp: b.timestamp })),
+  }
+}
+
 export function extractCursorConversations(since: number): {
   records: ConversationRecord[]
   warnings: string[]

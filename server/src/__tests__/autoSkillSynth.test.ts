@@ -16,7 +16,7 @@ function candidate(over: Partial<Candidate> = {}): Candidate {
 }
 
 describe('buildPrompt', () => {
-  it('includes type-specific guidance and source excerpts', () => {
+  it('falls back to excerpts when no fresh conversations are provided', () => {
     const p = __test.buildPrompt({ candidate: candidate() })
     expect(p).toContain('SKILL')
     expect(p).toContain('first excerpt')
@@ -27,6 +27,40 @@ describe('buildPrompt', () => {
   it('switches guidance per type', () => {
     expect(__test.buildPrompt({ candidate: candidate({ suggestedType: 'command' }) })).toContain('COMMAND')
     expect(__test.buildPrompt({ candidate: candidate({ suggestedType: 'subagent' }) })).toContain('SUBAGENT')
+  })
+
+  it('uses fresh conversation transcripts when supplied, not excerpts', () => {
+    const p = __test.buildPrompt({
+      candidate: candidate(),
+      conversations: [{
+        id: 'claude:1', source: 'claude', sessionId: '1', projectPath: '',
+        startedAt: '2026-05-01T00:00:00Z', endedAt: '2026-05-01T00:10:00Z',
+        messages: [
+          { id: 'm1', role: 'user', content: 'How do I run a CEL test', timestamp: '2026-05-01T00:00:00Z' },
+          { id: 'm2', role: 'assistant', content: 'Use ./filebeat -c filebeat.yml -e', timestamp: '2026-05-01T00:01:00Z' },
+        ],
+      }],
+    })
+    expect(p).toContain('How do I run a CEL test')
+    expect(p).toContain('./filebeat -c filebeat.yml -e')
+    // Excerpts (the fallback) shouldn't appear when fresh transcripts are present.
+    expect(p).not.toContain('first excerpt')
+  })
+
+  it('elides the middle of very long conversations', () => {
+    // Many messages — total transcript blows past the per-conversation cap.
+    const messages = Array.from({ length: 20 }, (_, i) => ({
+      id: `m${i}`, role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: 'X'.repeat(800), timestamp: '',
+    }))
+    const p = __test.buildPrompt({
+      candidate: candidate(),
+      conversations: [{
+        id: 'claude:1', source: 'claude', sessionId: '1', projectPath: '',
+        startedAt: '', endedAt: '', messages,
+      }],
+    })
+    expect(p).toContain('[…elided…]')
   })
 })
 

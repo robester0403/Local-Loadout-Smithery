@@ -85,6 +85,41 @@ function parseSessionTurns(filePath: string, sinceMs: number, warnings: string[]
   return turns
 }
 
+// Re-load a single conversation by sessionId from the original Claude
+// session JSONL. Used by the synth-body path so the bigger model has the
+// actual conversation text to work from rather than the ~120 char excerpt
+// kept on the candidate. The source files are owned by Claude Code and
+// always exist regardless of our extract/purge cycle.
+//
+// Claude names each session file <sessionId>.jsonl under .../projects/
+// /<projectHash>/, so we can find the right file by name without a full
+// scan once we know the id.
+export function extractClaudeConversationById(sessionId: string): ConversationRecord | null {
+  const warnings: string[] = []
+  for (const file of findSessionFiles()) {
+    if (!file.endsWith(`/${sessionId}.jsonl`)) continue
+    const turns = parseSessionTurns(file, 0, warnings).filter(t => t.sessionId === sessionId)
+    if (turns.length === 0) continue
+    turns.sort((a, b) => a.ts - b.ts)
+    const messages: ConversationMessage[] = turns.map(t => ({
+      id: t.uuid,
+      role: t.role,
+      content: t.content,
+      timestamp: t.timestamp,
+    }))
+    return {
+      id: `claude:${sessionId}`,
+      source: 'claude',
+      sessionId,
+      projectPath: turns[0]?.cwd ?? '',
+      startedAt: turns[0]?.timestamp ?? '',
+      endedAt: turns[turns.length - 1]?.timestamp ?? '',
+      messages,
+    }
+  }
+  return null
+}
+
 // Group turns by sessionId into ConversationRecord. A session = one conversation.
 // `since` is a ms epoch; only turns at-or-after that time are included. Sessions
 // whose newest turn ends before `since` are dropped entirely.

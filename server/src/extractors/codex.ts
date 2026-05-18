@@ -51,6 +51,65 @@ function flatten(content: unknown, text: unknown): string {
   return ''
 }
 
+// Re-load a single Codex session by id. Codex commonly names each session
+// file after its session id, so we try that filename first; fall back to a
+// full scan looking for a matching session inside any file.
+export function extractCodexConversationById(sessionId: string): ConversationRecord | null {
+  const dir = findHistoryDir()
+  if (!dir) return null
+
+  function parseFile(file: string): ConversationRecord | null {
+    let raw: string
+    try { raw = fs.readFileSync(file, 'utf-8') } catch { return null }
+    const fileSession = path.basename(file).replace(/\.jsonl$/, '')
+    interface Msg { id: string; role: 'user' | 'assistant'; content: string; timestamp: string; ts: number }
+    const msgs: Msg[] = []
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+      let obj: CodexLine
+      try { obj = JSON.parse(trimmed) as CodexLine } catch { continue }
+      const role = obj.role
+      if (role !== 'user' && role !== 'assistant') continue
+      const candidateSession = obj.sessionId ?? obj.session_id ?? fileSession
+      if (candidateSession !== sessionId) continue
+      const content = flatten(obj.content, obj.text)
+      if (!content.trim()) continue
+      const timestamp = obj.timestamp ?? obj.created_at ?? ''
+      const ts = timestamp ? Date.parse(timestamp) : 0
+      const id = obj.id ?? `${sessionId}:${msgs.length}`
+      msgs.push({ id, role, content, timestamp, ts })
+    }
+    if (msgs.length === 0) return null
+    msgs.sort((a, b) => a.ts - b.ts)
+    return {
+      id: `codex:${sessionId}`,
+      source: 'codex',
+      sessionId,
+      projectPath: '',
+      startedAt: msgs[0].timestamp,
+      endedAt: msgs[msgs.length - 1].timestamp,
+      messages: msgs.map(m => ({ id: m.id, role: m.role, content: m.content, timestamp: m.timestamp })),
+    }
+  }
+
+  // Try the conventional file-named-after-session first.
+  const direct = path.join(dir, `${sessionId}.jsonl`)
+  if (fs.existsSync(direct)) {
+    const r = parseFile(direct)
+    if (r) return r
+  }
+  // Fallback scan: rare paths where the file name diverges from the session id.
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.jsonl')) continue
+      const r = parseFile(path.join(dir, f))
+      if (r) return r
+    }
+  } catch { /* dir gone */ }
+  return null
+}
+
 export function extractCodexConversations(since: number): {
   records: ConversationRecord[]
   warnings: string[]

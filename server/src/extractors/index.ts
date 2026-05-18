@@ -1,8 +1,25 @@
-import { extractClaudeConversations } from './claudeCode'
-import { extractCursorConversations } from './cursor'
-import { extractCodexConversations } from './codex'
+import { extractClaudeConversations, extractClaudeConversationById } from './claudeCode'
+import { extractCursorConversations, extractCursorConversationById } from './cursor'
+import { extractCodexConversations, extractCodexConversationById } from './codex'
 import { appendRecords, readSentinel, writeSentinel } from './store'
-import type { ConversationSource, ExtractResult } from './types'
+import type { ConversationRecord, ConversationSource, ExtractResult } from './types'
+
+// Unified id format from the extractors is `<source>:<sessionId>`. The synth
+// path uses this to re-pull the original conversation text for richer prompt
+// context — full text held in memory only for the LLM call, never persisted.
+export function extractConversationById(conversationId: string): ConversationRecord | null {
+  const idx = conversationId.indexOf(':')
+  if (idx === -1) return null
+  const source = conversationId.slice(0, idx) as ConversationSource
+  const sessionId = conversationId.slice(idx + 1)
+  if (!sessionId) return null
+  switch (source) {
+    case 'claude': return extractClaudeConversationById(sessionId)
+    case 'cursor': return extractCursorConversationById(sessionId)
+    case 'codex': return extractCodexConversationById(sessionId)
+    default: return null
+  }
+}
 
 export interface ExtractOptions {
   /** Days to look back. Defaults to 14 (per Auto Skill decision #4). */
