@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import fs from 'fs'
 import path from 'path'
-import { exec } from 'child_process'
+import { openInSystem } from '../lib/openInSystem'
 import { discoverAllSkills } from '../scanner'
 import { disableSkill, enableSkill } from '../state'
 import { uninstallSkill } from '../state/uninstall'
@@ -66,23 +66,11 @@ router.post('/skills/:id/reclassify', asyncHandler((req, res) => {
   res.json({ ok: true, from: sourcePath, to: destPath, newId: encodeSkillId(destLogical) })
 }))
 
-router.post('/skills/:id/open', asyncHandler((req, res) => {
+router.post('/skills/:id/open', asyncHandler(async (req, res) => {
   const filePath = decodeSkillId(req.params.id)
   assertWithinHome(filePath)
-
-  // Platform-specific "open this file in the user's default app" command.
-  let cmd: string
-  if (process.platform === 'darwin') cmd = 'open'
-  else if (process.platform === 'win32') cmd = 'start ""'
-  else cmd = 'xdg-open'
-
-  exec(`${cmd} ${JSON.stringify(filePath)}`, (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message })
-      return
-    }
-    res.json({ ok: true })
-  })
+  await openInSystem(filePath)
+  res.json({ ok: true })
 }))
 
 // Inline edit of description and/or body. Only file-backed artifacts (skill,

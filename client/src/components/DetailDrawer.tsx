@@ -87,14 +87,13 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
   // MCP servers are config-derived, not file-backed — no description/body
   // file exists to rewrite, so the inline editor is hidden for that type.
   const canEdit = skill.type !== 'mcp'
-  async function saveDescription(next: string) {
-    await updateSkillContent(skill.id, { description: next })
-    onSkillChanged?.(skill.id, { description: next })
+  async function saveField(field: 'description' | 'body', next: string) {
+    const patch = { [field]: next }
+    await updateSkillContent(skill.id, patch)
+    onSkillChanged?.(skill.id, patch)
   }
-  async function saveBody(next: string) {
-    await updateSkillContent(skill.id, { body: next })
-    onSkillChanged?.(skill.id, { body: next })
-  }
+  const saveDescription = (next: string) => saveField('description', next)
+  const saveBody = (next: string) => saveField('body', next)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

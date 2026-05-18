@@ -23,6 +23,9 @@ import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
 import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
+import BundleEditorModal from './components/BundleEditorModal'
+import SuperRouterPanel from './components/SuperRouterPanel'
+import { fetchBundles, type Bundle } from './api'
 import { fetchCursorUsage, fetchCursorRecentUsage, rescanCursorProjects, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
 
@@ -74,10 +77,25 @@ export default function App() {
   const [mcpRelationships, setMcpRelationships] = useState<MCPRelationship[]>([])
   const [cursorUsage, setCursorUsage] = useState<CursorUsageReport | null>(null)
   const [cursorRecent, setCursorRecent] = useState<CursorRecentUsageReport | null>(null)
+  const [showBundlesPanel, setShowBundlesPanel] = useState(false)
+  const [showBundleEditor, setShowBundleEditor] = useState(false)
+  const [bundleCount, setBundleCount] = useState(0)
 
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3500)
+  }
+
+  // Wraps an async operation so its rejection surfaces as a toast. Returns the
+  // value on success, undefined on failure — callers that need to branch can
+  // check the return.
+  async function runOrToast<T>(fn: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await fn()
+    } catch (e) {
+      showToast((e as Error).message)
+      return undefined
+    }
   }
 
   useEffect(() => {
@@ -151,6 +169,12 @@ export default function App() {
   }, [loadClaudeBundle, loadCursorBundle])
 
   useEffect(() => { load() }, [load])
+
+  // Track bundle count for the header badge. Fire-and-forget; failure here
+  // just leaves the badge at its previous value.
+  useEffect(() => {
+    fetchBundles().then(list => setBundleCount(list.length)).catch(() => {})
+  }, [])
 
   // Background refresh — only the active tab's data. Pre-tab-aware version
   // re-scanned everything every 30s; that wasted work on whichever ecosystem
@@ -243,41 +267,31 @@ export default function App() {
   }
 
   async function handleActivateProfile(name: string | null) {
-    try {
+    await runOrToast(async () => {
       await activateProfile(name)
       await load()
-    } catch (e) {
-      showToast((e as Error).message)
-    }
+    })
   }
 
   async function handleCreateProfile(name: string, skillIds: string[]) {
-    try {
+    await runOrToast(async () => {
       await createProfile(name, skillIds)
       const pd = await fetchProfiles()
       setProfilesData(pd)
-    } catch (e) {
-      showToast((e as Error).message)
-    }
+    })
   }
 
   async function handleDeleteProfile(name: string) {
-    try {
+    await runOrToast(async () => {
       await deleteProfile(name)
       const pd = await fetchProfiles()
       setProfilesData(pd)
       await load()
-    } catch (e) {
-      showToast((e as Error).message)
-    }
+    })
   }
 
   async function handleOpen(skill: Skill) {
-    try {
-      await apiOpenSkill(skill.id)
-    } catch (e) {
-      showToast((e as Error).message)
-    }
+    await runOrToast(() => apiOpenSkill(skill.id))
   }
 
   async function handleReclassify(skill: Skill) {
@@ -471,6 +485,13 @@ export default function App() {
           >
             🗑{trashCount > 0 ? ` ${trashCount}` : ' Trash'}
           </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowBundlesPanel(true)}
+            title="Manage SuperRouter bundles"
+          >
+            🛣 Router{bundleCount > 0 ? ` (${bundleCount})` : ''}
+          </button>
           {activeTab === 'cursor' && (
             <button
               className="btn btn-sm"
@@ -573,6 +594,9 @@ export default function App() {
                   </button>
                   {/* No "Disable selected" — Cursor manages skill activation
                       through its own UI; we can't toggle it from here. */}
+                  <button className="btn btn-sm" onClick={() => setShowBundleEditor(true)}>
+                    Create routing bundle
+                  </button>
                   <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
                     Clear
                   </button>
@@ -639,6 +663,9 @@ export default function App() {
                 </button>
                 <button className="btn btn-sm btn-warn" onClick={handleBulkDisable}>
                   Disable selected
+                </button>
+                <button className="btn btn-sm" onClick={() => setShowBundleEditor(true)}>
+                  Create routing bundle
                 </button>
                 <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
                   Clear
@@ -708,6 +735,28 @@ export default function App() {
           skill={breakdownSkill}
           onClose={() => setBreakdownSkill(null)}
           timeframe={timeframe}
+        />
+      )}
+
+      {showBundlesPanel && (
+        <SuperRouterPanel
+          allSkills={skills}
+          onClose={() => setShowBundlesPanel(false)}
+          onCountChange={setBundleCount}
+        />
+      )}
+
+      {showBundleEditor && (
+        <BundleEditorModal
+          allSkills={skills}
+          initialSkillIds={Array.from(selectedIds)}
+          onClose={() => setShowBundleEditor(false)}
+          onSaved={(b: Bundle) => {
+            setShowBundleEditor(false)
+            setSelectedIds(new Set())
+            setBundleCount(c => c + 1)
+            showToast(`Bundle "${b.name}" created. Open Router to enable it.`)
+          }}
         />
       )}
     </div>

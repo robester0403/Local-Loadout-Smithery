@@ -19,7 +19,10 @@ export function asyncHandler(fn: HandlerFn): RequestHandler {
           return
         }
         if (err instanceof HttpError) {
-          res.status(err.status).json({ error: err.message })
+          const payload: Record<string, unknown> = { error: err.message }
+          const details = (err as HttpError & { details?: unknown }).details
+          if (details !== undefined) payload.details = details
+          res.status(err.status).json(payload)
           return
         }
         const message = err instanceof Error ? err.message : String(err)
