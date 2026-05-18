@@ -477,7 +477,7 @@ export async function patchSettings(p: Partial<AppSettings>): Promise<AppSetting
 }
 
 export async function runExtractApi(opts: { sources?: ConversationSource[]; lookbackDays?: number } = {}): Promise<ExtractResult> {
-  const res = await fetch('/api/autoSkill/extract', {
+  const res = await fetch('/api/auto-skill/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -486,7 +486,7 @@ export async function runExtractApi(opts: { sources?: ConversationSource[]; look
 }
 
 export async function runDigestApi(opts: { lookbackDays?: number; model?: string; purgeRawOnSuccess?: boolean } = {}): Promise<DigestResult> {
-  const res = await fetch('/api/autoSkill/digest', {
+  const res = await fetch('/api/auto-skill/digest', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -495,12 +495,12 @@ export async function runDigestApi(opts: { lookbackDays?: number; model?: string
 }
 
 export async function fetchCandidates(): Promise<Candidate[]> {
-  const res = await fetch('/api/autoSkill/candidates')
+  const res = await fetch('/api/auto-skill/candidates')
   return (await parseResponse<{ candidates: Candidate[] }>(res)).candidates
 }
 
 export async function patchCandidate(id: string, patch: Partial<Pick<Candidate, 'name' | 'description' | 'bodyDraft' | 'suggestedType'>>): Promise<Candidate> {
-  const res = await fetch(`/api/autoSkill/candidates/${encodeURIComponent(id)}`, {
+  const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -509,12 +509,12 @@ export async function patchCandidate(id: string, patch: Partial<Pick<Candidate, 
 }
 
 export async function rejectCandidate(id: string): Promise<Candidate> {
-  const res = await fetch(`/api/autoSkill/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST' })
+  const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST' })
   return (await parseResponse<{ candidate: Candidate }>(res)).candidate
 }
 
 export async function deleteCandidate(id: string): Promise<void> {
-  const res = await fetch(`/api/autoSkill/candidates/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}`, { method: 'DELETE' })
   await parseResponse(res)
 }
 
@@ -529,7 +529,7 @@ export interface AcceptInput {
 }
 
 export async function acceptCandidate(id: string, input: AcceptInput): Promise<{ path: string; candidate: Candidate }> {
-  const res = await fetch(`/api/autoSkill/candidates/${encodeURIComponent(id)}/accept`, {
+  const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}/accept`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
@@ -539,12 +539,12 @@ export async function acceptCandidate(id: string, input: AcceptInput): Promise<{
 
 export interface AutoSkillAccount { dir: string; label: string }
 export async function fetchAutoSkillAccounts(): Promise<AutoSkillAccount[]> {
-  const res = await fetch('/api/autoSkill/accounts')
+  const res = await fetch('/api/auto-skill/accounts')
   return (await parseResponse<{ accounts: AutoSkillAccount[] }>(res)).accounts
 }
 
 export async function compareCandidateApi(id: string, opts: { model?: string; force?: boolean } = {}): Promise<{ candidate: Candidate; cached: boolean }> {
-  const res = await fetch(`/api/autoSkill/candidates/${encodeURIComponent(id)}/compare`, {
+  const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}/compare`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
@@ -553,7 +553,7 @@ export async function compareCandidateApi(id: string, opts: { model?: string; fo
 }
 
 export async function synthBodyApi(id: string, opts: { model?: string } = {}): Promise<{ candidate: Candidate; synthesizedWith: string }> {
-  const res = await fetch(`/api/autoSkill/candidates/${encodeURIComponent(id)}/synth-body`, {
+  const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}/synth-body`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts),
