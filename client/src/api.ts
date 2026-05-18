@@ -551,3 +551,12 @@ export async function compareCandidateApi(id: string, opts: { model?: string; fo
   })
   return parseResponse(res)
 }
+
+export async function synthBodyApi(id: string, opts: { model?: string } = {}): Promise<{ candidate: Candidate; synthesizedWith: string }> {
+  const res = await fetch(`/api/harvester/candidates/${encodeURIComponent(id)}/synth-body`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  })
+  return parseResponse(res)
+}

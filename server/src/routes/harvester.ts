@@ -8,6 +8,7 @@ import { deleteById, getById, readAll, setImprovementNotes, setStatus, updateFie
 import { emitFromCandidate } from '../harvester/emit'
 import { findExistingMatch } from '../harvester/matcher'
 import { compareCandidate } from '../harvester/compare'
+import { synthesizeBody } from '../harvester/synth'
 import { findAccounts, accountLabel, discoverAllSkills } from '../scanner/discover'
 import { read as readSettings } from '../state/settings'
 import type { ConversationSource } from '../extractors/types'
@@ -164,6 +165,28 @@ router.post('/harvester/candidates/:id/compare', asyncHandler(async (req, res) =
   const notes = await compareCandidate({ candidate: cand, existing, model })
   const updated = setImprovementNotes(id, notes)
   res.json({ candidate: { ...updated, existingMatch: match }, cached: false })
+}))
+
+// Body synthesis — on-demand second pass with (typically) a bigger model
+// than the discovery digest. Writes the new body back to bodyDraft.
+router.post('/harvester/candidates/:id/synth-body', asyncHandler(async (req, res) => {
+  const id = pathParam(req, 'id')
+  const cand = getById(id)
+  if (!cand) throw new HttpError(404, 'Candidate not found')
+  const settings = readSettings()
+  const body = (req.body ?? {}) as { model?: string }
+  const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : settings.harvester.model
+  if (!model) throw new HttpError(400, 'No model selected. Pick one or pass `model`.')
+
+  // Pull the matched skill (if any) so the synthesizer can use its body as
+  // a starting point, instead of guessing from scratch.
+  const inventory = discoverAllSkills()
+  const match = findExistingMatch(cand, inventory)
+  const existing = match ? inventory.find(s => s.id === match.skillId) : undefined
+
+  const { body: synthesized } = await synthesizeBody({ candidate: cand, existing, model })
+  const updated = updateFields(id, { bodyDraft: synthesized })
+  res.json({ candidate: { ...updated, existingMatch: match }, synthesizedWith: model })
 }))
 
 // Accounts list, used by the accept-modal to populate the dropdown.
