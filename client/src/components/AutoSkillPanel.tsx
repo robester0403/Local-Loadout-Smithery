@@ -127,8 +127,10 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   }
 
   const filtered = useMemo(() => {
-    if (statusFilter === 'all-active') return candidates.filter(c => c.status !== 'rejected')
-    return candidates.filter(c => c.status === statusFilter)
+    const base = statusFilter === 'all-active'
+      ? candidates.filter(c => c.status !== 'rejected')
+      : candidates.filter(c => c.status === statusFilter)
+    return [...base].sort((a, b) => b.score - a.score)
   }, [candidates, statusFilter])
 
   return (
