@@ -27,6 +27,9 @@ export interface BreakdownSession {
   turns: BreakdownTurn[]
 }
 
+// Single response parser. When the server returns a non-OK status with a
+// `details` payload (e.g. our 422 field-level validation errors), attach it to
+// the thrown Error so the caller can render per-field messages.
 async function parseResponse<T>(res: Response): Promise<T> {
   let body: unknown
   try {
@@ -35,8 +38,10 @@ async function parseResponse<T>(res: Response): Promise<T> {
     throw new Error(`Server error ${res.status}: non-JSON response`)
   }
   if (!res.ok) {
-    const msg = (body as { error?: string }).error ?? `Server error ${res.status}`
-    throw new Error(msg)
+    const b = body as { error?: string; details?: unknown }
+    const err = new Error(b.error ?? `Server error ${res.status}`) as Error & { details?: unknown }
+    if (b.details !== undefined) err.details = b.details
+    throw err
   }
   return body as T
 }
@@ -277,4 +282,100 @@ export interface CursorRescanResult {
 export async function rescanCursorProjects(): Promise<CursorRescanResult> {
   const res = await fetch('/api/cursor/rescan', { method: 'POST' })
   return parseResponse<CursorRescanResult>(res)
+}
+
+// ─── SuperRouter ─────────────────────────────────────────────────────────────
+
+export type BundleTarget = 'claude' | 'cursor'
+
+export type BundleScope =
+  | { kind: 'global' }
+  | { kind: 'project'; path: string }
+
+export interface BundlePaths {
+  topFile: string
+  mapFile: string
+  mapRelative: string
+}
+
+export interface BundleSkillEntry {
+  id: string
+  description?: string
+}
+
+export interface Bundle {
+  id: string
+  name: string
+  slug: string
+  target: BundleTarget
+  scope: BundleScope
+  trigger: string
+  skills: BundleSkillEntry[]
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+  paths: BundlePaths
+}
+
+export interface BundleInput {
+  name: string
+  target: BundleTarget
+  scope: BundleScope
+  trigger: string
+  skills: BundleSkillEntry[]
+}
+
+// Server-emitted field-level validation errors (HTTP 422).
+export interface BundleValidationError {
+  field: 'name' | 'trigger' | 'skills' | 'scope' | 'target'
+  message: string
+  offendingSkillIds?: string[]
+}
+
+export async function fetchBundles(): Promise<Bundle[]> {
+  const res = await fetch('/api/super-router/bundles')
+  return (await parseResponse<{ bundles: Bundle[] }>(res)).bundles
+}
+
+export async function createBundleApi(input: BundleInput): Promise<Bundle> {
+  const res = await fetch('/api/super-router/bundles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return (await parseResponse<{ bundle: Bundle }>(res)).bundle
+}
+
+export async function updateBundleApi(id: string, input: BundleInput): Promise<Bundle> {
+  const res = await fetch(`/api/super-router/bundles/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return (await parseResponse<{ bundle: Bundle }>(res)).bundle
+}
+
+export async function toggleBundleApi(id: string, enabled: boolean): Promise<Bundle> {
+  const res = await fetch(`/api/super-router/bundles/${encodeURIComponent(id)}/toggle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  return (await parseResponse<{ bundle: Bundle }>(res)).bundle
+}
+
+export async function deleteBundleApi(id: string): Promise<void> {
+  const res = await fetch(`/api/super-router/bundles/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  await parseResponse<{ ok: boolean }>(res)
+}
+
+export async function openBundleFileApi(id: string, which: 'top' | 'map'): Promise<void> {
+  const res = await fetch(`/api/super-router/bundles/${encodeURIComponent(id)}/open`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ which }),
+  })
+  await parseResponse<{ ok: boolean }>(res)
 }

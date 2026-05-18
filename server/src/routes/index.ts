@@ -11,6 +11,7 @@ import profilesRouter from './profiles'
 import mcpRouter from './mcp'
 import cursorRouter from './cursor'
 import launchClaudeRouter from './launchClaude'
+import superRouterRouter from './superRouter'
 
 const api = Router()
 
@@ -23,6 +24,7 @@ api.use(profilesRouter)
 api.use(mcpRouter)
 api.use(cursorRouter)
 api.use(launchClaudeRouter)
+api.use(superRouterRouter)
 
 // 404 for unknown API routes — must come last so it doesn't intercept the
 // real handlers above.
