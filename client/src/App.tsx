@@ -25,7 +25,7 @@ import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
 import BundleEditorModal from './components/BundleEditorModal'
 import SuperRouterPanel from './components/SuperRouterPanel'
-import HarvesterPanel from './components/HarvesterPanel'
+import AutoSkillPanel from './components/AutoSkillPanel'
 import { fetchBundles, type Bundle } from './api'
 import { fetchCursorUsage, fetchCursorRecentUsage, rescanCursorProjects, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
@@ -81,7 +81,7 @@ export default function App() {
   const [showBundlesPanel, setShowBundlesPanel] = useState(false)
   const [showBundleEditor, setShowBundleEditor] = useState(false)
   const [bundleCount, setBundleCount] = useState(0)
-  const [showHarvester, setShowHarvester] = useState(false)
+  const [showAutoSkill, setShowAutoSkill] = useState(false)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -496,10 +496,10 @@ export default function App() {
           </button>
           <button
             className="btn btn-sm"
-            onClick={() => setShowHarvester(true)}
+            onClick={() => setShowAutoSkill(true)}
             title="Surface candidate skills from your chat history"
           >
-            🌾 Harvest
+            ✨ Auto Skill
           </button>
           {activeTab === 'cursor' && (
             <button
@@ -769,10 +769,10 @@ export default function App() {
         />
       )}
 
-      {showHarvester && (
-        <HarvesterPanel
+      {showAutoSkill && (
+        <AutoSkillPanel
           allSkills={skills}
-          onClose={() => setShowHarvester(false)}
+          onClose={() => setShowAutoSkill(false)}
           onSkillsChanged={() => { void load() }}
         />
       )}

@@ -1,5 +1,5 @@
 // Thin wrapper over the local Ollama daemon (http://localhost:11434). All
-// methods are isolated network calls — no global state. The harvester checks
+// methods are isolated network calls — no global state. The Auto Skill panel checks
 // `isAvailable()` first and surfaces an install CTA when false.
 
 const DEFAULT_HOST = 'http://localhost:11434'

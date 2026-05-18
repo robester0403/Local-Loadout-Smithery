@@ -6,8 +6,8 @@ import path from 'path'
 // field here + defaulted in `read()`. Atomic write via rename.
 
 export interface Settings {
-  harvester: {
-    /** Ollama model the digest pass runs against. Empty until the user picks one. */
+  autoSkill: {
+    /** Ollama model the discovery digest runs against. Empty until the user picks one. */
     model: string
   }
 }
@@ -17,17 +17,33 @@ function file(): string {
 }
 
 function defaults(): Settings {
-  return { harvester: { model: '' } }
+  return { autoSkill: { model: '' } }
+}
+
+// One-shot read of the old harvester.* key shape for users carrying state
+// from the pre-rename version. Returns the migrated model name or empty.
+function migrateLegacyHarvesterKey(raw: Record<string, unknown>): string {
+  const legacy = raw['harvester']
+  if (legacy && typeof legacy === 'object' && typeof (legacy as { model?: unknown }).model === 'string') {
+    return (legacy as { model: string }).model
+  }
+  return ''
 }
 
 export function read(): Settings {
   try {
     if (!fs.existsSync(file())) return defaults()
-    const raw = JSON.parse(fs.readFileSync(file(), 'utf-8')) as Partial<Settings>
+    const raw = JSON.parse(fs.readFileSync(file(), 'utf-8')) as Record<string, unknown>
     const def = defaults()
-    return {
-      harvester: { ...def.harvester, ...(raw.harvester ?? {}) },
+    const incoming = (raw['autoSkill'] && typeof raw['autoSkill'] === 'object')
+      ? raw['autoSkill'] as Partial<Settings['autoSkill']>
+      : {}
+    const merged = { ...def.autoSkill, ...incoming }
+    if (!merged.model) {
+      const legacy = migrateLegacyHarvesterKey(raw)
+      if (legacy) merged.model = legacy
     }
+    return { autoSkill: merged }
   } catch {
     return defaults()
   }
@@ -43,7 +59,7 @@ export function write(next: Settings): void {
 export function patch(updates: Partial<Settings>): Settings {
   const cur = read()
   const next: Settings = {
-    harvester: { ...cur.harvester, ...(updates.harvester ?? {}) },
+    autoSkill: { ...cur.autoSkill, ...(updates.autoSkill ?? {}) },
   }
   write(next)
   return next

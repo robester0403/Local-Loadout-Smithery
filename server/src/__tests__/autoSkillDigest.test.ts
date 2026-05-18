@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { __test } from '../harvester/digest'
+import { __test } from '../autoSkill/digest'
 
 describe('parseLLMResponse', () => {
   it('parses a clean JSON response', () => {

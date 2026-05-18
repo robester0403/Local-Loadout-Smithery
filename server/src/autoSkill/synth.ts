@@ -55,7 +55,7 @@ Patterns observed across the user's recent ${candidate.sourceRefs.length} conver
 ${excerpts || '(no excerpts captured)'}
 ${existingBlock}
 
-Write the body in Markdown. No frontmatter — the harvester adds that on accept. No commentary, no "Here is..." preamble. Return the body content directly.
+Write the body in Markdown. No frontmatter — the Auto Skill adds that on accept. No commentary, no "Here is..." preamble. Return the body content directly.
 
 Style:
 - Direct, declarative. The model reading this should immediately know what to do.

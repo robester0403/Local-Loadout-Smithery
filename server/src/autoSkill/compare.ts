@@ -2,7 +2,7 @@ import { generate, isAvailable } from '../ollama/client'
 import type { Skill } from '../scanner/types'
 import type { Candidate, ImprovementKind, ImprovementNotes, ImprovementSuggestion } from './types'
 
-const SYSTEM_PROMPT = `You compare an existing Claude/Cursor skill against a proposed new candidate that the harvester thinks may duplicate it. Identify concrete improvements the candidate offers over the existing skill — additions to its description ("when to use") or body (guidance/prompt), not stylistic rewrites.
+const SYSTEM_PROMPT = `You compare an existing Claude/Cursor skill against a proposed new candidate that the Auto Skill thinks may duplicate it. Identify concrete improvements the candidate offers over the existing skill — additions to its description ("when to use") or body (guidance/prompt), not stylistic rewrites.
 
 Return STRICT JSON with this shape — no prose, no markdown fences:
 {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { __test } from '../harvester/compare'
+import { __test } from '../autoSkill/compare'
 
 describe('parseResponse', () => {
   it('parses a clean JSON suggestion list', () => {

@@ -219,7 +219,7 @@ export async function runDigest(opts: DigestOptions): Promise<DigestResult> {
   const warnings: string[] = []
   const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : Date.now() - 14 * 24 * 60 * 60 * 1000
 
-  if (!opts.model) throw new Error('No model selected — set harvester.model in settings.')
+  if (!opts.model) throw new Error('No model selected — set autoSkill.model in settings.')
   if (!(await isAvailable())) throw new Error('Ollama is not reachable on http://localhost:11434')
 
   const all = loadAllConversations()

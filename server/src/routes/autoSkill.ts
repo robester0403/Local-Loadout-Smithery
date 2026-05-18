@@ -3,25 +3,25 @@ import { asyncHandler } from '../lib/asyncHandler'
 import { HttpError } from '../lib/paths'
 import { pathParam } from '../lib/params'
 import { readSentinel, runExtraction } from '../extractors'
-import { runDigest } from '../harvester/digest'
-import { deleteById, getById, readAll, setImprovementNotes, setStatus, updateFields } from '../harvester/store'
-import { emitFromCandidate } from '../harvester/emit'
-import { findExistingMatch } from '../harvester/matcher'
-import { compareCandidate } from '../harvester/compare'
-import { synthesizeBody } from '../harvester/synth'
+import { runDigest } from '../autoSkill/digest'
+import { deleteById, getById, readAll, setImprovementNotes, setStatus, updateFields } from '../autoSkill/store'
+import { emitFromCandidate } from '../autoSkill/emit'
+import { findExistingMatch } from '../autoSkill/matcher'
+import { compareCandidate } from '../autoSkill/compare'
+import { synthesizeBody } from '../autoSkill/synth'
 import { findAccounts, accountLabel, discoverAllSkills } from '../scanner/discover'
 import { read as readSettings } from '../state/settings'
 import type { ConversationSource } from '../extractors/types'
-import type { CandidateType } from '../harvester/types'
+import type { CandidateType } from '../autoSkill/types'
 
 const router = Router()
 
-router.get('/harvester/status', asyncHandler((_req, res) => {
+router.get('/auto-skill/status', asyncHandler((_req, res) => {
   const s = readSentinel()
   res.json({ lastRunAt: s.lastRunAt, highWaterMark: s.highWaterMark })
 }))
 
-router.post('/harvester/extract', asyncHandler((req, res) => {
+router.post('/auto-skill/extract', asyncHandler((req, res) => {
   const body = (req.body ?? {}) as { lookbackDays?: number; sources?: string[] }
   let lookbackDays: number | undefined
   if (body.lookbackDays !== undefined) {
@@ -47,12 +47,12 @@ router.post('/harvester/extract', asyncHandler((req, res) => {
 
 // ─── Digest ──────────────────────────────────────────────────────────────────
 
-router.post('/harvester/digest', asyncHandler(async (req, res) => {
+router.post('/auto-skill/digest', asyncHandler(async (req, res) => {
   const body = (req.body ?? {}) as { lookbackDays?: number; model?: string; purgeRawOnSuccess?: boolean }
   const settings = readSettings()
   const model = typeof body.model === 'string' && body.model.trim()
     ? body.model.trim()
-    : settings.harvester.model
+    : settings.autoSkill.model
   if (!model) throw new HttpError(400, 'No model selected. Pick one in Settings or pass `model` in the body.')
 
   const lookbackDays = typeof body.lookbackDays === 'number' && body.lookbackDays > 0
@@ -67,7 +67,7 @@ router.post('/harvester/digest', asyncHandler(async (req, res) => {
 
 // ─── Candidates CRUD ─────────────────────────────────────────────────────────
 
-router.get('/harvester/candidates', asyncHandler((_req, res) => {
+router.get('/auto-skill/candidates', asyncHandler((_req, res) => {
   // Tag each candidate with the closest existing inventory match (if any).
   // Recomputed on every request so newly-installed skills automatically
   // flag previously-stored candidates as duplicates.
@@ -79,7 +79,7 @@ router.get('/harvester/candidates', asyncHandler((_req, res) => {
   res.json({ candidates })
 }))
 
-router.patch('/harvester/candidates/:id', asyncHandler((req, res) => {
+router.patch('/auto-skill/candidates/:id', asyncHandler((req, res) => {
   const id = pathParam(req, 'id')
   if (!getById(id)) throw new HttpError(404, 'Candidate not found')
   const body = (req.body ?? {}) as Partial<{ name: string; description: string; bodyDraft: string; suggestedType: CandidateType }>
@@ -93,13 +93,13 @@ router.patch('/harvester/candidates/:id', asyncHandler((req, res) => {
   res.json({ candidate: updateFields(id, patch) })
 }))
 
-router.post('/harvester/candidates/:id/reject', asyncHandler((req, res) => {
+router.post('/auto-skill/candidates/:id/reject', asyncHandler((req, res) => {
   const id = pathParam(req, 'id')
   if (!getById(id)) throw new HttpError(404, 'Candidate not found')
   res.json({ candidate: setStatus(id, 'rejected') })
 }))
 
-router.delete('/harvester/candidates/:id', asyncHandler((req, res) => {
+router.delete('/auto-skill/candidates/:id', asyncHandler((req, res) => {
   const id = pathParam(req, 'id')
   deleteById(id)
   res.json({ ok: true })
@@ -107,7 +107,7 @@ router.delete('/harvester/candidates/:id', asyncHandler((req, res) => {
 
 // Accept = write a real SKILL.md (or .md) to a loadout dir. The candidate
 // becomes status=accepted with a back-pointer to the file we wrote.
-router.post('/harvester/candidates/:id/accept', asyncHandler((req, res) => {
+router.post('/auto-skill/candidates/:id/accept', asyncHandler((req, res) => {
   const id = pathParam(req, 'id')
   const cand = getById(id)
   if (!cand) throw new HttpError(404, 'Candidate not found')
@@ -140,13 +140,13 @@ router.post('/harvester/candidates/:id/accept', asyncHandler((req, res) => {
 // Compare a candidate against its existing-match skill, asking the model
 // what concrete additions the candidate offers over the existing file. Result
 // is cached on the candidate so re-clicks are free.
-router.post('/harvester/candidates/:id/compare', asyncHandler(async (req, res) => {
+router.post('/auto-skill/candidates/:id/compare', asyncHandler(async (req, res) => {
   const id = pathParam(req, 'id')
   const cand = getById(id)
   if (!cand) throw new HttpError(404, 'Candidate not found')
   const settings = readSettings()
   const body = (req.body ?? {}) as { model?: string; force?: boolean }
-  const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : settings.harvester.model
+  const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : settings.autoSkill.model
   if (!model) throw new HttpError(400, 'No model selected. Pick one in Settings or pass `model`.')
 
   const inventory = discoverAllSkills()
@@ -169,13 +169,13 @@ router.post('/harvester/candidates/:id/compare', asyncHandler(async (req, res) =
 
 // Body synthesis — on-demand second pass with (typically) a bigger model
 // than the discovery digest. Writes the new body back to bodyDraft.
-router.post('/harvester/candidates/:id/synth-body', asyncHandler(async (req, res) => {
+router.post('/auto-skill/candidates/:id/synth-body', asyncHandler(async (req, res) => {
   const id = pathParam(req, 'id')
   const cand = getById(id)
   if (!cand) throw new HttpError(404, 'Candidate not found')
   const settings = readSettings()
   const body = (req.body ?? {}) as { model?: string }
-  const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : settings.harvester.model
+  const model = typeof body.model === 'string' && body.model.trim() ? body.model.trim() : settings.autoSkill.model
   if (!model) throw new HttpError(400, 'No model selected. Pick one or pass `model`.')
 
   // Pull the matched skill (if any) so the synthesizer can use its body as
@@ -190,7 +190,7 @@ router.post('/harvester/candidates/:id/synth-body', asyncHandler(async (req, res
 }))
 
 // Accounts list, used by the accept-modal to populate the dropdown.
-router.get('/harvester/accounts', asyncHandler((_req, res) => {
+router.get('/auto-skill/accounts', asyncHandler((_req, res) => {
   const accounts = findAccounts().map(dir => ({ dir, label: accountLabel(dir) }))
   res.json({ accounts })
 }))

@@ -5,12 +5,33 @@ import crypto from 'crypto'
 import type { Candidate, CandidateStatus, ImprovementNotes } from './types'
 
 function file(): string {
+  return path.join(os.homedir(), '.loadoutsmith', 'auto-skill', 'candidates.json')
+}
+
+function legacyFile(): string {
+  // Pre-rename location: kept around long enough to migrate existing
+  // candidates the user produced under the 'harvester' branding.
   return path.join(os.homedir(), '.loadoutsmith', 'harvester', 'candidates.json')
+}
+
+// If the new file doesn't exist but the legacy one does, copy it over on
+// first access. Safe to run on every read — the existsSync guards prevent
+// re-migration once the new file is in place.
+function migrateLegacyIfNeeded(): void {
+  const target = file()
+  if (fs.existsSync(target)) return
+  const legacy = legacyFile()
+  if (!fs.existsSync(legacy)) return
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.copyFileSync(legacy, target)
+  } catch { /* if migration fails, fall through to empty state */ }
 }
 
 interface Shape { candidates: Candidate[] }
 
 export function readAll(): Candidate[] {
+  migrateLegacyIfNeeded()
   try {
     if (!fs.existsSync(file())) return []
     const raw = JSON.parse(fs.readFileSync(file(), 'utf-8')) as Partial<Shape>

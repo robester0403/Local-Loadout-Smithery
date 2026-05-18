@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { __test } from '../harvester/emit'
+import { __test } from '../autoSkill/emit'
 
 describe('sanitizeName', () => {
   it('lowercases, kebab-cases, strips junk', () => {

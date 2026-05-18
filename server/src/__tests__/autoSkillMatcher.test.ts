@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { findExistingMatch, __test } from '../harvester/matcher'
+import { findExistingMatch, __test } from '../autoSkill/matcher'
 import type { Skill } from '../scanner/types'
-import type { Candidate } from '../harvester/types'
+import type { Candidate } from '../autoSkill/types'
 
 function skill(name: string, description: string, type: Skill['type'] = 'skill', overrides: Partial<Skill> = {}): Skill {
   return {

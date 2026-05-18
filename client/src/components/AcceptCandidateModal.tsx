@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Candidate, CandidateType, HarvesterAccount, OllamaModel } from '../api'
-import { acceptCandidate, fetchHarvesterAccounts, fetchOllamaModels, synthBodyApi } from '../api'
+import type { Candidate, CandidateType, AutoSkillAccount, OllamaModel } from '../api'
+import { acceptCandidate, fetchAutoSkillAccounts, fetchOllamaModels, synthBodyApi } from '../api'
 import type { Skill } from '../types'
 
 // Rough param-size extraction from an Ollama tag (e.g. "qwen2.5:7b" → 7).
@@ -31,7 +31,7 @@ function deriveProjects(skills: Skill[]): { path: string; label: string }[] {
 export default function AcceptCandidateModal({ candidate, allSkills, onClose, onAccepted }: Props) {
   const projects = useMemo(() => deriveProjects(allSkills), [allSkills])
 
-  const [accounts, setAccounts] = useState<HarvesterAccount[]>([])
+  const [accounts, setAccounts] = useState<AutoSkillAccount[]>([])
   const [accountDir, setAccountDir] = useState('')
   const [scope, setScope] = useState<'global' | 'project'>('global')
   const [projectPath, setProjectPath] = useState(projects[0]?.path ?? '')
@@ -47,7 +47,7 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
   const [synthMessage, setSynthMessage] = useState('')
 
   useEffect(() => {
-    fetchHarvesterAccounts().then(list => {
+    fetchAutoSkillAccounts().then(list => {
       setAccounts(list)
       if (list.length > 0 && !accountDir) setAccountDir(list[0].dir)
     }).catch(e => setError((e as Error).message))
@@ -59,7 +59,7 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
       setModels(r.models)
       const sorted = [...r.models].sort((a, b) => paramSize(b.name) - paramSize(a.name))
       if (sorted[0]) setSynthModel(sorted[0].name)
-    }).catch(() => { /* harvester still works without synth */ })
+    }).catch(() => { /* Auto Skill still works without synth */ })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSynth() {

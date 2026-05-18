@@ -26,12 +26,12 @@ router.get('/settings', asyncHandler((_req, res) => {
 }))
 
 router.patch('/settings', asyncHandler((req, res) => {
-  const body = (req.body ?? {}) as { harvester?: { model?: unknown } }
-  const harvesterPatch: Partial<{ model: string }> = {}
-  if (body.harvester && typeof body.harvester.model === 'string') {
-    harvesterPatch.model = body.harvester.model
+  const body = (req.body ?? {}) as { autoSkill?: { model?: unknown } }
+  const autoSkillPatch: Partial<{ model: string }> = {}
+  if (body.autoSkill && typeof body.autoSkill.model === 'string') {
+    autoSkillPatch.model = body.autoSkill.model
   }
-  const next = patch({ harvester: harvesterPatch as { model: string } })
+  const next = patch({ autoSkill: autoSkillPatch as { model: string } })
   res.json(next)
 }))
 

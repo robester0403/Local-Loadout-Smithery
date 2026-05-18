@@ -31,7 +31,7 @@ function fmtScore(s: number): string {
   return `${Math.round(s * 100)}%`
 }
 
-export default function HarvesterPanel({ allSkills, onClose, onSkillsChanged }: Props) {
+export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: Props) {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [statusFilter, setStatusFilter] = useState<CandidateStatus | 'all-active'>('all-active')
   const [loading, setLoading] = useState(true)
@@ -69,7 +69,7 @@ export default function HarvesterPanel({ allSkills, onClose, onSkillsChanged }: 
         setCandidates(list)
         setOllamaAvailable(modelInfo.available)
         setModels(modelInfo.models)
-        setModel(settings.harvester.model || modelInfo.models[0]?.name || '')
+        setModel(settings.autoSkill.model || modelInfo.models[0]?.name || '')
       } catch (e) {
         setError((e as Error).message)
       } finally {
@@ -87,7 +87,7 @@ export default function HarvesterPanel({ allSkills, onClose, onSkillsChanged }: 
       const extract = await runExtractApi({ lookbackDays: lookback })
       const totalAdded = extract.results.reduce((sum, r) => sum + r.added, 0)
       setRunMessage(`Extracted ${totalAdded} new conversations. Saving model choice…`)
-      await patchSettings({ harvester: { model } })
+      await patchSettings({ autoSkill: { model } })
       setRunning('digesting')
       setRunMessage(`Digesting with ${model}…`)
       const digest = await runDigestApi({ lookbackDays: lookback, model, purgeRawOnSuccess: true })
@@ -136,7 +136,7 @@ export default function HarvesterPanel({ allSkills, onClose, onSkillsChanged }: 
       <div className="modal" style={{ maxWidth: 980 }}>
         <div className="modal-header">
           <div>
-            <div className="modal-title">Skill Harvester</div>
+            <div className="modal-title">Auto Skill</div>
             <div className="modal-subtitle">
               Find candidate skills hidden in your chat history. Conversations are extracted, digested with a local model, then deleted — only the candidates and short excerpts persist.
             </div>

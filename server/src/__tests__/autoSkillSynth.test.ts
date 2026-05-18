@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { __test } from '../harvester/synth'
-import type { Candidate } from '../harvester/types'
+import { __test } from '../autoSkill/synth'
+import type { Candidate } from '../autoSkill/types'
 
 function candidate(over: Partial<Candidate> = {}): Candidate {
   return {

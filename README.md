@@ -72,13 +72,13 @@ This is exactly why the *removal candidate* and *dormant* diagnostics exist. A s
 - **Health diagnostics** — frontmatter linter, broken symlink detection, and health badges with inline issue descriptions
 - **Diagnostic insights** — surfaces removal candidates and dormant artifacts; "Needs review" filter + inline insight banner
 - **SuperRouter** — group skills behind a trigger condition. Toggle a bundle on and the trigger block lands in `CLAUDE.md` (or your Cursor MD), with a sibling map file listing the skills to consider only when that trigger matches. Cuts context tax for skills that only apply some of the time.
-- **Skill Harvester** — find candidate skills hidden in your own chat history. Extracts conversations from Claude Code, Cursor, and Codex (when present), runs them through a local Ollama model, and surfaces suggested skills / commands / subagents you can accept with one click. Conversation text is **deleted from disk** after digest — only short excerpts persist on each candidate for traceability.
+- **Auto Skill** — find candidate skills hidden in your own chat history. Extracts conversations from Claude Code, Cursor, and Codex (when present), runs them through a local Ollama model, and surfaces suggested skills / commands / subagents you can accept with one click. Conversation text is **deleted from disk** after digest — only short excerpts persist on each candidate for traceability.
 
 Everything runs locally. No data leaves your machine.
 
-## Skill Harvester — setup
+## Auto Skill — setup
 
-The Harvester needs a local LLM. We use [Ollama](https://ollama.com) because
+Auto Skill needs a local LLM. We use [Ollama](https://ollama.com) because
 it's a single binary, no API keys, no telemetry.
 
 ```bash
@@ -95,16 +95,16 @@ Model sizing — pick what fits your machine:
 | 16 GB+ | `qwen2.5:7b` | ~4.7 GB | ~30 min |
 | 32 GB+ | `qwen2.5:14b` | ~9 GB | even longer |
 
-The 3B is the right default. For classification + structured extraction (which is all the harvester does), the quality difference vs. 7B is small and the speed difference is large. Upgrade to 7B only if you find the 3B's candidates noticeably weaker.
+The 3B is the right default. For classification + structured extraction (which is all the Auto Skill does), the quality difference vs. 7B is small and the speed difference is large. Upgrade to 7B only if you find the 3B's candidates noticeably weaker.
 
-The Harvest panel auto-detects installed models — `ollama pull` whichever
+The Auto Skill panel auto-detects installed models — `ollama pull` whichever
 ones you want and they appear in the dropdown.
 
-If Ollama isn't installed, the Harvest button still appears; the panel
+If Ollama isn't installed, the Auto Skill button still appears; the panel
 shows the install commands instead of the candidate list. Every other
 feature in the app continues to work without it.
 
-Once Ollama is running, open **🌾 Harvest** in the header, pick a model
+Once Ollama is running, open **✨ Auto Skill** in the header, pick a model
 and a lookback window (default: 2 weeks), then click **Run digest**.
 Conversations get extracted to `~/.loadoutsmith/conversations/`, fed
 through the model, and deleted on success. The resulting candidates show

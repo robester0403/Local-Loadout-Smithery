@@ -5,7 +5,7 @@ import { appendRecords, readSentinel, writeSentinel } from './store'
 import type { ConversationSource, ExtractResult } from './types'
 
 export interface ExtractOptions {
-  /** Days to look back. Defaults to 14 (per harvester decision #4). */
+  /** Days to look back. Defaults to 14 (per Auto Skill decision #4). */
   lookbackDays?: number
   /** Restrict to a subset of sources. Defaults to all known sources. */
   sources?: ConversationSource[]
