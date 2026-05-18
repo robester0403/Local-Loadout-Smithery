@@ -119,6 +119,52 @@ existing skill and propose concrete additions — useful when the
 candidate has captured nuance worth merging into the existing file
 rather than starting fresh.
 
+**Two-pass synthesis.** The discovery digest runs on the small model
+(qwen2.5:3b default) and finds candidates fast. When you click **Accept**
+on one, the modal exposes a model picker + **Regenerate body** button —
+that runs a bigger model (e.g. qwen2.5:7b) just on that one candidate to
+write a richer body. Per-candidate synthesis takes ~10–30 s; you only
+pay for it on candidates you actually want.
+
+**Caveat — body quality is bounded by surviving context.** After a
+successful digest the raw conversation text is deleted from disk (privacy
+default). Candidates keep only ~120-char excerpts per source ref, so the
+synthesizer has limited material to work from and will sometimes
+invent plausible-but-incorrect details. Treat the regenerated body as a
+draft to edit, not a finished skill. (A future change will re-pull the
+original conversation on demand for synthesis — work tracked in
+`planning_notes/AUTO_SKILL.md`.)
+
+**Single-model-at-a-time.** The app loads at most one model into RAM.
+Switching models mid-session (3B for discovery → 7B for synthesis)
+evicts the previous model before pulling the new one in, so you never
+hold two large weights side-by-side.
+
+**On shutdown.** Pressing Ctrl+C unloads whatever model this process
+loaded — RAM frees immediately rather than waiting out Ollama's ~5 min
+keep_alive. The Ollama daemon itself keeps running (so the next startup
+is instant). Only the model weights get evicted, and only the model this
+app loaded — any unrelated Ollama clients on your machine are untouched.
+
+## Where data lives
+
+Everything the app writes lives under `~/.loadoutsmith/`. Inspecting or
+deleting any of these is safe; the app rebuilds what it needs.
+
+| Path | Purpose | Lifecycle |
+| --- | --- | --- |
+| `settings.json` | App settings (currently just the chosen Ollama model) | Persistent |
+| `auto-skill/candidates.json` | Generated candidates + status | Persistent |
+| `conversations/<source>/<date>.jsonl` | Extracted chat history during a digest run | Deleted after successful digest |
+| `conversations/.last-extract.json` | Per-source high-water mark for incremental extracts | Persistent |
+| `super-router.json` | SuperRouter bundle definitions | Persistent |
+| `super-router/<slug>.md` | Skill map files for enabled bundles | Created/removed by bundle toggle |
+| `move-log.jsonl` | Audit log for skill reclassifications | Append-only |
+| `cursor-projects-seen.jsonl` | Cache of discovered Cursor projects | Append-only |
+
+If you ever want a clean slate: `rm -rf ~/.loadoutsmith/` then restart
+the app.
+
 ## Screenshot
 
 *(coming soon)*
