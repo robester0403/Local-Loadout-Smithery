@@ -379,3 +379,175 @@ export async function openBundleFileApi(id: string, which: 'top' | 'map'): Promi
   })
   await parseResponse<{ ok: boolean }>(res)
 }
+
+// ─── Harvester ───────────────────────────────────────────────────────────────
+
+export type CandidateType = 'skill' | 'command' | 'subagent'
+export type CandidateStatus = 'pending' | 'accepted' | 'rejected'
+export type ConversationSource = 'claude' | 'cursor' | 'codex'
+
+export interface CandidateSourceRef {
+  source: ConversationSource
+  conversationId: string
+  excerpt: string
+  at: string
+}
+
+export interface ExistingMatch {
+  skillId: string
+  skillName: string
+  skillPath: string
+  matchKind: 'name' | 'description'
+  similarity: number
+}
+
+export type ImprovementKind = 'add-to-description' | 'add-to-body' | 'no-improvement'
+
+export interface ImprovementSuggestion {
+  kind: ImprovementKind
+  text: string
+}
+
+export interface ImprovementNotes {
+  suggestions: ImprovementSuggestion[]
+  comparedAt: string
+  model: string
+  comparedSkillId: string
+}
+
+export interface Candidate {
+  id: string
+  signature: string
+  name: string
+  description: string
+  bodyDraft: string
+  suggestedType: CandidateType
+  score: number
+  status: CandidateStatus
+  sourceRefs: CandidateSourceRef[]
+  createdAt: string
+  updatedAt: string
+  model: string
+  acceptedPath?: string
+  existingMatch?: ExistingMatch | null
+  improvementNotes?: ImprovementNotes
+}
+
+export interface DigestResult {
+  candidatesCreated: number
+  candidatesUpdated: number
+  conversationsProcessed: number
+  chunksProcessed: number
+  warnings: string[]
+  durationMs: number
+  model: string
+}
+
+export interface ExtractResult {
+  results: Array<{ source: ConversationSource; added: number; skipped: number; warnings: string[] }>
+  lastRunAt: string
+}
+
+export interface OllamaModel { name: string; size: number; modified_at: string }
+
+export async function fetchOllamaHealth(): Promise<{ available: boolean }> {
+  const res = await fetch('/api/ollama/health')
+  return parseResponse(res)
+}
+
+export async function fetchOllamaModels(): Promise<{ available: boolean; models: OllamaModel[] }> {
+  const res = await fetch('/api/ollama/models')
+  return parseResponse(res)
+}
+
+export interface AppSettings { harvester: { model: string } }
+
+export async function fetchSettings(): Promise<AppSettings> {
+  const res = await fetch('/api/settings')
+  return parseResponse(res)
+}
+
+export async function patchSettings(p: Partial<AppSettings>): Promise<AppSettings> {
+  const res = await fetch('/api/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(p),
+  })
+  return parseResponse(res)
+}
+
+export async function runExtractApi(opts: { sources?: ConversationSource[]; lookbackDays?: number } = {}): Promise<ExtractResult> {
+  const res = await fetch('/api/harvester/extract', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  })
+  return parseResponse(res)
+}
+
+export async function runDigestApi(opts: { lookbackDays?: number; model?: string; purgeRawOnSuccess?: boolean } = {}): Promise<DigestResult> {
+  const res = await fetch('/api/harvester/digest', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  })
+  return parseResponse(res)
+}
+
+export async function fetchCandidates(): Promise<Candidate[]> {
+  const res = await fetch('/api/harvester/candidates')
+  return (await parseResponse<{ candidates: Candidate[] }>(res)).candidates
+}
+
+export async function patchCandidate(id: string, patch: Partial<Pick<Candidate, 'name' | 'description' | 'bodyDraft' | 'suggestedType'>>): Promise<Candidate> {
+  const res = await fetch(`/api/harvester/candidates/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  return (await parseResponse<{ candidate: Candidate }>(res)).candidate
+}
+
+export async function rejectCandidate(id: string): Promise<Candidate> {
+  const res = await fetch(`/api/harvester/candidates/${encodeURIComponent(id)}/reject`, { method: 'POST' })
+  return (await parseResponse<{ candidate: Candidate }>(res)).candidate
+}
+
+export async function deleteCandidate(id: string): Promise<void> {
+  const res = await fetch(`/api/harvester/candidates/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  await parseResponse(res)
+}
+
+export interface AcceptInput {
+  accountDir: string
+  scope: 'global' | 'project'
+  projectPath?: string
+  name: string
+  description: string
+  body: string
+  type: CandidateType
+}
+
+export async function acceptCandidate(id: string, input: AcceptInput): Promise<{ path: string; candidate: Candidate }> {
+  const res = await fetch(`/api/harvester/candidates/${encodeURIComponent(id)}/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  return parseResponse(res)
+}
+
+export interface HarvesterAccount { dir: string; label: string }
+export async function fetchHarvesterAccounts(): Promise<HarvesterAccount[]> {
+  const res = await fetch('/api/harvester/accounts')
+  return (await parseResponse<{ accounts: HarvesterAccount[] }>(res)).accounts
+}
+
+export async function compareCandidateApi(id: string, opts: { model?: string; force?: boolean } = {}): Promise<{ candidate: Candidate; cached: boolean }> {
+  const res = await fetch(`/api/harvester/candidates/${encodeURIComponent(id)}/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  })
+  return parseResponse(res)
+}
