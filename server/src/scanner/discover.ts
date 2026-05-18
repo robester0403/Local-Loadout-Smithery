@@ -6,6 +6,8 @@ import { computeHealth } from './health'
 import { extractReferences } from './references'
 import { inferType } from './classification'
 import { countTokens } from '../usage/tokenizer'
+import { findCursorProjectCwds, defaultCursorUserDataDir } from './cursorProjects'
+import { CURSOR_SEEN_LOG_PATH } from '../lib/paths'
 import type { Skill, SkillType, SkillScope, HealthResult } from './types'
 
 // Mirrors the listing budget constraints from loaded.ts.
@@ -265,45 +267,108 @@ function findProjectCwd(projectDir: string): string | null {
   return null
 }
 
-function discoverInAccount(accountDir: string, account: string): Skill[] {
-  const skills: Skill[] = []
+// Per-account discovery rules. Lifting these out of conditionals keeps the
+// shared loop readable and makes it easy to add a third ecosystem later — a
+// new entry here plus a `findAccounts` hook is the whole change.
+interface AccountAdapter {
+  /** Logical account label written into Skill.account. */
+  account: string
+  /** Root directory the adapter scans (e.g. ~/.claude, ~/.cursor). */
+  accountDir: string
+  /** Global-scope skill directories under `accountDir`. */
+  globalSkillDirs: string[]
+  /** Folder name to look for inside each project root for project-local
+   *  skills/commands/agents (Claude uses `.claude`; Cursor uses `.cursor`). */
+  projectArtifactDir: string
+  /** Resolve every project root this account should scan. Each is a cwd
+   *  expected to contain a `<projectArtifactDir>/` of artifacts. */
+  resolveProjectCwds(): string[]
+}
 
-  skills.push(...discoverSkillsDir(path.join(accountDir, 'skills'), 'global', account))
-  skills.push(...discoverCommandsDir(path.join(accountDir, 'commands'), 'global', account))
-  skills.push(...discoverAgentsDir(path.join(accountDir, 'agents'), 'global', account))
-
-  // Cursor ships a separate `skills-cursor/` tree alongside the user's
-  // `skills/`. Same structure (one dir per skill, with SKILL.md), so we can
-  // reuse discoverSkillsDir.
+function adapterFor(accountDir: string, account: string): AccountAdapter {
   if (account === 'cursor') {
-    skills.push(...discoverSkillsDir(path.join(accountDir, 'skills-cursor'), 'global', account))
+    return {
+      account,
+      accountDir,
+      globalSkillDirs: ['skills', 'skills-cursor'],
+      projectArtifactDir: '.cursor',
+      resolveProjectCwds: () => findCursorProjectCwds({
+        cursorDir: accountDir,
+        userDataDir: defaultCursorUserDataDir(os.homedir()) ?? undefined,
+        home: os.homedir(),
+        seenLogPath: CURSOR_SEEN_LOG_PATH,
+      }),
+    }
   }
+  return {
+    account,
+    accountDir,
+    globalSkillDirs: ['skills'],
+    projectArtifactDir: '.claude',
+    resolveProjectCwds: () => resolveClaudeProjectCwds(accountDir),
+  }
+}
 
-  // Project-local discovery.
-  // Claude Code stores project-local commands/skills in {cwd}/.claude/ — not in the
-  // account's projects/ dir. We resolve the real path via the cwd field in session files.
+// Claude Code records every project it has been used in as a hash dir under
+// `<accountDir>/projects/`, with session JSONLs whose `cwd` field is the
+// real project path. We read the first parseable line per session file.
+function resolveClaudeProjectCwds(accountDir: string): string[] {
+  const out: string[] = []
   const projectsDir = path.join(accountDir, 'projects')
   for (const projectHash of listDir(projectsDir)) {
     const projectDir = path.join(projectsDir, projectHash)
     if (!isDir(projectDir)) continue
-
     const cwd = findProjectCwd(projectDir)
-    // Use the real cwd as the projectId when available so the UI can show the actual name.
-    const projectId = cwd ?? projectHash
+    if (cwd) out.push(cwd)
+  }
+  return out
+}
 
-    if (cwd) {
-      const dotClaude = path.join(cwd, '.claude')
-      skills.push(...discoverSkillsDir(path.join(dotClaude, 'skills'), 'project', account, projectId))
-      skills.push(...discoverCommandsDir(path.join(dotClaude, 'commands'), 'project', account, projectId))
-      skills.push(...discoverAgentsDir(path.join(dotClaude, 'agents'), 'project', account, projectId))
-    }
+function discoverInAccount(accountDir: string, account: string): Skill[] {
+  const adapter = adapterFor(accountDir, account)
+  const skills: Skill[] = []
+
+  // Global-scope discovery.
+  for (const dir of adapter.globalSkillDirs) {
+    skills.push(...discoverSkillsDir(path.join(accountDir, dir), 'global', account))
+  }
+  skills.push(...discoverCommandsDir(path.join(accountDir, 'commands'), 'global', account))
+  skills.push(...discoverAgentsDir(path.join(accountDir, 'agents'), 'global', account))
+
+  // Project-scope discovery. The adapter knows where to look for project
+  // roots and which child folder hosts the artifacts.
+  for (const cwd of adapter.resolveProjectCwds()) {
+    const artifactRoot = path.join(cwd, adapter.projectArtifactDir)
+    skills.push(...discoverSkillsDir(path.join(artifactRoot, 'skills'), 'project', account, cwd))
+    skills.push(...discoverCommandsDir(path.join(artifactRoot, 'commands'), 'project', account, cwd))
+    skills.push(...discoverAgentsDir(path.join(artifactRoot, 'agents'), 'project', account, cwd))
   }
 
   return skills
 }
 
-export function discoverAllSkills(): Skill[] {
-  const accounts = findAccounts()
+export interface DiscoverOptions {
+  /** Restrict discovery to the given account labels (e.g. ['cursor']). When
+   *  omitted, every detected account is scanned — the original behavior. */
+  accounts?: ReadonlyArray<string>
+  /** Skip these accounts. Useful for "everything except Cursor" without
+   *  needing to enumerate Claude's accounts ahead of time. */
+  excludeAccounts?: ReadonlyArray<string>
+}
+
+export function discoverAllSkills(opts: DiscoverOptions = {}): Skill[] {
+  const wanted = opts.accounts && opts.accounts.length > 0
+    ? new Set(opts.accounts)
+    : null
+  const excluded = opts.excludeAccounts && opts.excludeAccounts.length > 0
+    ? new Set(opts.excludeAccounts)
+    : null
+  const accounts = findAccounts().filter(dir => {
+    const label = accountLabel(dir)
+    if (wanted && !wanted.has(label)) return false
+    if (excluded && excluded.has(label)) return false
+    return true
+  })
   const raw: Skill[] = []
 
   for (const accountDir of accounts) {

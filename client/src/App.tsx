@@ -23,14 +23,30 @@ import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
 import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
-import { fetchCursorUsage, fetchCursorRecentUsage, type CursorUsageReport, type CursorRecentUsageReport } from './api'
+import { fetchCursorUsage, fetchCursorRecentUsage, rescanCursorProjects, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
 
 type ActiveTab = 'inventory' | 'cursor'
 
+// Safety net for the tab-aware loaders: if the server ever returns the same
+// skill in both the Claude and Cursor responses (e.g. an old build that
+// doesn't yet support `?ecosystem=`), we'd otherwise render duplicates. Keep
+// the first occurrence of each id and drop the rest.
+function dedupById(skills: Skill[]): Skill[] {
+  const seen = new Set<string>()
+  const out: Skill[] = []
+  for (const s of skills) {
+    if (seen.has(s.id)) continue
+    seen.add(s.id)
+    out.push(s)
+  }
+  return out
+}
+
 export default function App() {
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
+  const [rescanning, setRescanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -68,67 +84,84 @@ export default function App() {
     localStorage.setItem('loadoutsmith-timeframe', timeframe)
   }, [timeframe])
 
+  // Tab-scoped loaders. Each bundle owns its slice of `skills` (keyed by
+  // account) plus its tab-specific side channels (profiles+MCP for Claude,
+  // usage/recent for Cursor). Splitting this way means a refresh on one tab
+  // never re-scans the other ecosystem's files, which dominates scan time.
+
+  const loadClaudeBundle = useCallback(async (): Promise<void> => {
+    const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
+      fetchInventory('claude'),
+      fetchProfiles().catch(() => null),
+      fetchUninstalled().catch(() => [] as UninstalledEntry[]),
+      fetchMCPInventory().catch(() => [] as MCPRow[]),
+      fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
+      fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
+    ])
+    let summaries: SkillUsageSummary[] = []
+    try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
+    const merged = mergeWithCost(rawSkills, summaries)
+    const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
+    setMcpUsageMap(usageMap)
+    setMcpRelationships(mcpRels)
+    // Replace only the Claude+MCP slice; preserve any Cursor entries already
+    // loaded so switching tabs doesn't blank the other side momentarily.
+    setSkills(prev => {
+      const cursor = prev.filter(s => s.account === 'cursor')
+      const mcp = mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))
+      return dedupById([...merged, ...mcp, ...cursor])
+    })
+    if (pd) setProfilesData(pd)
+    setTrashCount(uninstalled.length)
+  }, [timeframe])
+
+  const loadCursorBundle = useCallback(async (): Promise<void> => {
+    const [cursorSkills, cursorReport, cursorRecentReport] = await Promise.all([
+      fetchInventory('cursor').catch(() => [] as Skill[]),
+      fetchCursorUsage().catch((): CursorUsageReport => ({
+        available: false, skills: [], totalActivations: 0, distinctSessions: 0,
+      })),
+      fetchCursorRecentUsage().catch((): CursorRecentUsageReport => ({
+        hasData: false, trackingSince: 0, items: [], totalEvents: 0,
+      })),
+    ])
+    setCursorUsage(cursorReport)
+    setCursorRecent(cursorRecentReport)
+    // Even though Cursor skills have no Claude Code cost data, they need to
+    // pass through mergeWithCost so the derived fields (activeDollars,
+    // loadedDollars, insight, dormant, bloat, descLen) are populated. Without
+    // this the InventoryTable crashes on `undefined.toFixed(...)`.
+    const merged = mergeWithCost(cursorSkills, [])
+    setSkills(prev => {
+      const others = prev.filter(s => s.account !== 'cursor')
+      return dedupById([...others, ...merged])
+    })
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels, cursorReport, cursorRecentReport] = await Promise.all([
-        fetchInventory(),
-        fetchProfiles().catch(() => ({ profiles: {}, activeProfile: null })),
-        fetchUninstalled().catch(() => [] as UninstalledEntry[]),
-        fetchMCPInventory().catch(() => [] as MCPRow[]),
-        fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
-        fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
-        // Tolerate Cursor being absent — non-fatal.
-        fetchCursorUsage().catch((): CursorUsageReport => ({
-          available: false, skills: [], totalActivations: 0, distinctSessions: 0,
-        })),
-        fetchCursorRecentUsage().catch((): CursorRecentUsageReport => ({
-          hasData: false, trackingSince: 0, items: [], totalEvents: 0,
-        })),
-      ])
-      let summaries: SkillUsageSummary[] = []
-      try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
-      const merged = mergeWithCost(rawSkills, summaries)
-      const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
-      setMcpUsageMap(usageMap)
-      setMcpRelationships(mcpRels)
-      setCursorUsage(cursorReport)
-      setCursorRecent(cursorRecentReport)
-      setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
-      setProfilesData(pd)
-      setTrashCount(uninstalled.length)
+      await Promise.all([loadClaudeBundle(), loadCursorBundle()])
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [timeframe])
+  }, [loadClaudeBundle, loadCursorBundle])
 
   useEffect(() => { load() }, [load])
 
+  // Background refresh — only the active tab's data. Pre-tab-aware version
+  // re-scanned everything every 30s; that wasted work on whichever ecosystem
+  // the user wasn't currently looking at.
   useEffect(() => {
-    const id = setInterval(async () => {
-      try {
-        const [rawSkills, pd, mcpServers, mcpUsage, mcpRels] = await Promise.all([
-          fetchInventory(),
-          fetchProfiles().catch(() => null),
-          fetchMCPInventory().catch(() => [] as MCPRow[]),
-          fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
-          fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
-        ])
-        let summaries: SkillUsageSummary[] = []
-        try { summaries = await fetchUsageAggregate(timeframe) } catch { /* ignore */ }
-        const merged = mergeWithCost(rawSkills, summaries)
-        const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
-        setMcpUsageMap(usageMap)
-        setMcpRelationships(mcpRels)
-        setSkills([...merged, ...mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))])
-        if (pd) setProfilesData(pd)
-      } catch { /* ignore */ }
+    const id = setInterval(() => {
+      if (activeTab === 'cursor') void loadCursorBundle().catch(() => {})
+      else void loadClaudeBundle().catch(() => {})
     }, 30_000)
     return () => clearInterval(id)
-  }, [timeframe])
+  }, [activeTab, loadClaudeBundle, loadCursorBundle])
 
   useEffect(() => {
     if (!selected) return
@@ -150,9 +183,31 @@ export default function App() {
   // without waiting for the full inventory refetch, then trigger that refetch
   // in the background so derived fields (health, token counts, references)
   // re-resolve canonically.
+  // Manual "Rescan projects" — runs the server-side deep filesystem scan,
+  // toasts the result, and refreshes the Cursor bundle so any newly-found
+  // projects' artifacts appear immediately.
+  async function handleCursorRescan() {
+    if (rescanning) return
+    setRescanning(true)
+    try {
+      const result = await rescanCursorProjects()
+      if (result.addedCount === 0) showToast('No new Cursor projects found.')
+      else showToast(`Found ${result.addedCount} new Cursor project${result.addedCount === 1 ? '' : 's'}.`)
+      await loadCursorBundle()
+    } catch (e) {
+      showToast((e as Error).message)
+    } finally {
+      setRescanning(false)
+    }
+  }
+
   function handleSkillEdited(id: string, patch: { description?: string; body?: string }) {
     setSkills(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s))
-    void load()
+    // Reconcile only the ecosystem that owns the edited skill — no need to
+    // re-scan the other tree just because we changed a description.
+    const edited = skills.find(s => s.id === id)
+    if (edited?.account === 'cursor') void loadCursorBundle().catch(() => {})
+    else void loadClaudeBundle().catch(() => {})
   }
 
   function handleSelectId(id: string, checked: boolean) {
@@ -416,7 +471,27 @@ export default function App() {
           >
             🗑{trashCount > 0 ? ` ${trashCount}` : ' Trash'}
           </button>
-          <button className="btn btn-sm" onClick={load} disabled={loading}>
+          {activeTab === 'cursor' && (
+            <button
+              className="btn btn-sm"
+              onClick={handleCursorRescan}
+              disabled={rescanning}
+              title="Deep-scan home dir for Cursor projects we haven't seen yet"
+            >
+              {rescanning ? '…' : '🔍'} Rescan
+            </button>
+          )}
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              // Refresh only the active tab's slice. Use the full `load()`
+              // (which also flips the loading spinner) so the user gets the
+              // visual feedback they expect.
+              if (activeTab === 'cursor') void loadCursorBundle().catch(() => {})
+              else void loadClaudeBundle().catch(() => {})
+            }}
+            disabled={loading}
+          >
             {loading ? '…' : '↺'} Refresh
           </button>
         </div>

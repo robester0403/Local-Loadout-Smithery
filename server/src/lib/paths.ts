@@ -10,6 +10,10 @@ export const LOADOUT_DIR = path.join(os.homedir(), '.loadoutsmith')
 /** Append-only log of skill reclassify/move operations. */
 export const MOVE_LOG_PATH = path.join(LOADOUT_DIR, 'move-log.jsonl')
 
+/** Dedup-append log of every Cursor project cwd we've ever resolved. Acts as
+ *  a "first-run scan completed" sentinel via file existence. */
+export const CURSOR_SEEN_LOG_PATH = path.join(LOADOUT_DIR, 'cursor-projects-seen.jsonl')
+
 /**
  * Throw a 403-shaped error if the resolved path escapes the user's home dir.
  * The home directory itself is permitted (some operations target ~/.claude).
