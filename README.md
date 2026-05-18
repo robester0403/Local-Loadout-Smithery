@@ -126,14 +126,15 @@ that runs a bigger model (e.g. qwen2.5:7b) just on that one candidate to
 write a richer body. Per-candidate synthesis takes ~10–30 s; you only
 pay for it on candidates you actually want.
 
-**Caveat — body quality is bounded by surviving context.** After a
-successful digest the raw conversation text is deleted from disk (privacy
-default). Candidates keep only ~120-char excerpts per source ref, so the
-synthesizer has limited material to work from and will sometimes
-invent plausible-but-incorrect details. Treat the regenerated body as a
-draft to edit, not a finished skill. (A future change will re-pull the
-original conversation on demand for synthesis — work tracked in
-`planning_notes/AUTO_SKILL.md`.)
+**Synth grounding.** Body regeneration re-extracts the full source
+conversations from disk on demand (Cursor SQLite, Claude session JSONL,
+Codex history) and feeds them into the synth prompt — so the bigger
+model is working from the actual user/assistant exchanges, not the
+short excerpts that survive the digest purge. The conversation text
+lives in memory only for the duration of the synth call; nothing extra
+gets persisted. The post-synth status message reports `using N
+re-extracted conversations` when this succeeded, or falls back to
+excerpts if the original source has been deleted/moved since digest.
 
 **Single-model-at-a-time.** The app loads at most one model into RAM.
 Switching models mid-session (3B for discovery → 7B for synthesis)
