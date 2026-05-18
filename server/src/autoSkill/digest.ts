@@ -6,6 +6,7 @@ import { isAvailable, generate } from '../ollama/client'
 import { purgeRawConversations } from '../extractors/store'
 import type { ConversationRecord } from '../extractors/types'
 import { upsertGenerated } from './store'
+import * as progress from './progress'
 import type { Candidate, CandidateSourceRef, CandidateType, DigestResult } from './types'
 
 const CONVERSATIONS_ROOT = path.join(os.homedir(), '.loadoutsmith', 'conversations')
@@ -219,28 +220,35 @@ export async function runDigest(opts: DigestOptions): Promise<DigestResult> {
   const warnings: string[] = []
   const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : Date.now() - 14 * 24 * 60 * 60 * 1000
 
-  if (!opts.model) throw new Error('No model selected — set autoSkill.model in settings.')
-  if (!(await isAvailable())) throw new Error('Ollama is not reachable on http://localhost:11434')
+  progress.start(`Preparing digest with ${opts.model || '(no model)'}…`)
+  try {
+    if (!opts.model) throw new Error('No model selected — set autoSkill.model in settings.')
+    if (!(await isAvailable())) throw new Error('Ollama is not reachable on http://localhost:11434')
 
-  const all = loadAllConversations()
-  const filtered = all.filter(c => {
-    const t = Date.parse(c.startedAt || c.endedAt || '')
-    return Number.isFinite(t) ? t >= sinceMs : true
-  })
+    progress.setPhase('chunking', 'Loading and chunking extracted conversations…')
+    const all = loadAllConversations()
+    const filtered = all.filter(c => {
+      const t = Date.parse(c.startedAt || c.endedAt || '')
+      return Number.isFinite(t) ? t >= sinceMs : true
+    })
 
-  const conversationsById = new Map(filtered.map(c => [c.id, c]))
-  const summarized = filtered.map(summarizeConversation)
-  const chunks = chunk(summarized)
+    const conversationsById = new Map(filtered.map(c => [c.id, c]))
+    const summarized = filtered.map(summarizeConversation)
+    const chunks = chunk(summarized)
+    progress.setTotal(chunks.length, `Digesting ${filtered.length} conversation(s) in ${chunks.length} chunk(s)…`)
 
-  let created = 0
-  let updated = 0
+    let created = 0
+    let updated = 0
 
-  for (const batch of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const batch = chunks[i]
+    progress.setPhase('chunking', `Processing chunk ${i + 1}/${chunks.length} (${batch.length} convo${batch.length === 1 ? '' : 's'})…`)
     let raw: string
     try {
       raw = await generate({ model: opts.model, prompt: buildPrompt(batch), json: true })
     } catch (e) {
       warnings.push(`Chunk failed: ${(e as Error).message}`)
+      progress.tick()
       continue
     }
     const items = parseLLMResponse(raw, warnings)
@@ -288,24 +296,31 @@ export async function runDigest(opts: DigestOptions): Promise<DigestResult> {
       if (result.created) created += 1
       else updated += 1
     }
+    progress.tick()
   }
 
-  if (opts.purgeRawOnSuccess) {
-    try {
-      purgeRawConversations()
-    } catch (e) {
-      warnings.push(`Failed to purge raw conversations: ${(e as Error).message}`)
+    if (opts.purgeRawOnSuccess) {
+      progress.setPhase('finalizing', 'Purging raw conversation files…')
+      try {
+        purgeRawConversations()
+      } catch (e) {
+        warnings.push(`Failed to purge raw conversations: ${(e as Error).message}`)
+      }
     }
-  }
 
-  return {
-    candidatesCreated: created,
-    candidatesUpdated: updated,
-    conversationsProcessed: filtered.length,
-    chunksProcessed: chunks.length,
-    warnings,
-    durationMs: Date.now() - start,
-    model: opts.model,
+    progress.done(`Done. ${created} new, ${updated} updated.`)
+    return {
+      candidatesCreated: created,
+      candidatesUpdated: updated,
+      conversationsProcessed: filtered.length,
+      chunksProcessed: chunks.length,
+      warnings,
+      durationMs: Date.now() - start,
+      model: opts.model,
+    }
+  } catch (e) {
+    progress.fail((e as Error).message)
+    throw e
   }
 }
 

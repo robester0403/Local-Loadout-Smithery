@@ -517,6 +517,14 @@ td.col-totalDollars { color: var(--text); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Indeterminate progress bar — used by Auto Skill while we don't yet know
+   how many chunks the digest will produce, or during finalize/purge. */
+@keyframes progressIndeterminate {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(60%); }
+  100% { transform: translateX(280%); }
+}
+
 /* ─── Detail drawer ─────────────────────────────────────────────────────── */
 .drawer-overlay {
   position: fixed; inset: 0;

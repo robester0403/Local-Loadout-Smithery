@@ -485,6 +485,23 @@ export async function runExtractApi(opts: { sources?: ConversationSource[]; look
   return parseResponse(res)
 }
 
+export type DigestPhase = 'idle' | 'starting' | 'chunking' | 'finalizing' | 'done' | 'error'
+
+export interface DigestProgress {
+  phase: DigestPhase
+  total: number
+  completed: number
+  message: string
+  startedAt: string
+  finishedAt: string
+  error?: string
+}
+
+export async function fetchDigestProgress(): Promise<DigestProgress> {
+  const res = await fetch('/api/auto-skill/digest/status')
+  return parseResponse(res)
+}
+
 export async function runDigestApi(opts: { lookbackDays?: number; model?: string; purgeRawOnSuccess?: boolean } = {}): Promise<DigestResult> {
   const res = await fetch('/api/auto-skill/digest', {
     method: 'POST',

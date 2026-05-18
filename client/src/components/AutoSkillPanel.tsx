@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { Candidate, CandidateStatus, OllamaModel } from '../api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Candidate, CandidateStatus, DigestProgress, OllamaModel } from '../api'
 import {
   deleteCandidate,
   fetchCandidates,
+  fetchDigestProgress,
   fetchOllamaModels,
   fetchSettings,
   patchSettings,
@@ -45,6 +46,8 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
 
   const [running, setRunning] = useState<'idle' | 'extracting' | 'digesting'>('idle')
   const [runMessage, setRunMessage] = useState('')
+  const [digestProgress, setDigestProgress] = useState<DigestProgress | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [accepting, setAccepting] = useState<Candidate | null>(null)
   const [comparing, setComparing] = useState<Candidate | null>(null)
@@ -78,6 +81,24 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     })()
   }, [])
 
+  // Poll the server-side digest progress every 1.5 s while a digest is in
+  // flight. The status endpoint is cheap (in-memory read) so this is fine.
+  function startPolling() {
+    stopPolling()
+    pollTimerRef.current = setInterval(async () => {
+      try {
+        setDigestProgress(await fetchDigestProgress())
+      } catch { /* server bouncing — try again next tick */ }
+    }, 1500)
+  }
+  function stopPolling() {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+  }
+  useEffect(() => () => stopPolling(), [])
+
   async function handleRun() {
     if (!model) { setError('Pick a model first.'); return }
     setError(null)
@@ -90,10 +111,15 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
       await patchSettings({ autoSkill: { model } })
       setRunning('digesting')
       setRunMessage(`Digesting with ${model}…`)
+      startPolling()
       const digest = await runDigestApi({ lookbackDays: lookback, model, purgeRawOnSuccess: true })
+      stopPolling()
+      // Final snapshot so the bar shows 100% before vanishing.
+      try { setDigestProgress(await fetchDigestProgress()) } catch { /* ignore */ }
       setRunMessage(`Done. ${digest.candidatesCreated} new, ${digest.candidatesUpdated} updated. ${digest.warnings.length} warnings.`)
       await refreshCandidates()
     } catch (e) {
+      stopPolling()
       setError((e as Error).message)
       setRunMessage('')
     } finally {
@@ -189,9 +215,46 @@ ollama pull qwen2.5:7b</pre>
         </div>
 
         {error && <div className="form-error" style={{ marginBottom: 12 }}>{error}</div>}
-        {runMessage && running === 'idle' && (
+        {runMessage && running === 'idle' && !digestProgress && (
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>{runMessage}</div>
         )}
+
+        {digestProgress && digestProgress.phase !== 'idle' && (() => {
+          const total = digestProgress.total
+          const completed = digestProgress.completed
+          const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0
+          const indeterminate = total === 0 || digestProgress.phase === 'starting' || digestProgress.phase === 'finalizing'
+          const isError = digestProgress.phase === 'error'
+          const isDone = digestProgress.phase === 'done'
+          // Auto-hide the bar a couple of seconds after a successful run.
+          return (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                fontSize: 11, color: 'var(--text-dim)', marginBottom: 4,
+              }}>
+                <span>{digestProgress.message || digestProgress.phase}</span>
+                <span>{total > 0 ? `${completed}/${total} chunks` : isDone ? '' : '…'}</span>
+              </div>
+              <div style={{
+                height: 6, borderRadius: 3, background: 'var(--border)',
+                overflow: 'hidden', position: 'relative',
+              }}>
+                <div style={{
+                  height: '100%',
+                  width: indeterminate ? '35%' : `${pct}%`,
+                  background: isError ? 'var(--c-danger)' : isDone ? 'var(--c-success)' : 'var(--accent)',
+                  transition: 'width 300ms ease',
+                  animation: indeterminate ? 'progressIndeterminate 1.4s ease-in-out infinite' : undefined,
+                  position: 'relative',
+                }} />
+              </div>
+              {isError && digestProgress.error && (
+                <div style={{ fontSize: 11, color: 'var(--c-danger)', marginTop: 4 }}>{digestProgress.error}</div>
+              )}
+            </div>
+          )
+        })()}
 
         {loading ? (
           <div className="empty-state" style={{ minHeight: 120 }}><div className="spinner" /></div>

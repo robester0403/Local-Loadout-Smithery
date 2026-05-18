@@ -4,6 +4,7 @@ import { HttpError } from '../lib/paths'
 import { pathParam } from '../lib/params'
 import { readSentinel, runExtraction } from '../extractors'
 import { runDigest } from '../autoSkill/digest'
+import * as digestProgress from '../autoSkill/progress'
 import { deleteById, getById, readAll, setImprovementNotes, setStatus, updateFields } from '../autoSkill/store'
 import { emitFromCandidate } from '../autoSkill/emit'
 import { findExistingMatch } from '../autoSkill/matcher'
@@ -50,6 +51,9 @@ router.post('/auto-skill/extract', asyncHandler((req, res) => {
 // ─── Digest ──────────────────────────────────────────────────────────────────
 
 router.post('/auto-skill/digest', asyncHandler(async (req, res) => {
+  if (digestProgress.isRunning()) {
+    throw new HttpError(409, 'A digest is already running. Poll /api/auto-skill/digest/status or wait for it to finish.')
+  }
   const body = (req.body ?? {}) as { lookbackDays?: number; model?: string; purgeRawOnSuccess?: boolean }
   const settings = readSettings()
   const model = typeof body.model === 'string' && body.model.trim()
@@ -65,6 +69,12 @@ router.post('/auto-skill/digest', asyncHandler(async (req, res) => {
 
   const result = await runDigest({ model, sinceIso, purgeRawOnSuccess: purge })
   res.json(result)
+}))
+
+// Lightweight polling endpoint the UI hits every ~1.5 s while a digest is
+// in flight. Cheap: just reads the module-level state, no I/O.
+router.get('/auto-skill/digest/status', asyncHandler((_req, res) => {
+  res.json(digestProgress.getProgress())
 }))
 
 // ─── Candidates CRUD ─────────────────────────────────────────────────────────
