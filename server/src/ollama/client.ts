@@ -28,34 +28,38 @@ export async function isAvailable(timeoutMs = 1500): Promise<boolean> {
   }
 }
 
-// Best-effort eviction of every model currently held in RAM. Called from
-// the app's shutdown handler so Ctrl+C doesn't leave several GB resident
-// for the next ~5 min of Ollama's default keep_alive. Silently no-ops when
-// Ollama isn't reachable. Returns the names it asked Ollama to drop.
-export async function unloadAllModels(timeoutMs = 2000): Promise<string[]> {
+// The single model name we've most recently called generate() with this
+// process. Used to keep at most ONE model in RAM at a time: before any
+// generate() that targets a different model, we proactively drop the
+// previous one so the user never pays for two large weights side-by-side.
+let activeModel: string | null = null
+
+async function dropModel(name: string, timeoutMs: number): Promise<void> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    const psRes = await fetch(`${host()}/api/ps`, { signal: ctrl.signal })
-    if (!psRes.ok) return []
-    const body = await psRes.json() as { models?: Array<{ name: string }> }
-    const loaded = (body.models ?? []).map(m => m.name).filter(Boolean)
-    // POST /api/generate with keep_alive: 0 tells Ollama to drop the model
-    // immediately after this (empty) request. The request returns fast.
-    await Promise.all(loaded.map(name =>
-      fetch(`${host()}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: name, prompt: '', keep_alive: 0, stream: false }),
-        signal: ctrl.signal,
-      }).catch(() => undefined),
-    ))
-    return loaded
-  } catch {
-    return []
+    // POST /api/generate with keep_alive: 0 evicts immediately. Empty
+    // prompt is fine; Ollama just needs the keep_alive signal.
+    await fetch(`${host()}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: name, prompt: '', keep_alive: 0, stream: false }),
+      signal: ctrl.signal,
+    }).catch(() => undefined)
   } finally {
     clearTimeout(t)
   }
+}
+
+// Drop the model this process loaded (if any). Called from the app's
+// shutdown handler so Ctrl+C frees the model's RAM immediately instead of
+// waiting out Ollama's ~5 min keep_alive. Best-effort, capped timeout.
+export async function unloadActiveModel(timeoutMs = 2000): Promise<string | null> {
+  const name = activeModel
+  if (!name) return null
+  activeModel = null
+  await dropModel(name, timeoutMs)
+  return name
 }
 
 export async function listModels(): Promise<OllamaModel[]> {
@@ -81,6 +85,17 @@ export async function generate(opts: {
    *  model can be slow. */
   timeoutMs?: number
 }): Promise<string> {
+  // Single-model-at-a-time policy: if we've already loaded a different
+  // model this session, drop it before requesting the new one. Capped at
+  // 3s so a stuck unload doesn't block the real work.
+  if (activeModel && activeModel !== opts.model) {
+    await dropModel(activeModel, 3000)
+  }
+  // Mark active BEFORE the request, since Ollama starts loading the model
+  // the moment it receives the POST — even a later request failure leaves
+  // weights resident.
+  activeModel = opts.model
+
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 5 * 60_000)
   try {
