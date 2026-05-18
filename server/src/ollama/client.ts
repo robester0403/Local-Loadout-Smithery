@@ -28,6 +28,36 @@ export async function isAvailable(timeoutMs = 1500): Promise<boolean> {
   }
 }
 
+// Best-effort eviction of every model currently held in RAM. Called from
+// the app's shutdown handler so Ctrl+C doesn't leave several GB resident
+// for the next ~5 min of Ollama's default keep_alive. Silently no-ops when
+// Ollama isn't reachable. Returns the names it asked Ollama to drop.
+export async function unloadAllModels(timeoutMs = 2000): Promise<string[]> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const psRes = await fetch(`${host()}/api/ps`, { signal: ctrl.signal })
+    if (!psRes.ok) return []
+    const body = await psRes.json() as { models?: Array<{ name: string }> }
+    const loaded = (body.models ?? []).map(m => m.name).filter(Boolean)
+    // POST /api/generate with keep_alive: 0 tells Ollama to drop the model
+    // immediately after this (empty) request. The request returns fast.
+    await Promise.all(loaded.map(name =>
+      fetch(`${host()}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: name, prompt: '', keep_alive: 0, stream: false }),
+        signal: ctrl.signal,
+      }).catch(() => undefined),
+    ))
+    return loaded
+  } catch {
+    return []
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 export async function listModels(): Promise<OllamaModel[]> {
   const res = await fetch(`${host()}/api/tags`)
   if (!res.ok) throw new Error(`Ollama /api/tags returned ${res.status}`)
