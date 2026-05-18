@@ -41,8 +41,16 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return body as T
 }
 
-export async function fetchInventory(): Promise<Skill[]> {
-  const res = await fetch('/api/inventory')
+/** Optional ecosystem filter:
+ *   - 'cursor' → only Cursor's tree
+ *   - 'claude' → every detected Claude account (`.claude`, `.claude-*`)
+ *   - undefined → everything (the original behavior)
+ * Used by the tab-aware loader so each tab only pays for its own scan. */
+export type InventoryEcosystem = 'claude' | 'cursor'
+
+export async function fetchInventory(ecosystem?: InventoryEcosystem): Promise<Skill[]> {
+  const qs = ecosystem ? `?ecosystem=${ecosystem}` : ''
+  const res = await fetch(`/api/inventory${qs}`)
   const data = await parseResponse<{ skills: Skill[] }>(res)
   return data.skills
 }
@@ -255,4 +263,18 @@ export interface CursorRecentUsageReport {
 export async function fetchCursorRecentUsage(): Promise<CursorRecentUsageReport> {
   const res = await fetch('/api/cursor/recent-usage')
   return parseResponse<CursorRecentUsageReport>(res)
+}
+
+// Triggered by the UI "Rescan projects" button. Runs a depth-limited home
+// directory scan server-side and returns the newly-discovered project
+// roots (those that weren't already in the persistent log).
+export interface CursorRescanResult {
+  added: string[]
+  addedCount: number
+  total: number
+}
+
+export async function rescanCursorProjects(): Promise<CursorRescanResult> {
+  const res = await fetch('/api/cursor/rescan', { method: 'POST' })
+  return parseResponse<CursorRescanResult>(res)
 }
