@@ -25,6 +25,7 @@ import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
 import BundleEditorModal from './components/BundleEditorModal'
 import SuperRouterPanel from './components/SuperRouterPanel'
+import AutoSkillPanel from './components/AutoSkillPanel'
 import { fetchBundles, type Bundle } from './api'
 import { fetchCursorUsage, fetchCursorRecentUsage, rescanCursorProjects, type CursorUsageReport, type CursorRecentUsageReport } from './api'
 import './App.css'
@@ -80,6 +81,7 @@ export default function App() {
   const [showBundlesPanel, setShowBundlesPanel] = useState(false)
   const [showBundleEditor, setShowBundleEditor] = useState(false)
   const [bundleCount, setBundleCount] = useState(0)
+  const [showAutoSkill, setShowAutoSkill] = useState(false)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -492,6 +494,13 @@ export default function App() {
           >
             🛣 Router{bundleCount > 0 ? ` (${bundleCount})` : ''}
           </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => setShowAutoSkill(true)}
+            title="Surface candidate skills from your chat history"
+          >
+            ✨ Auto Skill
+          </button>
           {activeTab === 'cursor' && (
             <button
               className="btn btn-sm"
@@ -757,6 +766,14 @@ export default function App() {
             setBundleCount(c => c + 1)
             showToast(`Bundle "${b.name}" created. Open Router to enable it.`)
           }}
+        />
+      )}
+
+      {showAutoSkill && (
+        <AutoSkillPanel
+          allSkills={skills}
+          onClose={() => setShowAutoSkill(false)}
+          onSkillsChanged={() => { void load() }}
         />
       )}
     </div>

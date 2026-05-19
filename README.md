@@ -71,8 +71,100 @@ This is exactly why the *removal candidate* and *dormant* diagnostics exist. A s
 - **Token tracking** — dual-axis cost per artifact: active cost (when invoked) + loaded cost (context tax on every turn), in tokens and dollars. See [`COST_MODEL.md`](./COST_MODEL.md) for the full spec.
 - **Health diagnostics** — frontmatter linter, broken symlink detection, and health badges with inline issue descriptions
 - **Diagnostic insights** — surfaces removal candidates and dormant artifacts; "Needs review" filter + inline insight banner
+- **SuperRouter** — group skills behind a trigger condition. Toggle a bundle on and the trigger block lands in `CLAUDE.md` (or your Cursor MD), with a sibling map file listing the skills to consider only when that trigger matches. Cuts context tax for skills that only apply some of the time.
+- **Auto Skill** — find candidate skills hidden in your own chat history. Extracts conversations from Claude Code, Cursor, and Codex (when present), runs them through a local Ollama model, and surfaces suggested skills / commands / subagents you can accept with one click. Conversation text is **deleted from disk** after digest — only short excerpts persist on each candidate for traceability.
 
 Everything runs locally. No data leaves your machine.
+
+## Auto Skill — setup
+
+Auto Skill needs a local LLM. We use [Ollama](https://ollama.com) because
+it's a single binary, no API keys, no telemetry.
+
+```bash
+brew install ollama                # macOS — or grab the installer from ollama.com
+brew services start ollama         # background daemon, restarts on login
+ollama pull qwen2.5:3b             # ~2 GB, the recommended default
+```
+
+Model sizing — pick what fits your machine:
+
+| RAM | Suggested model | Size on disk | Digest time on ~60 conversations |
+| --- | --- | --- | --- |
+| 8 GB+ | `qwen2.5:3b` *(default)* | ~2 GB | ~10 min on Apple Silicon |
+| 16 GB+ | `qwen2.5:7b` | ~4.7 GB | ~30 min |
+| 32 GB+ | `qwen2.5:14b` | ~9 GB | even longer |
+
+The 3B is the right default. For classification + structured extraction (which is all the Auto Skill does), the quality difference vs. 7B is small and the speed difference is large. Upgrade to 7B only if you find the 3B's candidates noticeably weaker.
+
+The Auto Skill panel auto-detects installed models — `ollama pull` whichever
+ones you want and they appear in the dropdown.
+
+If Ollama isn't installed, the Auto Skill button still appears; the panel
+shows the install commands instead of the candidate list. Every other
+feature in the app continues to work without it.
+
+Once Ollama is running, open **✨ Auto Skill** in the header, pick a model
+and a lookback window (default: 2 weeks), then click **Run digest**.
+Conversations get extracted to `~/.loadoutsmith/conversations/`, fed
+through the model, and deleted on success. The resulting candidates show
+up in the panel — review, edit, and accept whichever ones turn into real
+skills in your loadout.
+
+**Duplicate detection.** Each candidate is automatically cross-referenced
+against your existing inventory. Skills with a matching name or similar
+description get a *🔁 already in loadout* badge. Click **Compare** on
+those rows to have the local model diff the candidate against the
+existing skill and propose concrete additions — useful when the
+candidate has captured nuance worth merging into the existing file
+rather than starting fresh.
+
+**Two-pass synthesis.** The discovery digest runs on the small model
+(qwen2.5:3b default) and finds candidates fast. When you click **Accept**
+on one, the modal exposes a model picker + **Regenerate body** button —
+that runs a bigger model (e.g. qwen2.5:7b) just on that one candidate to
+write a richer body. Per-candidate synthesis takes ~10–30 s; you only
+pay for it on candidates you actually want.
+
+**Synth grounding.** Body regeneration re-extracts the full source
+conversations from disk on demand (Cursor SQLite, Claude session JSONL,
+Codex history) and feeds them into the synth prompt — so the bigger
+model is working from the actual user/assistant exchanges, not the
+short excerpts that survive the digest purge. The conversation text
+lives in memory only for the duration of the synth call; nothing extra
+gets persisted. The post-synth status message reports `using N
+re-extracted conversations` when this succeeded, or falls back to
+excerpts if the original source has been deleted/moved since digest.
+
+**Single-model-at-a-time.** The app loads at most one model into RAM.
+Switching models mid-session (3B for discovery → 7B for synthesis)
+evicts the previous model before pulling the new one in, so you never
+hold two large weights side-by-side.
+
+**On shutdown.** Pressing Ctrl+C unloads whatever model this process
+loaded — RAM frees immediately rather than waiting out Ollama's ~5 min
+keep_alive. The Ollama daemon itself keeps running (so the next startup
+is instant). Only the model weights get evicted, and only the model this
+app loaded — any unrelated Ollama clients on your machine are untouched.
+
+## Where data lives
+
+Everything the app writes lives under `~/.loadoutsmith/`. Inspecting or
+deleting any of these is safe; the app rebuilds what it needs.
+
+| Path | Purpose | Lifecycle |
+| --- | --- | --- |
+| `settings.json` | App settings (currently just the chosen Ollama model) | Persistent |
+| `auto-skill/candidates.json` | Generated candidates + status | Persistent |
+| `conversations/<source>/<date>.jsonl` | Extracted chat history during a digest run | Deleted after successful digest |
+| `conversations/.last-extract.json` | Per-source high-water mark for incremental extracts | Persistent |
+| `super-router.json` | SuperRouter bundle definitions | Persistent |
+| `super-router/<slug>.md` | Skill map files for enabled bundles | Created/removed by bundle toggle |
+| `move-log.jsonl` | Audit log for skill reclassifications | Append-only |
+| `cursor-projects-seen.jsonl` | Cache of discovered Cursor projects | Append-only |
+
+If you ever want a clean slate: `rm -rf ~/.loadoutsmith/` then restart
+the app.
 
 ## Screenshot
 

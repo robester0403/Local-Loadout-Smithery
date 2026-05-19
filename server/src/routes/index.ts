@@ -12,6 +12,8 @@ import mcpRouter from './mcp'
 import cursorRouter from './cursor'
 import launchClaudeRouter from './launchClaude'
 import superRouterRouter from './superRouter'
+import autoSkillRouter from './autoSkill'
+import ollamaRouter from './ollama'
 
 const api = Router()
 
@@ -25,6 +27,8 @@ api.use(mcpRouter)
 api.use(cursorRouter)
 api.use(launchClaudeRouter)
 api.use(superRouterRouter)
+api.use(autoSkillRouter)
+api.use(ollamaRouter)
 
 // 404 for unknown API routes — must come last so it doesn't intercept the
 // real handlers above.

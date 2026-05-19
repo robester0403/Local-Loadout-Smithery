@@ -7,3 +7,4 @@ dist/
 *.log
 coverage/
 planning_notes/
+.claude/

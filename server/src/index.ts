@@ -5,6 +5,7 @@ import path from 'path'
 import api from './routes'
 import { countTokens } from './usage/tokenizer'
 import { startCursorPoller, stopCursorPoller } from './cursor/poller'
+import { unloadActiveModel } from './ollama/client'
 
 // Warm up the tokenizer — builds the cached Tiktoken instance at startup,
 // not on first request.
@@ -54,9 +55,18 @@ const server = app.listen(PORT, () => {
   }
 })
 
-function shutdown(signal: NodeJS.Signals) {
+async function shutdown(signal: NodeJS.Signals) {
   console.log(`\n[loadoutsmith] received ${signal}, shutting down…`)
   stopCursorPoller()
+  // Ask Ollama to drop any loaded models so the user's RAM frees immediately
+  // instead of waiting out the ~5 min keep_alive window. Best-effort,
+  // capped at 2s so it never blocks a fast Ctrl+C.
+  try {
+    const dropped = await unloadActiveModel()
+    if (dropped) {
+      console.log(`[loadoutsmith] unloaded Ollama model: ${dropped}`)
+    }
+  } catch { /* keep shutting down regardless */ }
   server.close(() => process.exit(0))
   // Force-exit if any open keep-alive connection holds the server open.
   setTimeout(() => process.exit(0), 1000).unref()
