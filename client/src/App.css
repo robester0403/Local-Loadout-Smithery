@@ -38,9 +38,38 @@
   --font:          -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono:          ui-monospace, 'Cascadia Code', 'SF Mono', monospace;
   --radius:        6px;
+  --radius-sm:     4px;
+  --radius-lg:     8px;
   --header-h:      52px;
   --sidebar-w:     240px;
   --drawer-w:      760px;
+
+  /* Spacing scale — every padding/margin/gap should reference one of these.
+     Keeps vertical rhythm consistent across header, sidebar, table, modals. */
+  --space-1:       4px;
+  --space-2:       8px;
+  --space-3:       12px;
+  --space-4:       16px;
+  --space-5:       20px;
+  --space-6:       24px;
+  --space-7:       32px;
+
+  /* Inventory-table column widths. Pixel values so table-layout:fixed gives
+     us predictable layout regardless of cell content. `Name` is the only
+     flexible column — everything else is sized to its content class. */
+  --col-w-check:        36px;
+  --col-w-badge:        56px;   /* Health, Diag — single small icon */
+  --col-w-type:         84px;   /* Type pill */
+  --col-w-scope:        92px;   /* Context pill (project names truncate) */
+  --col-w-modified:     112px;  /* "Mar 14, 2025" */
+  --col-w-money:        92px;   /* $0.0001 — monospace, right-aligned */
+  --col-w-enabled:      80px;   /* Toggle switch */
+
+  /* Elevation — for modals, tooltips, drawers. Stops drift from hand-typed
+     box-shadows. */
+  --shadow-sm:      0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:      0 4px 16px rgba(0,0,0,.4);
+  --shadow-lg:      0 8px 40px rgba(0,0,0,.6);
 }
 
 html, body, #root { height: 100%; }
@@ -79,16 +108,21 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 /* ─── Header ────────────────────────────────────────────────────────────── */
 .header {
   grid-column: 1 / -1;
+  height: var(--header-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  gap: var(--space-3);
+  padding: 0 var(--space-5);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.header-left { display: flex; align-items: center; gap: 12px; }
-.header-title { font-weight: 600; font-size: 15px; color: var(--text-head); letter-spacing: .2px; }
-.header-motto { font-size: 11px; color: var(--text-dim); font-style: italic; letter-spacing: .3px; }
+.header-left {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex-shrink: 0;
+}
+.header-title { font-weight: 600; font-size: 15px; color: var(--text-head); letter-spacing: .2px; white-space: nowrap; }
+.header-motto { font-size: 11px; color: var(--text-dim); font-style: italic; letter-spacing: .3px; white-space: nowrap; }
 .header-count {
   font-size: 12px; color: var(--text-dim);
   background: var(--bg); border: 1px solid var(--border);
@@ -107,7 +141,16 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 .header-cost-loaded { color: #F3D371; }
 .header-cost-pct { color: var(--text-dim); font-size: 11px; margin-left: 2px; }
 .header-cost-sep { color: var(--border); }
-.header-right { display: flex; gap: 8px; align-items: center; }
+.header-right {
+  display: flex; align-items: center; gap: var(--space-2);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  /* Hide horizontal scrollbar — overflow lets the row breathe at narrow
+     viewports without wrapping into the title row. */
+  scrollbar-width: none;
+}
+.header-right::-webkit-scrollbar { display: none; }
 
 /* ─── Profile switcher ──────────────────────────────────────────────────── */
 .profile-switcher { position: relative; }
@@ -165,10 +208,10 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
-  padding: 16px 12px;
+  padding: var(--space-4) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 /* ─── Search ────────────────────────────────────────────────────────────── */
@@ -188,18 +231,20 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 .search-input:focus { border-color: var(--accent); }
 
 /* ─── Filter bar ────────────────────────────────────────────────────────── */
-.filter-bar { display: flex; flex-direction: column; gap: 14px; }
-.filter-group { display: flex; flex-direction: column; gap: 6px; }
+.filter-bar { display: flex; flex-direction: column; gap: var(--space-3); }
+.filter-group { display: flex; flex-direction: column; gap: var(--space-1); }
 .filter-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; color: var(--text-dim); }
-.filter-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.filter-pills { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .pill {
+  display: inline-flex; align-items: center; gap: var(--space-1);
   font-size: 12px;
-  padding: 3px 10px;
+  padding: 3px var(--space-2);
   border-radius: 99px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text);
   cursor: pointer;
+  white-space: nowrap;
   transition: border-color .15s, background .15s, color .15s;
 }
 .pill:hover { border-color: var(--accent); color: var(--text-head); }
@@ -421,11 +466,15 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-top: 12px;
+  gap: var(--space-1);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
-.stat-row { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-dim); }
+.stat-row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ─── Main area ─────────────────────────────────────────────────────────── */
 .main {
@@ -436,21 +485,26 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 
 /* ─── Buttons ───────────────────────────────────────────────────────────── */
 .btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   font: 13px var(--font);
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: var(--surface-hover);
   color: var(--text);
   cursor: pointer;
-  transition: border-color .15s, background .15s, color .15s;
+  white-space: nowrap;
+  transition: border-color .15s, background .15s, color .15s, opacity .15s;
 }
 .btn:hover { border-color: var(--accent); color: var(--text-head); }
-.btn:disabled { opacity: .4; cursor: default; }
+.btn:disabled { opacity: .4; cursor: default; pointer-events: none; }
 .btn.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
 .btn.btn-primary:hover { opacity: .85; }
-.btn.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn.btn-primary:disabled { opacity: .35; }
+.btn.btn-sm { padding: var(--space-1) var(--space-2); font-size: 12px; gap: 6px; }
+/* Icon-only square button (used for modal close, etc) */
+.btn.btn-icon { padding: var(--space-1); }
+.btn.btn-icon svg { display: block; }
 
 /* ─── Health badges ─────────────────────────────────────────────────────── */
 .health-badge {
@@ -469,7 +523,8 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
   display: none;
   position: absolute;
   bottom: calc(100% + 6px);
-  left: 0;
+  left: 50%;
+  transform: translateX(-50%);
   min-width: 240px;
   max-width: 420px;
   background: var(--c-surface2, #1e2030);
@@ -502,19 +557,18 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 
 .health-tooltip-icon { flex-shrink: 0; font-weight: 700; }
 
-.col-check   { width: 32px; text-align: center; padding: 0 8px !important; }
-.col-health  { width: 48px; text-align: center; }
-.col-insight { width: 36px; text-align: center; vertical-align: middle; }
 .row-checked { background: rgba(54, 162, 239, 0.08) !important; }
 .pill-issues.active { border-color: #F3D371; background: rgba(243,211,113,.12); color: #F3D371; }
 .pill-review.active { border-color: #F86B63; background: rgba(248,107,99,.12); color: #F86B63; }
 
 /* ─── Type / scope badges ───────────────────────────────────────────────── */
 .type-badge {
-  display: inline-block;
+  display: inline-flex; align-items: center; justify-content: center;
   font-size: 11px; font-weight: 600; font-family: var(--mono);
-  padding: 2px 7px; border-radius: 4px;
-  line-height: 1.4;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+  min-width: 56px;
 }
 .type-skill   { color: var(--c-skill);  background: var(--c-skill-bg); }
 .type-command { color: var(--c-cmd);    background: var(--c-cmd-bg); }
@@ -522,22 +576,34 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 .type-mcp     { color: var(--c-mcp);    background: var(--c-mcp-bg); }
 
 .scope-badge {
+  display: inline-flex; align-items: center; justify-content: center;
   font-size: 11px;
-  padding: 2px 7px; border-radius: 4px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+  max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .scope-global  { color: var(--c-global);  background: rgba(125,222,216,.1); }
 .scope-project { color: var(--c-project); background: rgba(246,143,190,.1); }
 
-/* ─── Inventory table ───────────────────────────────────────────────────── */
+/* ─── Inventory table ─────────────────────────────────────────────────────
+   `table-layout: fixed` enforces our declared column widths regardless of
+   content (no reflow when a number gains a digit, no creep when a name is
+   long). Only the Name column flexes — everything else is sized to its
+   content class via the --col-w-* tokens. Vertical-align is `middle` so
+   single-icon cells (Health, Diag, Enabled toggle) sit on the same baseline
+   as the multi-line Name cell. */
 .table-wrap { width: 100%; overflow-x: auto; }
 .inventory-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 13px;
 }
 .inventory-table thead th {
   position: sticky; top: 0; z-index: 1;
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-3);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   text-align: left;
@@ -549,39 +615,81 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 }
 .inventory-table thead th:hover { color: var(--text-head); }
 .inventory-table thead th.sorted { color: var(--accent); }
-.sort-arrow { font-size: 10px; }
+/* Reserve space for the sort arrow even when inactive so headers don't
+   shift on toggle. */
+.sort-arrow {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px;
+  vertical-align: middle;
+  margin-left: 2px;
+}
 
 .inventory-table tbody tr {
   border-bottom: 1px solid var(--border);
   cursor: pointer;
-  transition: background .1s;
+  transition: background .12s;
 }
-.inventory-table tbody tr.row-disabled { opacity: .4; }
+.inventory-table tbody tr.row-disabled { opacity: .45; }
 .inventory-table tbody tr:hover   { background: var(--surface-hover); }
 .inventory-table tbody tr.selected { background: var(--surface-sel); }
 
-.inventory-table td { padding: 10px 14px; vertical-align: top; }
+.inventory-table td {
+  padding: var(--space-3) var(--space-3);
+  vertical-align: middle;
+}
 
-.col-name         { width: 26%; }
-.col-type         { width: 8%; }
-.col-scope        { width: 8%; }
-.col-account      { width: 10%; }
-.col-lastModified { width: 12%; color: var(--text-dim); white-space: nowrap; }
-
+/* Fixed column widths. Order roughly mirrors the header order. */
+.col-check        { width: var(--col-w-check); text-align: center; padding: 0 var(--space-2) !important; }
+.col-health       { width: var(--col-w-badge); text-align: center; }
+.col-insight      { width: var(--col-w-badge); text-align: center; }
+.col-name         { /* flexible — absorbs remaining space */ }
+.col-type         { width: var(--col-w-type); text-align: center; }
+.col-scope        { width: var(--col-w-scope); text-align: center; }
+.col-lastModified { width: var(--col-w-modified); color: var(--text-dim); white-space: nowrap; }
 .col-activeDollars,
 .col-loadedDollars,
-.col-totalDollars { width: 7%; white-space: nowrap; }
+.col-totalDollars { width: var(--col-w-money); white-space: nowrap; }
+.col-enabled      { width: var(--col-w-enabled); text-align: center; }
 
-.col-numeric { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+/* Header alignment matches body for centered columns so the column reads
+   as a single visual block. */
+.inventory-table thead th.col-health,
+.inventory-table thead th.col-insight,
+.inventory-table thead th.col-type,
+.inventory-table thead th.col-scope,
+.inventory-table thead th.col-enabled { text-align: center; }
+.inventory-table thead th.col-activeDollars,
+.inventory-table thead th.col-loadedDollars,
+.inventory-table thead th.col-totalDollars { text-align: right; }
+
+.col-numeric { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .col-numeric.sorted { color: var(--accent); }
 td.col-numeric { color: var(--text-dim); }
 td.col-totalDollars { color: var(--text); }
 
-.skill-name { display: block; color: var(--text-head); font-weight: 500; font-family: var(--mono); font-size: 12.5px; }
-.skill-desc { display: block; font-size: 12px; color: var(--text-dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
+.skill-name {
+  display: block;
+  color: var(--text-head); font-weight: 500;
+  font-family: var(--mono); font-size: 12.5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.skill-desc {
+  display: block;
+  font-size: 12px; color: var(--text-dim);
+  margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* ─── Insight badges ────────────────────────────────────────────────────── */
-.insight-badge { font-size: 14px; cursor: default; }
+.insight-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: default;
+  margin-right: 2px;
+}
+.insight-badge:last-child { margin-right: 0; }
+/* Diag cell hosts 1–3 stacked badges; flex keeps them horizontally aligned
+   and centered with the column. */
+.col-insight { line-height: 0; }
 
 .insight-has-tooltip { position: relative; display: inline-block; cursor: default; }
 
@@ -630,15 +738,18 @@ td.col-totalDollars { color: var(--text); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 9px 16px;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
   background: rgba(248,107,99,.08);
   border-bottom: 1px solid rgba(248,107,99,.25);
   font-size: 13px;
   color: var(--text);
 }
-.insight-banner-text { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-.banner-em { font-weight: 600; color: var(--text-head); }
+.insight-banner-text { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.banner-em {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  font-weight: 600; color: var(--text-head);
+}
 .banner-sep { color: var(--text-dim); }
 .btn-warn {
   background: rgba(248,107,99,.15);
@@ -650,18 +761,25 @@ td.col-totalDollars { color: var(--text); }
 
 /* ─── Bulk-action bar ───────────────────────────────────────────────────── */
 .bulk-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  background: rgba(54, 162, 239, 0.08);
-  border-bottom: 1px solid rgba(54, 162, 239, 0.2);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(54, 162, 239, 0.10);
+  border-bottom: 1px solid rgba(54, 162, 239, 0.3);
+  backdrop-filter: blur(4px);
   font-size: 13px;
 }
-.bulk-count { font-weight: 600; color: var(--text-head); flex: 1; }
+.bulk-count {
+  font-weight: 600; color: var(--text-head);
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ─── Toggle switch ─────────────────────────────────────────────────────── */
-.col-enabled { width: 72px; text-align: center; }
 .toggle {
   width: 32px; height: 18px;
   border-radius: 9px; border: none; cursor: pointer;
@@ -682,27 +800,41 @@ td.col-totalDollars { color: var(--text); }
 /* ─── Toast ─────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: var(--space-5);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 200;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  max-width: min(520px, calc(100vw - var(--space-7)));
   background: var(--surface);
   border: 1px solid rgba(248,107,99,.4);
   border-radius: var(--radius);
   font-size: 13px;
   color: #FF8D8D;
-  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  box-shadow: var(--shadow-md);
   animation: toast-in .15s ease;
 }
-@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
-.toast-dismiss {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-dim); font-size: 16px; padding: 0; line-height: 1;
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
 }
-.toast-dismiss:hover { color: var(--text); }
+
+/* Spinner utility for inline loading icons. Apply to any SVG/icon to spin. */
+@keyframes icon-spin { to { transform: rotate(360deg); } }
+.icon-spin { animation: icon-spin 1s linear infinite; transform-origin: center; }
+.toast-msg { display: inline-flex; align-items: center; gap: var(--space-2); }
+.toast-dismiss {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-dim);
+  padding: 0; width: 20px; height: 20px;
+  border-radius: var(--radius-sm);
+  transition: color .15s, background .15s;
+}
+.toast-dismiss:hover { color: var(--text); background: var(--surface-hover); }
 
 /* ─── Empty / loading states ────────────────────────────────────────────── */
 .empty-state {
@@ -927,29 +1059,52 @@ td.col-totalDollars { color: var(--text); }
   background: rgba(0,0,0,.6);
   z-index: 20;
   display: flex; align-items: center; justify-content: center;
+  padding: var(--space-4);
   animation: fade-in .15s ease;
 }
 
 .modal {
-  max-width: 640px; width: 90vw;
-  max-height: 85vh; overflow-y: auto;
+  max-width: 640px; width: 100%;
+  max-height: calc(100vh - var(--space-7));
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 24px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
   display: flex; flex-direction: column; gap: 0;
-  box-shadow: 0 8px 40px rgba(0,0,0,.6);
+  box-shadow: var(--shadow-lg);
 }
 
 .modal-breakdown { max-width: 720px; }
 
 .modal-header {
   display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 16px; margin-bottom: 20px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
 }
-.modal-title { font-size: 17px; font-weight: 600; color: var(--text-head); font-family: var(--mono); }
-.modal-subtitle { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-.modal-close { flex-shrink: 0; }
+.modal-title {
+  font-size: 17px; font-weight: 600;
+  color: var(--text-head);
+  font-family: var(--mono);
+  line-height: 1.3;
+}
+.modal-subtitle {
+  font-size: 12px; color: var(--text-dim);
+  margin-top: var(--space-1);
+  line-height: 1.5;
+  max-width: 480px;
+}
+.modal-close { flex-shrink: 0; padding: var(--space-1) var(--space-2); }
+.modal-close svg { display: block; }
+
+/* Generic footer for modals — replaces ad-hoc per-modal footer styling. */
+.modal-footer {
+  display: flex; align-items: center; justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
 
 .modal-section { margin-bottom: 20px; }
 .modal-section p { font-size: 13px; line-height: 1.6; color: var(--text); }
