@@ -1,8 +1,16 @@
+import {
+  IconAlertOctagonFilled,
+  IconArrowsShuffle,
+  IconCircleCheckFilled,
+  IconPackage,
+  IconZzz,
+} from '@tabler/icons-react'
 import type { Insight, ClassificationResult, Skill } from '../types'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixRemovalCandidatePrompt } from '../prompts/fixRemovalCandidatePrompt'
 import { generateFixDormantPrompt } from '../prompts/fixDormantPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
+import { useSettings } from '../hooks/useSettings'
 
 interface Props {
   insight: Insight
@@ -26,9 +34,15 @@ function daysSince(iso: string): number {
 }
 
 export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType, skill, onReclassify }: Props) {
-  const mismatchBadge = suggestedType && skill ? (
+  const { flags } = useSettings()
+  // `mismatch` is the only branch whose source data (suggestedType) doesn't
+  // pass through reapplyThresholds, so we gate it here. The removal /
+  // winner / dormant / bloat gates are already applied upstream via
+  // reapplyThresholds → null/false for disabled flags, which short-circuits
+  // the corresponding branches below naturally.
+  const mismatchBadge = suggestedType && skill && flags.mismatch ? (
     <span className="insight-badge insight-has-tooltip">
-      🔀
+      <IconArrowsShuffle size={14} stroke={1.75} aria-hidden />
       <span className="insight-tooltip">
         <span className="insight-tooltip-title insight-tooltip-mismatch">Possible misclassification</span>
         <span className="insight-tooltip-row">Looks like a <b>{suggestedType.suggested}</b></span>
@@ -50,7 +64,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
 
   const bloatBadge = bloat ? (
     <span className="insight-badge insight-has-tooltip">
-      📦
+      <IconPackage size={14} stroke={1.75} aria-hidden />
       <span className="insight-tooltip">
         <span className="insight-tooltip-title insight-tooltip-bloat">Description bloat</span>
         <span className="insight-tooltip-row">Description: <b>{descLen} chars</b> (limit: 150)</span>
@@ -63,7 +77,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
     return (
       <>
         <span className="insight-badge insight-has-tooltip">
-          🚨
+          <IconAlertOctagonFilled size={14} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-removal">Removal candidate</span>
             <span className="insight-tooltip-row">Loaded cost: <b>{fmt(loadedDollars)}</b></span>
@@ -82,7 +96,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
     return (
       <>
         <span className="insight-badge insight-has-tooltip">
-          ✅
+          <IconCircleCheckFilled size={14} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-winner">Earning its keep</span>
             <span className="insight-tooltip-row">Active cost: <b>{fmt(activeDollars)}</b></span>
@@ -101,7 +115,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
     return (
       <>
         <span className="insight-badge insight-has-tooltip">
-          💤
+          <IconZzz size={14} stroke={1.75} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-dormant">Dormant</span>
             {days !== null && (

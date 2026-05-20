@@ -1,15 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { Skill, SkillType, SkillUsageSummary, SortKey, SortDir, Filters, Timeframe, MCPRow } from './types'
 import { fetchInventory, fetchUsageAggregate, openSkill as apiOpenSkill, setSkillDisabled, fetchProfiles, createProfile, deleteProfile, activateProfile, launchClaude, reclassifySkill, fetchUninstalled, uninstallSkillApi, restoreSkillApi, fetchMCPInventory, fetchMCPUsage, fetchMCPRelationships } from './api'
 import type { ProfilesData, UninstalledEntry, MCPUsageSummary, MCPRelationship } from './api'
 import {
-  DORMANT_DAYS,
   HEALTH_ORDER,
   INSIGHT_RANK,
   computeTotals,
   countReview,
   fmtUsd,
   mergeWithCost,
+  reapplyThresholds,
   toMCPSkill,
 } from './lib/cost'
 import { getBundledPrompt } from './prompts'
@@ -26,8 +26,23 @@ import CursorTab from './components/CursorTab'
 import BundleEditorModal from './components/BundleEditorModal'
 import SuperRouterPanel from './components/SuperRouterPanel'
 import AutoSkillPanel from './components/AutoSkillPanel'
+import SettingsPanel from './components/SettingsPanel'
+import { useSettings } from './hooks/useSettings'
 import { fetchBundles, type Bundle } from './api'
 import { fetchCursorUsage, fetchCursorRecentUsage, rescanCursorProjects, type CursorUsageReport, type CursorRecentUsageReport } from './api'
+import {
+  IconAlertOctagonFilled,
+  IconAlertTriangle,
+  IconArrowBackUp,
+  IconHelp,
+  IconRefresh,
+  IconRoute,
+  IconSearch,
+  IconSparkles,
+  IconTrash,
+  IconX,
+  IconZzz,
+} from '@tabler/icons-react'
 import './App.css'
 
 type ActiveTab = 'inventory' | 'cursor'
@@ -48,6 +63,7 @@ function dedupById(skills: Skill[]): Skill[] {
 }
 
 export default function App() {
+  const settings = useSettings()
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [rescanning, setRescanning] = useState(false)
@@ -108,6 +124,14 @@ export default function App() {
   // account) plus its tab-specific side channels (profiles+MCP for Claude,
   // usage/recent for Cursor). Splitting this way means a refresh on one tab
   // never re-scans the other ecosystem's files, which dominates scan time.
+
+  // The loaders intentionally do NOT depend on thresholds — that would trigger
+  // a full server refetch (and spinner flicker) on every Settings edit. The
+  // `viewSkills` memo below applies thresholds at render time over whatever
+  // the loaders have populated, so changes reclassify instantly without I/O.
+  // Loaders pass thresholds=undefined (i.e. defaults) for the initial paint;
+  // the memo immediately overwrites those derived fields with current values.
+  const thresholds = settings.thresholds
 
   const loadClaudeBundle = useCallback(async (): Promise<void> => {
     const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
@@ -172,6 +196,17 @@ export default function App() {
 
   useEffect(() => { load() }, [load])
 
+  // `viewSkills` is the threshold-applied view of `skills`. We re-derive at
+  // render time rather than syncing into state via an effect — that would
+  // cascade renders and fight React's data flow. The loaders also pass
+  // thresholds into mergeWithCost so the initial paint already reflects the
+  // current settings; this memo handles subsequent live edits without a refetch.
+  const flags = settings.flags
+  const viewSkills = useMemo(
+    () => reapplyThresholds(skills, thresholds, flags),
+    [skills, thresholds, flags],
+  )
+
   // Track bundle count for the header badge. Fire-and-forget; failure here
   // just leaves the badge at its previous value.
   useEffect(() => {
@@ -191,8 +226,8 @@ export default function App() {
 
   useEffect(() => {
     if (!selected) return
-    setSelected(prev => prev ? (skills.find(s => s.id === prev.id) ?? null) : null)
-  }, [skills])
+    setSelected(prev => prev ? (viewSkills.find(s => s.id === prev.id) ?? null) : null)
+  }, [viewSkills])
 
   async function handleToggle(skill: Skill, enabled: boolean) {
     setSkills(prev => prev.map(s => s.id === skill.id ? { ...s, disabled: !enabled } : s))
@@ -361,12 +396,25 @@ export default function App() {
 
   // The Cursor tab gets its own table with the same filter/search/sort
   // pipeline. Branch on activeTab so each table sees only its own rows.
-  const filtered = skills
+  // We filter the threshold-applied view so insight/dormant filters reflect
+  // the user's live threshold settings without a refetch.
+  //
+  // Health-state flags gate the "Issues only" filter: if the user has turned
+  // off warn (or error), warn/error rows no longer count as issues. The
+  // diag-flag gates already applied at reapplyThresholds time, so the
+  // "Needs review" check just consults the post-flag insight/dormant.
+  const filtered = viewSkills
     .filter(s => activeTab === 'cursor' ? s.account === 'cursor' : s.account !== 'cursor')
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
       if (filters.scope.length > 0 && !filters.scope.includes(s.scope)) return false
-      if (filters.issuesOnly && s.health.status === 'ok') return false
+      if (filters.issuesOnly) {
+        const status = s.health.status
+        const counts =
+          (status === 'warn' && flags.healthWarn) ||
+          (status === 'error' && flags.healthError)
+        if (!counts) return false
+      }
       if (filters.reviewOnly && s.insight !== 'removal-candidate' && !s.dormant) return false
       if (search) {
         const q = search.toLowerCase()
@@ -406,8 +454,8 @@ export default function App() {
   // and vice versa — the two ecosystems don't share a coherent review
   // surface.
   const tabSkills = activeTab === 'cursor'
-    ? skills.filter(s => s.account === 'cursor')
-    : skills.filter(s => s.account !== 'cursor')
+    ? viewSkills.filter(s => s.account === 'cursor')
+    : viewSkills.filter(s => s.account !== 'cursor')
 
   const counts = {
     skill: tabSkills.filter(s => s.type === 'skill').length,
@@ -468,16 +516,19 @@ export default function App() {
           />
           {activeTab !== 'cursor' && <TimeframePicker value={timeframe} onChange={setTimeframe} />}
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
-            ? How costs work
+            <IconHelp size={14} stroke={1.75} aria-hidden />
+            How costs work
           </button>
           {lastUninstall && (
             <button className="btn btn-sm btn-warn" onClick={handleUninstallUndo} title={`Restore ${lastUninstall.name}`}>
-              ↩ Restore: {lastUninstall.name}
+              <IconArrowBackUp size={14} stroke={1.75} aria-hidden />
+              Restore: {lastUninstall.name}
             </button>
           )}
           {lastMove && (
             <button className="btn btn-sm btn-warn" onClick={handleUndoMove} title={`Undo move of ${lastMove.skillName}`}>
-              ↩ Undo: {lastMove.skillName}
+              <IconArrowBackUp size={14} stroke={1.75} aria-hidden />
+              Undo: {lastMove.skillName}
             </button>
           )}
           <button
@@ -485,21 +536,24 @@ export default function App() {
             onClick={() => setShowTrash(true)}
             title="View uninstalled skills"
           >
-            🗑{trashCount > 0 ? ` ${trashCount}` : ' Trash'}
+            <IconTrash size={14} stroke={1.75} aria-hidden />
+            {trashCount > 0 ? trashCount : 'Trash'}
           </button>
           <button
             className="btn btn-sm"
             onClick={() => setShowBundlesPanel(true)}
             title="Manage SuperRouter bundles"
           >
-            🛣 Router{bundleCount > 0 ? ` (${bundleCount})` : ''}
+            <IconRoute size={14} stroke={1.75} aria-hidden />
+            Router{bundleCount > 0 ? ` (${bundleCount})` : ''}
           </button>
           <button
             className="btn btn-sm"
             onClick={() => setShowAutoSkill(true)}
             title="Surface candidate skills from your chat history"
           >
-            ✨ Auto Skill
+            <IconSparkles size={14} stroke={1.75} aria-hidden />
+            Auto Skill
           </button>
           {activeTab === 'cursor' && (
             <button
@@ -508,7 +562,8 @@ export default function App() {
               disabled={rescanning}
               title="Deep-scan home dir for Cursor projects we haven't seen yet"
             >
-              {rescanning ? '…' : '🔍'} Rescan
+              <IconSearch size={14} stroke={1.75} aria-hidden className={rescanning ? 'icon-spin' : undefined} />
+              Rescan
             </button>
           )}
           <button
@@ -522,15 +577,21 @@ export default function App() {
             }}
             disabled={loading}
           >
-            {loading ? '…' : '↺'} Refresh
+            <IconRefresh size={14} stroke={1.75} aria-hidden className={loading ? 'icon-spin' : undefined} />
+            Refresh
           </button>
         </div>
       </header>
 
       {toast && (
         <div className="toast" role="alert">
-          <span>⚠ {toast}</span>
-          <button className="toast-dismiss" onClick={() => setToast(null)}>×</button>
+          <span className="toast-msg">
+            <IconAlertTriangle size={14} stroke={1.75} aria-hidden />
+            {toast}
+          </span>
+          <button className="toast-dismiss" aria-label="Dismiss" onClick={() => setToast(null)}>
+            <IconX size={14} stroke={1.75} aria-hidden />
+          </button>
         </div>
       )}
 
@@ -573,6 +634,8 @@ export default function App() {
             </div>
           )}
         </div>
+
+        <SettingsPanel />
       </aside>
 
       <main className="main">
@@ -636,11 +699,21 @@ export default function App() {
               <div className="insight-banner">
                 <span className="insight-banner-text">
                   {review.removal > 0 && (
-                    <span><span className="banner-em">🚨 {review.removal} removal {review.removal === 1 ? 'candidate' : 'candidates'}</span> — loaded but never invoked</span>
+                    <span>
+                      <span className="banner-em">
+                        <IconAlertOctagonFilled size={14} aria-hidden />
+                        {review.removal} removal {review.removal === 1 ? 'candidate' : 'candidates'}
+                      </span> — loaded but never invoked
+                    </span>
                   )}
                   {review.removal > 0 && review.dormant > 0 && <span className="banner-sep"> · </span>}
                   {review.dormant > 0 && (
-                    <span><span className="banner-em">💤 {review.dormant} dormant</span> — not invoked in {DORMANT_DAYS}+ days</span>
+                    <span>
+                      <span className="banner-em">
+                        <IconZzz size={14} stroke={1.75} aria-hidden />
+                        {review.dormant} dormant
+                      </span> — not invoked in {thresholds.dormantDays}+ days
+                    </span>
                   )}
                 </span>
                 <button

@@ -1,7 +1,10 @@
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import type { Skill, SortKey, SortDir, Timeframe } from '../types'
 import HealthBadge from './HealthBadge'
 import InsightBadge from './InsightBadge'
 import ToggleSwitch from './ToggleSwitch'
+import { useSettings } from '../hooks/useSettings'
+import type { ColumnKey } from '../lib/settings'
 
 interface Props {
   skills: Skill[]
@@ -40,6 +43,10 @@ const TYPE_LABELS: Record<string, string> = {
   mcp: 'mcp',
 }
 
+// Every column except 'enabled' is sortable, so the keys here overlap with
+// SortKey. The settings store uses ColumnKey (which adds 'enabled') — the
+// cast at the consumer site is safe because all SortKey values are also
+// ColumnKey values.
 const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean; title?: string }[] = [
   { key: 'health', labelBase: 'Health' },
   { key: 'insight', labelBase: 'Diag' },
@@ -94,12 +101,15 @@ export default function InventoryTable({
   skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
   selectedIds, onSelectId, onSelectAll, onReclassify, cursorLiveUsage,
 }: Props) {
+  const { columns: visible } = useSettings()
   const suffix = timeframe ? tfLabel(timeframe) : ''
-  const COLUMNS = BASE_COLUMNS.map(col => {
-    const isDollar = col.key === 'activeDollars' || col.key === 'loadedDollars' || col.key === 'totalDollars'
-    const label = isDollar && suffix ? `${col.labelBase} (${suffix})` : col.labelBase
-    return { ...col, label }
-  })
+  const COLUMNS = BASE_COLUMNS
+    .filter(col => visible[col.key as ColumnKey])
+    .map(col => {
+      const isDollar = col.key === 'activeDollars' || col.key === 'loadedDollars' || col.key === 'totalDollars'
+      const label = isDollar && suffix ? `${col.labelBase} (${suffix})` : col.labelBase
+      return { ...col, label }
+    })
 
   const allChecked = skills.length > 0 && skills.every(s => selectedIds?.has(s.id))
   const someChecked = !allChecked && skills.some(s => selectedIds?.has(s.id))
@@ -131,11 +141,15 @@ export default function InventoryTable({
               >
                 {col.label}
                 {sortKey === col.key && (
-                  <span className="sort-arrow">{sortDir === 'asc' ? ' ▲' : ' ▼'}</span>
+                  <span className="sort-arrow">
+                    {sortDir === 'asc'
+                      ? <IconChevronUp size={12} stroke={2} aria-hidden />
+                      : <IconChevronDown size={12} stroke={2} aria-hidden />}
+                  </span>
                 )}
               </th>
             ))}
-            <th className="col-enabled">Enabled</th>
+            {visible.enabled && <th className="col-enabled">Enabled</th>}
           </tr>
         </thead>
         <tbody>
@@ -173,42 +187,55 @@ export default function InventoryTable({
                     onChange={e => onSelectId?.(skill.id, e.target.checked)}
                   />
                 </td>
-                <td className="col-health">
-                  <HealthBadge health={skill.health} skill={skill} />
-                </td>
-                <td className="col-insight">
-                  <InsightBadge
-                    insight={skill.insight}
-                    dormant={skill.dormant}
-                    activeDollars={skill.activeDollars}
-                    loadedDollars={skill.loadedDollars}
-                    lastInvoked={skill.lastInvoked}
-                    bloat={skill.bloat}
-                    descLen={skill.descLen}
-                    suggestedType={skill.suggestedType}
-                    skill={skill}
-                    onReclassify={onReclassify}
-                  />
-                </td>
-                <td className="col-name">
-                  <span className="skill-name">{skill.name}</span>
-                  {skill.description && (
-                    <span className="skill-desc">{skill.description}</span>
-                  )}
-                </td>
-                <td className="col-type">
-                  <span className={`type-badge type-${skill.type}`}>
-                    {TYPE_LABELS[skill.type] ?? skill.type}
-                  </span>
-                </td>
-                <td className="col-scope">
-                  <ContextCell skill={skill} />
-                </td>
-                <td className="col-lastModified">
-                  {isMCP
-                    ? (skill.lastInvoked ? formatDate(skill.lastInvoked) : '—')
-                    : formatDate(skill.lastModified)}
-                </td>
+                {visible.health && (
+                  <td className="col-health">
+                    <HealthBadge health={skill.health} skill={skill} />
+                  </td>
+                )}
+                {visible.insight && (
+                  <td className="col-insight">
+                    <InsightBadge
+                      insight={skill.insight}
+                      dormant={skill.dormant}
+                      activeDollars={skill.activeDollars}
+                      loadedDollars={skill.loadedDollars}
+                      lastInvoked={skill.lastInvoked}
+                      bloat={skill.bloat}
+                      descLen={skill.descLen}
+                      suggestedType={skill.suggestedType}
+                      skill={skill}
+                      onReclassify={onReclassify}
+                    />
+                  </td>
+                )}
+                {visible.name && (
+                  <td className="col-name">
+                    <span className="skill-name">{skill.name}</span>
+                    {skill.description && (
+                      <span className="skill-desc">{skill.description}</span>
+                    )}
+                  </td>
+                )}
+                {visible.type && (
+                  <td className="col-type">
+                    <span className={`type-badge type-${skill.type}`}>
+                      {TYPE_LABELS[skill.type] ?? skill.type}
+                    </span>
+                  </td>
+                )}
+                {visible.scope && (
+                  <td className="col-scope">
+                    <ContextCell skill={skill} />
+                  </td>
+                )}
+                {visible.lastModified && (
+                  <td className="col-lastModified">
+                    {isMCP
+                      ? (skill.lastInvoked ? formatDate(skill.lastInvoked) : '—')
+                      : formatDate(skill.lastModified)}
+                  </td>
+                )}
+                {visible.activeDollars && (
                 <td className="col-activeDollars col-numeric">
                   {isCursor ? (
                     cursorUsedCount > 0 ? (
@@ -232,6 +259,8 @@ export default function InventoryTable({
                     </span>
                   )}
                 </td>
+                )}
+                {visible.loadedDollars && (
                 <td className="col-loadedDollars col-numeric">
                   {isCursor ? (
                     <span className={cursorLastSeen ? '' : 'col-mcp-dash'} title={cursorLastSeenTitle}>
@@ -247,6 +276,8 @@ export default function InventoryTable({
                     </span>
                   )}
                 </td>
+                )}
+                {visible.totalDollars && (
                 <td className="col-totalDollars col-numeric">
                   {isCursor ? (
                     <span className="col-mcp-dash" title="Cursor billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
@@ -264,6 +295,8 @@ export default function InventoryTable({
                     </span>
                   )}
                 </td>
+                )}
+                {visible.enabled && (
                 <td className="col-enabled" onClick={e => e.stopPropagation()}>
                   {isCursor ? (
                     <span className="col-mcp-dash" title="Cursor manages skill activation through its own UI">—</span>
@@ -277,6 +310,7 @@ export default function InventoryTable({
                     />
                   )}
                 </td>
+                )}
               </tr>
             )
           })}
