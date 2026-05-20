@@ -614,8 +614,8 @@ export default function App() {
         title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
         {sidebarCollapsed
-          ? <IconChevronRight size={14} stroke={2} aria-hidden />
-          : <IconChevronLeft size={14} stroke={2} aria-hidden />}
+          ? <IconChevronRight size={16} stroke={2} aria-hidden />
+          : <IconChevronLeft size={16} stroke={2} aria-hidden />}
       </button>
 
       <aside className="sidebar">

@@ -54,7 +54,7 @@
   --radius-lg: 8px;
   --header-h: 52px;
   --sidebar-w: 240px;
-  --sidebar-w-collapsed: 40px;
+  --sidebar-w-collapsed: 24px;
   --drawer-w: 760px;
 
   /* Spacing scale — every padding/margin/gap should reference one of these.
@@ -439,7 +439,7 @@ body {
   transform: translateX(-50%);
   z-index: 10;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 22px;
+  width: 32px; height: 32px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 99px;
