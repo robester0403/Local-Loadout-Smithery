@@ -35,6 +35,8 @@ import {
   IconAlertTriangle,
   IconArrowBackUp,
   IconHelp,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
   IconRefresh,
   IconRoute,
   IconSearch,
@@ -86,6 +88,15 @@ export default function App() {
   const [lastMove, setLastMove] = useState<{ newId: string; originalType: SkillType; skillName: string } | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('inventory')
+  // Sidebar collapse state. Persisted across reloads via localStorage so the
+  // user's layout choice survives — same pattern as the `loadoutsmith-timeframe`
+  // preference above.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    () => localStorage.getItem('loadoutsmith-sidebar-collapsed') === '1',
+  )
+  useEffect(() => {
+    localStorage.setItem('loadoutsmith-sidebar-collapsed', sidebarCollapsed ? '1' : '0')
+  }, [sidebarCollapsed])
   const [trashCount, setTrashCount] = useState(0)
   const [showTrash, setShowTrash] = useState(false)
   const [lastUninstall, setLastUninstall] = useState<{ id: string; name: string } | null>(null)
@@ -210,7 +221,7 @@ export default function App() {
   // Track bundle count for the header badge. Fire-and-forget; failure here
   // just leaves the badge at its previous value.
   useEffect(() => {
-    fetchBundles().then(list => setBundleCount(list.length)).catch(() => {})
+    fetchBundles().then(list => setBundleCount(list.length)).catch(() => { })
   }, [])
 
   // Background refresh — only the active tab's data. Pre-tab-aware version
@@ -218,8 +229,8 @@ export default function App() {
   // the user wasn't currently looking at.
   useEffect(() => {
     const id = setInterval(() => {
-      if (activeTab === 'cursor') void loadCursorBundle().catch(() => {})
-      else void loadClaudeBundle().catch(() => {})
+      if (activeTab === 'cursor') void loadCursorBundle().catch(() => { })
+      else void loadClaudeBundle().catch(() => { })
     }, 30_000)
     return () => clearInterval(id)
   }, [activeTab, loadClaudeBundle, loadCursorBundle])
@@ -267,8 +278,8 @@ export default function App() {
     // Reconcile only the ecosystem that owns the edited skill — no need to
     // re-scan the other tree just because we changed a description.
     const edited = skills.find(s => s.id === id)
-    if (edited?.account === 'cursor') void loadCursorBundle().catch(() => {})
-    else void loadClaudeBundle().catch(() => {})
+    if (edited?.account === 'cursor') void loadCursorBundle().catch(() => { })
+    else void loadClaudeBundle().catch(() => { })
   }
 
   function handleSelectId(id: string, checked: boolean) {
@@ -473,11 +484,10 @@ export default function App() {
   const showBanner = !loading && !error && review.total > 0 && !filters.reviewOnly && activeTab !== 'cursor'
 
   return (
-    <div className="app">
+    <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <header className="header">
         <div className="header-left">
           <span className="header-title">Local Loadout Smithery</span>
-          <span className="header-motto">Win little and win big</span>
           <span className="header-count">{skills.length} total</span>
           <span className="header-cost" title={`Active ${fmtUsd(totals.active)} · Loaded ${fmtUsd(totals.loaded)} (${totals.total > 0 ? Math.round((totals.loaded / totals.total) * 100) : 0}% of total)`}>
             <span className="header-cost-label">Total</span>
@@ -572,8 +582,8 @@ export default function App() {
               // Refresh only the active tab's slice. Use the full `load()`
               // (which also flips the loading spinner) so the user gets the
               // visual feedback they expect.
-              if (activeTab === 'cursor') void loadCursorBundle().catch(() => {})
-              else void loadClaudeBundle().catch(() => {})
+              if (activeTab === 'cursor') void loadCursorBundle().catch(() => { })
+              else void loadClaudeBundle().catch(() => { })
             }}
             disabled={loading}
           >
@@ -596,6 +606,20 @@ export default function App() {
       )}
 
       <aside className="sidebar">
+        <div className="sidebar-toolbar">
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={() => setSidebarCollapsed(c => !c)}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed
+              ? <IconLayoutSidebarLeftExpand size={16} stroke={1.75} aria-hidden />
+              : <IconLayoutSidebarLeftCollapse size={16} stroke={1.75} aria-hidden />}
+          </button>
+        </div>
         <div className="search-wrap">
           <input
             className="search-input"
