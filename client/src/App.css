@@ -434,12 +434,16 @@ body {
    sidebar's edge during the collapse animation. */
 .sidebar-collapse-btn {
   position: absolute;
-  top: calc(var(--header-h) + var(--space-5));
+  /* Sits just below the search input so it never overlaps it. Header (52)
+     + sidebar top padding (16) + search input height (~38) + gap (~10) ≈
+     116. Using calc against the spacing scale rather than a magic number
+     keeps it in sync if the search input grows. */
+  top: calc(var(--header-h) + var(--space-4) + 38px + var(--space-2));
   left: var(--sidebar-w);
   transform: translateX(-50%);
   z-index: 10;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px;
+  width: 28px; height: 28px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 99px;
