@@ -41,7 +41,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
   // reapplyThresholds → null/false for disabled flags, which short-circuits
   // the corresponding branches below naturally.
   const mismatchBadge = suggestedType && skill && flags.mismatch ? (
-    <span className="insight-badge insight-has-tooltip">
+    <span className="insight-badge insight-badge-mismatch insight-has-tooltip">
       <IconArrowsShuffle size={14} stroke={1.75} aria-hidden />
       <span className="insight-tooltip">
         <span className="insight-tooltip-title insight-tooltip-mismatch">Possible misclassification</span>
@@ -63,7 +63,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
   ) : null
 
   const bloatBadge = bloat ? (
-    <span className="insight-badge insight-has-tooltip">
+    <span className="insight-badge insight-badge-bloat insight-has-tooltip">
       <IconPackage size={14} stroke={1.75} aria-hidden />
       <span className="insight-tooltip">
         <span className="insight-tooltip-title insight-tooltip-bloat">Description bloat</span>
@@ -76,7 +76,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
   if (insight === 'removal-candidate') {
     return (
       <>
-        <span className="insight-badge insight-has-tooltip">
+        <span className="insight-badge insight-badge-removal insight-has-tooltip">
           <IconAlertOctagonFilled size={14} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-removal">Removal candidate</span>
@@ -95,7 +95,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
   if (insight === 'winner') {
     return (
       <>
-        <span className="insight-badge insight-has-tooltip">
+        <span className="insight-badge insight-badge-winner insight-has-tooltip">
           <IconCircleCheckFilled size={14} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-winner">Earning its keep</span>
@@ -114,7 +114,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
     const days = lastInvoked ? daysSince(lastInvoked) : null
     return (
       <>
-        <span className="insight-badge insight-has-tooltip">
+        <span className="insight-badge insight-badge-dormant insight-has-tooltip">
           <IconZzz size={14} stroke={1.75} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-dormant">Dormant</span>
