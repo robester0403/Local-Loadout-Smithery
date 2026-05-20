@@ -144,13 +144,13 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 .header-right {
   display: flex; align-items: center; gap: var(--space-2);
   flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: visible;
-  /* Hide horizontal scrollbar — overflow lets the row breathe at narrow
-     viewports without wrapping into the title row. */
-  scrollbar-width: none;
+  /* No overflow rules here — `overflow-x: auto` would silently force
+     overflow-y to `auto` too (CSS spec), which clips the ProfileSwitcher
+     and other absolute-positioned dropdowns descending from this row.
+     If button overflow at narrow viewports becomes a real problem, fix
+     it by portaling the dropdowns or using position:fixed, not by
+     introducing overflow here. */
 }
-.header-right::-webkit-scrollbar { display: none; }
 
 /* ─── Profile switcher ──────────────────────────────────────────────────── */
 .profile-switcher { position: relative; }
