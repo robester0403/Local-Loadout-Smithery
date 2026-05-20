@@ -147,6 +147,7 @@ body {
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100vh;
   overflow: hidden;
+  position: relative;            /* anchor for the floating collapse button */
   /* Smoothly animate the sidebar collapse/expand. Browsers can interpolate
      `grid-template-columns` when both sides have the same number of tracks
      with the same intrinsic shape (px ↔ px is fine). */
@@ -426,44 +427,42 @@ body {
      visible motion; contents simply vanish. */
 }
 
-/* Toolbar holds the collapse button. Always visible in both states. */
-.sidebar-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  margin-bottom: calc(var(--space-3) * -1);  /* tighter to the search input below */
-}
-.app.sidebar-collapsed .sidebar-toolbar {
-  justify-content: center;
-  margin-bottom: 0;
-}
+/* Floating collapse button — straddles the border between the sidebar and
+   the main pane so it doesn't take any sidebar real estate. Positioned
+   absolutely against .app (which is position:relative) and uses `left`
+   tied to the same sidebar-width token so it moves in lockstep with the
+   sidebar's edge during the collapse animation. */
 .sidebar-collapse-btn {
+  position: absolute;
+  top: calc(var(--header-h) + var(--space-5));
+  left: var(--sidebar-w);
+  transform: translateX(-50%);
+  z-index: 10;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  width: 22px; height: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 99px;
   color: var(--text-dim);
   cursor: pointer;
-  transition: color .15s, background .15s, border-color .15s;
+  box-shadow: var(--shadow-sm);
+  /* Match the grid's collapse animation so the button rides the border
+     instead of snapping to its new position. */
+  transition: left .18s ease, color .15s, background .15s, border-color .15s;
 }
 .sidebar-collapse-btn:hover {
   color: var(--text-head);
   background: var(--surface-hover);
-  border-color: var(--border);
+  border-color: var(--accent);
 }
 .sidebar-collapse-btn svg { display: block; }
+.app.sidebar-collapsed .sidebar-collapse-btn { left: var(--sidebar-w-collapsed); }
 
-/* Collapsed state: hide every sidebar child except the toolbar (which
-   stays so the user has a way to expand again). Padding shrinks too so
-   the toggle is comfortably centered in the narrow strip. */
-.app.sidebar-collapsed .sidebar {
-  padding: var(--space-3) var(--space-1);
-  gap: 0;
-}
-.app.sidebar-collapsed .sidebar > :not(.sidebar-toolbar) {
-  display: none;
-}
+/* Collapsed state: zero out padding so phantom space doesn't linger, and
+   hide every sidebar child. The collapse button lives outside the sidebar
+   so it's unaffected by this rule. */
+.app.sidebar-collapsed .sidebar { padding: 0; gap: 0; }
+.app.sidebar-collapsed .sidebar > * { display: none; }
 
 /* ─── Search ────────────────────────────────────────────────────────────── */
 .search-wrap {

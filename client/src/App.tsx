@@ -34,9 +34,9 @@ import {
   IconAlertOctagonFilled,
   IconAlertTriangle,
   IconArrowBackUp,
+  IconChevronLeft,
+  IconChevronRight,
   IconHelp,
-  IconLayoutSidebarLeftCollapse,
-  IconLayoutSidebarLeftExpand,
   IconRefresh,
   IconRoute,
   IconSearch,
@@ -605,21 +605,20 @@ export default function App() {
         </div>
       )}
 
+      <button
+        type="button"
+        className="sidebar-collapse-btn"
+        onClick={() => setSidebarCollapsed(c => !c)}
+        aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-expanded={!sidebarCollapsed}
+        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {sidebarCollapsed
+          ? <IconChevronRight size={14} stroke={2} aria-hidden />
+          : <IconChevronLeft size={14} stroke={2} aria-hidden />}
+      </button>
+
       <aside className="sidebar">
-        <div className="sidebar-toolbar">
-          <button
-            type="button"
-            className="sidebar-collapse-btn"
-            onClick={() => setSidebarCollapsed(c => !c)}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-expanded={!sidebarCollapsed}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {sidebarCollapsed
-              ? <IconLayoutSidebarLeftExpand size={16} stroke={1.75} aria-hidden />
-              : <IconLayoutSidebarLeftCollapse size={16} stroke={1.75} aria-hidden />}
-          </button>
-        </div>
         <div className="search-wrap">
           <input
             className="search-input"
