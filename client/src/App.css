@@ -62,8 +62,8 @@
   --col-w-type:         84px;   /* Type pill */
   --col-w-scope:        92px;   /* Context pill (project names truncate) */
   --col-w-modified:     112px;  /* "Mar 14, 2025" */
-  --col-w-money:        92px;   /* $0.0001 — monospace, right-aligned */
-  --col-w-enabled:      80px;   /* Toggle switch */
+  --col-w-money:        116px;  /* fits "Active $ (30d)" header + sort arrow */
+  --col-w-enabled:      88px;   /* "Enabled" header + toggle */
 
   /* Elevation — for modals, tooltips, drawers. Stops drift from hand-typed
      box-shadows. */
@@ -603,7 +603,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 }
 .inventory-table thead th {
   position: sticky; top: 0; z-index: 1;
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3) var(--space-2);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   text-align: left;
@@ -611,7 +611,20 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
   letter-spacing: .7px; color: var(--text-dim);
   cursor: pointer; user-select: none;
   white-space: nowrap;
+  /* Overflow is handled via the inner .th-label flex container — see
+     InventoryTable.tsx — which lets the label ellipsize while the sort
+     arrow stays visible. */
   transition: color .15s;
+}
+.th-label {
+  display: inline-flex; align-items: center; gap: 4px;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.th-label-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .inventory-table thead th:hover { color: var(--text-head); }
 .inventory-table thead th.sorted { color: var(--accent); }
@@ -681,17 +694,32 @@ td.col-totalDollars { color: var(--text); }
 }
 
 /* ─── Insight badges ────────────────────────────────────────────────────── */
+/* Insight badges. Each badge is an inline-flex wrapper containing one SVG
+   icon plus the (display:none until hover) tooltip. The wrapper carries
+   per-type color class — `.insight-badge-<kind>` — so the icon inside
+   inherits the semantic color via `color: currentColor` on the SVG. */
 .insight-badge {
   display: inline-flex; align-items: center; justify-content: center;
+  vertical-align: middle;
+  position: relative;          /* tooltip anchor */
   cursor: default;
-  margin-right: 2px;
+  width: 18px; height: 18px;   /* stable hover area; prevents column shift */
+  margin: 0 1px;
 }
-.insight-badge:last-child { margin-right: 0; }
-/* Diag cell hosts 1–3 stacked badges; flex keeps them horizontally aligned
-   and centered with the column. */
-.col-insight { line-height: 0; }
+.insight-badge svg { display: block; }
 
-.insight-has-tooltip { position: relative; display: inline-block; cursor: default; }
+/* Semantic colors — chosen to match the tooltip-title colors below so
+   hover + cell read as a single coherent identity. */
+.insight-badge-removal  { color: #F86B63; }   /* danger */
+.insight-badge-winner   { color: var(--c-success); }
+.insight-badge-dormant  { color: var(--c-warning); }
+.insight-badge-bloat    { color: #98A2B3; }   /* neutral */
+.insight-badge-mismatch { color: var(--accent); }
+
+/* `.insight-has-tooltip` is applied to the same element as `.insight-badge`.
+   Keep position:relative for tooltip anchoring but don't fight the badge's
+   inline-flex display mode — omitting `display` here lets the badge rule win. */
+.insight-has-tooltip { position: relative; cursor: default; }
 
 .insight-tooltip {
   display: none;

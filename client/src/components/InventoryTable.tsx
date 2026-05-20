@@ -137,16 +137,18 @@ export default function InventoryTable({
                   col.numeric ? 'col-numeric' : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => onSort(col.key)}
-                title={col.title}
+                title={col.title ?? col.label}
               >
-                {col.label}
-                {sortKey === col.key && (
-                  <span className="sort-arrow">
-                    {sortDir === 'asc'
-                      ? <IconChevronUp size={12} stroke={2} aria-hidden />
-                      : <IconChevronDown size={12} stroke={2} aria-hidden />}
-                  </span>
-                )}
+                <span className="th-label">
+                  <span className="th-label-text">{col.label}</span>
+                  {sortKey === col.key && (
+                    <span className="sort-arrow">
+                      {sortDir === 'asc'
+                        ? <IconChevronUp size={12} stroke={2} aria-hidden />
+                        : <IconChevronDown size={12} stroke={2} aria-hidden />}
+                    </span>
+                  )}
+                </span>
               </th>
             ))}
             {visible.enabled && <th className="col-enabled">Enabled</th>}
