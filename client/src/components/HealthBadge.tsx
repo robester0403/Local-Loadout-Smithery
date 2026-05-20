@@ -1,32 +1,51 @@
-import type { HealthResult, Skill } from '../types'
+import { IconAlertTriangle, IconCheck, IconX } from '@tabler/icons-react'
+import type { HealthResult, HealthStatus, Skill } from '../types'
 import CopyPromptButton from './CopyPromptButton'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
-
-const ICONS: Record<string, string> = {
-  ok: '✓',
-  warn: '⚠',
-  error: '✗',
-}
+import { useSettings } from '../hooks/useSettings'
 
 interface Props {
   health: HealthResult
   skill?: Skill
 }
 
+const STATUS_TO_FLAG = {
+  ok: 'healthOk',
+  warn: 'healthWarn',
+  error: 'healthError',
+} as const
+
+function StatusIcon({ status, size = 14 }: { status: HealthStatus; size?: number }) {
+  if (status === 'ok') return <IconCheck size={size} stroke={2} aria-hidden />
+  if (status === 'error') return <IconX size={size} stroke={2} aria-hidden />
+  return <IconAlertTriangle size={size} stroke={2} aria-hidden />
+}
+
 export default function HealthBadge({ health, skill }: Props) {
+  const { flags } = useSettings()
   const { status, issues } = health
 
+  // Honor per-state flags: disabled health states render nothing. The
+  // underlying health.status doesn't change — this is purely a view gate.
+  if (!flags[STATUS_TO_FLAG[status]]) return null
+
   if (status === 'ok') {
-    return <span className="health-badge health-ok" title="No issues">{ICONS.ok}</span>
+    return (
+      <span className="health-badge health-ok" title="No issues">
+        <StatusIcon status="ok" />
+      </span>
+    )
   }
 
   return (
     <span className={`health-badge health-${status} health-has-tooltip`}>
-      {ICONS[status]} {issues.length}
+      <StatusIcon status={status} /> {issues.length}
       <span className="health-tooltip">
         {issues.map((issue, i) => (
           <span key={i} className={`health-tooltip-item health-tooltip-${issue.severity}`}>
-            <span className="health-tooltip-icon">{issue.severity === 'error' ? '✗' : '⚠'}</span>
+            <span className="health-tooltip-icon">
+              <StatusIcon status={issue.severity === 'error' ? 'error' : 'warn'} size={12} />
+            </span>
             {issue.message}
           </span>
         ))}

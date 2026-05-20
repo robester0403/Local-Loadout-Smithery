@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { IconBolt, IconCheck, IconChevronDown, IconChevronUp, IconX } from '@tabler/icons-react'
 import type { ProfilesData } from '../api'
 
 interface Props {
@@ -57,8 +58,10 @@ export default function ProfileSwitcher({ profilesData, allSkillIds, onActivate,
         onClick={() => setOpen(o => !o)}
         title="Switch activation profile"
       >
-        ⚡ {label}
-        <span className="profile-chevron">{open ? '▲' : '▼'}</span>
+        <IconBolt size={14} stroke={1.75} aria-hidden /> {label}
+        <span className="profile-chevron">
+          {open ? <IconChevronUp size={12} stroke={2} aria-hidden /> : <IconChevronDown size={12} stroke={2} aria-hidden />}
+        </span>
       </button>
 
       {open && (
@@ -68,7 +71,7 @@ export default function ProfileSwitcher({ profilesData, allSkillIds, onActivate,
             onClick={() => handleActivate(null)}
           >
             <span>All skills</span>
-            {activeProfile === null && <span className="profile-check">✓</span>}
+            {activeProfile === null && <span className="profile-check"><IconCheck size={12} stroke={2} aria-hidden /></span>}
           </div>
 
           {profileNames.map(name => (
@@ -79,13 +82,14 @@ export default function ProfileSwitcher({ profilesData, allSkillIds, onActivate,
             >
               <span className="profile-option-name">{name}</span>
               <span className="profile-option-count">{profiles[name].length} skills</span>
-              {activeProfile === name && <span className="profile-check">✓</span>}
+              {activeProfile === name && <span className="profile-check"><IconCheck size={12} stroke={2} aria-hidden /></span>}
               <button
                 className="profile-delete-btn"
                 onClick={e => handleDelete(name, e)}
                 title={`Delete profile "${name}"`}
+                aria-label={`Delete profile "${name}"`}
               >
-                ✕
+                <IconX size={12} stroke={1.75} aria-hidden />
               </button>
             </div>
           ))}

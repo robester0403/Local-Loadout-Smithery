@@ -1,3 +1,4 @@
+import { IconAlertOctagonFilled, IconAlertTriangle, IconX } from '@tabler/icons-react'
 import type { Filters } from '../types'
 
 interface Props {
@@ -57,7 +58,7 @@ export default function FilterBar({ filters, setFilters }: Props) {
             className={`pill pill-issues ${filters.issuesOnly ? 'active' : ''}`}
             onClick={() => setFilters({ ...filters, issuesOnly: !filters.issuesOnly })}
           >
-            ⚠ Issues only
+            <IconAlertTriangle size={12} stroke={1.75} aria-hidden /> Issues only
           </button>
         </div>
       </div>
@@ -69,14 +70,14 @@ export default function FilterBar({ filters, setFilters }: Props) {
             className={`pill pill-review ${filters.reviewOnly ? 'active' : ''}`}
             onClick={() => setFilters({ ...filters, reviewOnly: !filters.reviewOnly })}
           >
-            🚨 Needs review
+            <IconAlertOctagonFilled size={12} aria-hidden /> Needs review
           </button>
         </div>
       </div>
 
       {hasActive && (
         <button className="clear-filters" onClick={clearAll}>
-          × Clear filters
+          <IconX size={12} stroke={1.75} aria-hidden /> Clear filters
         </button>
       )}
     </div>

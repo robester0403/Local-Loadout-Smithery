@@ -211,6 +211,211 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 }
 .clear-filters:hover { color: var(--text); }
 
+/* ─── Sidebar settings button ───────────────────────────────────────────── */
+.sidebar-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font: 13px var(--font);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  margin-top: 4px;
+}
+.sidebar-settings-btn:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ─── Settings modal ────────────────────────────────────────────────────── */
+.settings-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px 2px 8px;
+}
+.settings-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+}
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: var(--text);
+  font: 13px var(--font);
+  text-align: left;
+  transition: background .15s, color .15s;
+  border-radius: var(--radius);
+}
+.settings-section-head:hover { background: var(--surface-hover); color: var(--text-head); }
+.settings-section-title {
+  font-size: 12px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text-head);
+}
+.settings-section-subtitle {
+  font-size: 11px; color: var(--text-dim); font-weight: 400;
+  margin-left: auto; text-transform: none; letter-spacing: 0;
+  text-align: right; max-width: 360px;
+}
+.settings-section-body {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+/* Legacy alias for any remaining <legend> styling — safe to leave. */
+.settings-section-legend {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .8px; color: var(--text-dim);
+  padding: 0 6px;
+}
+.settings-flags-help { font-size: 12px; color: var(--text-dim); margin-bottom: 2px; }
+.settings-flag-group { display: flex; flex-direction: column; gap: 6px; }
+.settings-flag-group-label {
+  font-size: 11px; color: var(--text-dim); font-weight: 500;
+}
+
+.settings-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+.settings-modal-footer-actions { display: inline-flex; gap: 8px; }
+
+.settings-bulk { display: flex; align-items: center; gap: 6px; }
+.settings-bulk-sep { color: var(--text-dim); font-size: 11px; }
+.settings-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: 12px var(--font);
+  color: var(--accent);
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.settings-link:hover { opacity: .8; }
+.settings-link:disabled { color: var(--text-dim); cursor: default; opacity: .6; }
+
+.settings-checks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+}
+.settings-check {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.settings-check input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-thresholds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-threshold {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.settings-threshold-label {
+  font-size: 12px;
+  color: var(--text);
+  cursor: help;
+}
+.settings-threshold-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px 6px;
+  transition: border-color .15s;
+}
+.settings-threshold-input:focus-within { border-color: var(--accent); }
+.settings-threshold-input input {
+  width: 64px;
+  background: transparent;
+  border: none;
+  color: var(--text-head);
+  font: 12px var(--font);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  padding: 2px 0;
+  text-align: right;
+}
+.settings-threshold-input input::-webkit-outer-spin-button,
+.settings-threshold-input input::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.settings-threshold-input input[type=number] { -moz-appearance: textfield; }
+.settings-threshold-prefix,
+.settings-threshold-suffix {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.settings-threshold.is-disabled { opacity: .45; }
+.settings-threshold.is-disabled .settings-threshold-input { pointer-events: none; }
+.settings-threshold-input input[aria-invalid="true"] { color: #e87171; }
+.settings-threshold-shared { font-size: 10px; color: var(--text-dim); font-weight: 400; }
+
+/* ─── Identifier card (per-diagnostic toggle + thresholds) ──────────────── */
+.settings-identifier-list { display: flex; flex-direction: column; gap: 10px; }
+.identifier-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+  transition: opacity .15s, border-color .15s;
+}
+.identifier-card.is-flag-off { opacity: .65; }
+.identifier-card-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.identifier-card-head input[type="checkbox"] { margin: 0; accent-color: var(--accent); }
+.identifier-card-label { font-weight: 500; color: var(--text-head); font-size: 13px; }
+.identifier-card-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 22px;
+  line-height: 1.4;
+}
+.identifier-card-thresholds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 22px;
+  margin-top: 2px;
+}
+
 /* ─── Sidebar stats ─────────────────────────────────────────────────────── */
 .sidebar-stats {
   margin-top: auto;
