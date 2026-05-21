@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
 import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SecurityScanResult, SkillVersion } from '../api'
-import { fetchSkillVersions, restoreSkillVersion, scanSkillSecurity, updateSkillContent } from '../api'
+import { acceptSkillBaseline, fetchSkillVersions, restoreSkillVersion, scanSkillSecurity, updateSkillContent } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import EditableText from './EditableText'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
@@ -396,6 +396,24 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                     <span className="accordion-issue-msg">{issue.message}</span>
                   </li>
                 ))}
+                {issues.some(i => i.message.startsWith('Shadow edit detected')) && (
+                  <li className="accordion-issue accordion-issue-action">
+                    <button
+                      className="btn btn-sm"
+                      onClick={async () => {
+                        try {
+                          await acceptSkillBaseline(skill.id)
+                          onSkillChanged?.(skill.id, {})
+                        } catch {
+                          // Best-effort — next discovery pass will retry.
+                        }
+                      }}
+                      title="Treat the current on-disk content as the new last-observed baseline. Clears the shadow-edit warning without restoring a previous version."
+                    >
+                      Accept external edit as new baseline
+                    </button>
+                  </li>
+                )}
                 <li className="accordion-issue accordion-issue-action">
                   <CopyPromptButton getPrompt={() => generateFixHealthPrompt(skill)} label="Fix with Claude Code" />
                 </li>

@@ -11,6 +11,7 @@ import { pathParam } from '../lib/params'
 import { assertWithinHome, HttpError, LOADOUT_DIR, MOVE_LOG_PATH } from '../lib/paths'
 import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWriter'
 import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
+import { writeBaseline } from '../state/skillBaselines'
 
 const router = Router()
 
@@ -128,6 +129,17 @@ router.patch('/skills/:id', asyncHandler((req, res) => {
     throw err
   }
 
+  // Refresh the shadow-edit baseline so our own write doesn't fire a
+  // "shadow edit detected" finding on the next discovery pass.
+  try {
+    const newContent = fs.readFileSync(writePath, 'utf-8')
+    writeBaseline(pathParam(req, 'id'), newContent)
+  } catch {
+    // Baseline refresh is best-effort — if the read fails, the next
+    // discovery pass will just flag a false-positive shadow edit until
+    // the user re-baselines via the drawer.
+  }
+
   res.json({ ok: true })
 }))
 
@@ -165,7 +177,26 @@ router.post('/skills/:id/versions/:ts/restore', asyncHandler((req, res) => {
   if (!prepared) throw new HttpError(404, 'Version not found')
 
   fs.writeFileSync(writePath, prepared.content)
+  // Restore is one of our own writes — refresh the shadow-edit baseline
+  // so the restored content doesn't fire as drift on the next pass.
+  writeBaseline(encodedId, prepared.content)
   res.json({ ok: true, preRestoreSnapshot: prepared.preRestoreSnapshot })
+}))
+
+// Accept the current on-disk content as the new baseline. Used after a
+// detected shadow edit when the user reviews the change and decides it's
+// fine — clears the warning without restoring an older version.
+router.post('/skills/:id/baseline/accept', asyncHandler((req, res) => {
+  const encodedId = pathParam(req, 'id')
+  const writePath = resolveSkillWritePath(encodedId)
+  let content: string
+  try {
+    content = fs.readFileSync(writePath, 'utf-8')
+  } catch {
+    throw new HttpError(404, 'Skill file not readable')
+  }
+  writeBaseline(encodedId, content)
+  res.json({ ok: true })
 }))
 
 router.post('/skills/:id/uninstall', asyncHandler((req, res) => {

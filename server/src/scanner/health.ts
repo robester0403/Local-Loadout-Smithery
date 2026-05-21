@@ -1,6 +1,7 @@
 import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
 import { scanContent, type Finding } from '../security/scan'
+import { reconcileBaseline } from '../state/skillBaselines'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
 const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
@@ -120,6 +121,21 @@ export function computeHealth(
     for (const finding of scanContent(text)) {
       const mapped = securityFindingToHealthIssue(finding)
       if (mapped) issues.push(mapped)
+    }
+  }
+
+  // Shadow-edit detection — compare the current body against the last-
+  // observed baseline. First sighting silently writes the baseline (we
+  // can't retroactively know pre-LSM history); subsequent sightings with
+  // different content surface as a warn-level health issue.
+  if (skill.body !== undefined) {
+    const drift = reconcileBaseline(skill.id, skill.body)
+    if (drift.kind === 'shadow-edit') {
+      const detail = drift.summary ? ` ${drift.summary}.` : ''
+      issues.push({
+        severity: 'warn',
+        message: `Shadow edit detected — file was modified outside Loadout Smithery since last seen.${detail} Open the drawer to accept or restore.`,
+      })
     }
   }
 
