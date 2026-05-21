@@ -845,7 +845,12 @@ export default function App() {
             ) : error ? (
               <EmptyState variant="error" message={error} onRetry={load} />
             ) : filtered.length === 0 ? (
-              <EmptyState variant="empty" />
+              // No filters + no rows across the entire inventory = nothing
+              // installed at all. The plain "empty" variant ("your filters
+              // hid everything") is misleading on a fresh machine.
+              skills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly
+                ? <EmptyState variant="none-installed" />
+                : <EmptyState variant="empty" />
             ) : (
               <InventoryTable
                 skills={filtered}
