@@ -6,7 +6,8 @@ const router = Router()
 
 // Ecosystem-scoped scans so each tab only pays for its own work:
 //   ?ecosystem=cursor  → only the Cursor tree
-//   ?ecosystem=claude  → every Claude account (everything except cursor)
+//   ?ecosystem=codex   → only the Codex tree
+//   ?ecosystem=claude  → every Claude account (excludes cursor + codex)
 //   (omitted)          → all accounts
 //
 // `?account=foo` (or `?account=foo,bar`) is the lower-level form — restricts
@@ -18,8 +19,12 @@ router.get('/inventory', asyncHandler((req, res) => {
     res.json({ skills: discoverAllSkills({ accounts: ['cursor'] }) })
     return
   }
+  if (ecosystem === 'codex') {
+    res.json({ skills: discoverAllSkills({ accounts: ['codex'] }) })
+    return
+  }
   if (ecosystem === 'claude') {
-    res.json({ skills: discoverAllSkills({ excludeAccounts: ['cursor'] }) })
+    res.json({ skills: discoverAllSkills({ excludeAccounts: ['cursor', 'codex'] }) })
     return
   }
   const raw = typeof req.query.account === 'string' ? req.query.account : ''

@@ -8,6 +8,7 @@ import { inferType } from './classification'
 import { countTokens } from '../usage/tokenizer'
 import { findCursorProjectCwds, defaultCursorUserDataDir } from './cursorProjects'
 import { CURSOR_SEEN_LOG_PATH } from '../lib/paths'
+import { discoverCodexSkills } from '../codex/discover'
 import type { Skill, SkillType, SkillScope, HealthResult } from './types'
 
 // Mirrors the listing budget constraints from loaded.ts.
@@ -94,16 +95,36 @@ export function findAccounts(): string[] {
     // .cursor missing or unreadable — fine, just skip.
   }
 
+  // Codex CLI: single ~/.codex/ tree, no settings.json. Sentinel against
+  // either an AGENTS.md at the root OR a sessions/ dir — either is enough
+  // proof that Codex is installed and worth scanning.
+  const codexDir = path.join(home, '.codex')
+  try {
+    if (fs.statSync(codexDir).isDirectory()) {
+      const hasLoadout = (
+        fileExists(path.join(codexDir, 'AGENTS.md')) ||
+        isDir(path.join(codexDir, 'sessions'))
+      )
+      if (hasLoadout) accounts.push(codexDir)
+    }
+  } catch {
+    // .codex missing or unreadable — fine, just skip.
+  }
+
   return accounts
 }
 
 export function accountLabel(accountDir: string): string {
   const base = path.basename(accountDir)
   if (base === '.cursor') return 'cursor'
+  if (base === '.codex') return 'codex'
   return base === '.claude' ? 'default' : base.slice('.claude-'.length)
 }
 
-function buildSkill(
+// Exported so per-ecosystem discovery modules (codex/, future others) can
+// produce Skill rows that match the canonical shape — frontmatter parsing,
+// health computation, ID encoding, token counting all live here in one place.
+export function buildSkill(
   filePath: string,
   type: SkillType,
   scope: SkillScope,
@@ -325,6 +346,12 @@ function resolveClaudeProjectCwds(accountDir: string): string[] {
 }
 
 function discoverInAccount(accountDir: string, account: string): Skill[] {
+  // Codex's file model differs from Claude/Cursor — it uses a single
+  // AGENTS.md per scope rather than skills/commands/agents directories.
+  // Route it through a dedicated module instead of bending AccountAdapter
+  // to fit both shapes.
+  if (account === 'codex') return discoverCodexSkills(accountDir)
+
   const adapter = adapterFor(accountDir, account)
   const skills: Skill[] = []
 
