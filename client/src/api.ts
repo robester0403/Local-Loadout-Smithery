@@ -180,6 +180,54 @@ export async function restoreSkillVersion(id: string, timestamp: string): Promis
   await parseResponse<{ ok: boolean }>(res)
 }
 
+// ─── Security ────────────────────────────────────────────────────────────────
+
+export type FindingSeverity = 'info' | 'medium' | 'high'
+export type FindingKind =
+  | 'url'
+  | 'prompt-injection'
+  | 'shell-execution'
+  | 'suspicious-unicode'
+  | 'env-var-exfil'
+  | 'markdown-exfil'
+  | 'conditional-activation'
+  | 'embedded-base64'
+  | 'html-injection'
+  | 'suspicious-destination'
+  | 'leaked-secret'
+  | 'combo-exfil'
+
+export interface SecurityFinding {
+  ruleId: string
+  kind: FindingKind
+  severity: FindingSeverity
+  message: string
+  evidence: string
+  offset: number
+  source?: string
+  atlasId?: string
+}
+
+export interface SecurityScanResult {
+  summary: { total: number; high: number; medium: number; info: number }
+  findings: SecurityFinding[]
+  skillId?: string
+}
+
+export async function scanSkillSecurity(id: string): Promise<SecurityScanResult> {
+  const res = await fetch(`/api/security/scan/${encodeURIComponent(id)}`)
+  return parseResponse<SecurityScanResult>(res)
+}
+
+export async function scanTextSecurity(text: string): Promise<SecurityScanResult> {
+  const res = await fetch('/api/security/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  return parseResponse<SecurityScanResult>(res)
+}
+
 // ─── MCP Usage ───────────────────────────────────────────────────────────────
 
 export interface MCPToolUsage { name: string; calls: number; lastInvoked: string }

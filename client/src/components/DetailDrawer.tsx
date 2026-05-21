@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
-import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SkillVersion } from '../api'
-import { fetchSkillVersions, restoreSkillVersion, updateSkillContent } from '../api'
+import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SecurityScanResult, SkillVersion } from '../api'
+import { fetchSkillVersions, restoreSkillVersion, scanSkillSecurity, updateSkillContent } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import EditableText from './EditableText'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
 import RelationshipMap from './RelationshipMap'
+import SecurityFindings from './SecurityFindings'
 
 interface Props {
   skill: Skill
@@ -93,6 +94,7 @@ function Section({
 
 export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, onSkillChanged, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
   const [showMap, setShowMap] = useState(false)
+  const [security, setSecurity] = useState<SecurityScanResult | null>(null)
   const [versions, setVersions] = useState<SkillVersion[]>([])
   const [restoringTs, setRestoringTs] = useState<string | null>(null)
   const [confirmRestoreTs, setConfirmRestoreTs] = useState<string | null>(null)
@@ -106,16 +108,30 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     }
   }
 
-  // Refresh the version list each time the drawer opens onto a different skill.
-  // MCP servers have no file-backed body, so no versions exist for them.
+  // Refresh versions + rescan security whenever the drawer opens onto a
+  // different skill. MCP servers have no file-backed body, so both are no-ops.
   useEffect(() => {
-    if (skill.type === 'mcp') { setVersions([]); return }
+    if (skill.type === 'mcp') {
+      setVersions([])
+      setSecurity({ summary: { total: 0, high: 0, medium: 0, info: 0 }, findings: [] })
+      return
+    }
     let cancelled = false
+    setSecurity(null)
     fetchSkillVersions(skill.id)
       .then(v => { if (!cancelled) setVersions(v) })
       .catch(() => { if (!cancelled) setVersions([]) })
+    scanSkillSecurity(skill.id)
+      .then(r => { if (!cancelled) setSecurity(r) })
+      .catch(() => { if (!cancelled) setSecurity({ summary: { total: 0, high: 0, medium: 0, info: 0 }, findings: [] }) })
     return () => { cancelled = true }
   }, [skill.id, skill.type])
+
+  function handleOpenScannedUrl(url: string) {
+    if (window.confirm(`Open ${url} in your browser?\n\nThis link was found inside the skill body. Only open it if you trust the source.`)) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
 
   async function handleRestoreVersion(ts: string) {
     setConfirmRestoreTs(null)
@@ -386,6 +402,31 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
               </ul>
             </Section>
           )}
+
+          {skill.type !== 'mcp' && security && (() => {
+            const { summary, findings } = security
+            const hasRisk = summary.high > 0 || summary.medium > 0
+            const titleParts: string[] = []
+            if (summary.high > 0) titleParts.push(`${summary.high} high`)
+            if (summary.medium > 0) titleParts.push(`${summary.medium} medium`)
+            if (summary.info > 0) titleParts.push(`${summary.info} info`)
+            const titleText = summary.total === 0
+              ? 'Security check — clean'
+              : `Security check — ${titleParts.join(', ')}`
+            return (
+              <Section
+                title={
+                  <>
+                    {hasRisk ? (summary.high > 0 ? '⛔' : '⚠') : '🛡'} {titleText}
+                  </>
+                }
+                defaultOpen={hasRisk}
+                kind={summary.high > 0 ? 'error' : hasRisk ? 'warn' : 'default'}
+              >
+                <SecurityFindings findings={findings} onOpenUrl={handleOpenScannedUrl} />
+              </Section>
+            )
+          })()}
 
           {skill.type !== 'mcp' && (
             <Section
