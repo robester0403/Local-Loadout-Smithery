@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -6,6 +6,11 @@ import { computeHealth } from '../scanner/health'
 import type { Skill } from '../scanner/types'
 
 let tmp: string
+// computeHealth now writes shadow-edit baselines under ~/.loadoutsmith on
+// every first-sighting. Redirect HOME per test so we don't pollute the
+// developer's real loadoutsmith dir.
+let baselineHome: string
+let origHome: string | undefined
 
 function write(p: string, content: string) {
   fs.mkdirSync(path.dirname(p), { recursive: true })
@@ -39,6 +44,16 @@ function base(overrides: Partial<Skill> = {}): Omit<Skill, 'health'> {
 
 beforeAll(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lsm-health-')) })
 afterAll(() => { fs.rmSync(tmp, { recursive: true, force: true }) })
+
+beforeEach(() => {
+  origHome = process.env['HOME']
+  baselineHome = fs.mkdtempSync(path.join(os.tmpdir(), 'lsm-health-baseline-'))
+  process.env['HOME'] = baselineHome
+})
+afterEach(() => {
+  process.env['HOME'] = origHome
+  fs.rmSync(baselineHome, { recursive: true, force: true })
+})
 
 describe('computeHealth', () => {
   it('returns ok for a fully valid skill', () => {

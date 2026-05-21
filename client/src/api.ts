@@ -181,6 +181,17 @@ export async function restoreSkillVersion(id: string, timestamp: string): Promis
   await parseResponse<{ ok: boolean }>(res)
 }
 
+// Accept the current on-disk content as the shadow-edit baseline. Called by
+// the drawer when the user reviews a "shadow edit detected" warning and
+// decides the external change is fine.
+export async function acceptSkillBaseline(id: string): Promise<void> {
+  const res = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/baseline/accept`,
+    { method: 'POST' },
+  )
+  await parseResponse<{ ok: boolean }>(res)
+}
+
 // ─── Security ────────────────────────────────────────────────────────────────
 
 export type FindingSeverity = 'info' | 'medium' | 'high'
