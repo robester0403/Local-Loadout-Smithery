@@ -194,14 +194,18 @@ export type FindingKind =
   | 'embedded-base64'
   | 'html-injection'
   | 'suspicious-destination'
+  | 'leaked-secret'
   | 'combo-exfil'
 
 export interface SecurityFinding {
+  ruleId: string
   kind: FindingKind
   severity: FindingSeverity
   message: string
   evidence: string
   offset: number
+  source?: string
+  atlasId?: string
 }
 
 export interface SecurityScanResult {
