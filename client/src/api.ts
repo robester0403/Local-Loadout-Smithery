@@ -160,6 +160,26 @@ export async function launchClaude(prompt: string): Promise<{ platform: string; 
   return parseResponse<{ ok: boolean; platform: string; launched?: boolean }>(res)
 }
 
+// ─── Skill version history ───────────────────────────────────────────────────
+
+export interface SkillVersion {
+  timestamp: string
+  sizeBytes: number
+}
+
+export async function fetchSkillVersions(id: string): Promise<SkillVersion[]> {
+  const res = await fetch(`/api/skills/${encodeURIComponent(id)}/versions`)
+  return (await parseResponse<{ versions: SkillVersion[] }>(res)).versions
+}
+
+export async function restoreSkillVersion(id: string, timestamp: string): Promise<void> {
+  const res = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(timestamp)}/restore`,
+    { method: 'POST' },
+  )
+  await parseResponse<{ ok: boolean }>(res)
+}
+
 // ─── MCP Usage ───────────────────────────────────────────────────────────────
 
 export interface MCPToolUsage { name: string; calls: number; lastInvoked: string }
