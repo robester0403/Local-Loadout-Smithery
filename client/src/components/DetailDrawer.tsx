@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
-import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport } from '../api'
-import { updateSkillContent } from '../api'
+import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SkillVersion } from '../api'
+import { fetchSkillVersions, restoreSkillVersion, updateSkillContent } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import EditableText from './EditableText'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
@@ -83,6 +83,39 @@ function Section({
 
 export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, onSkillChanged, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
   const [showMap, setShowMap] = useState(false)
+  const [versions, setVersions] = useState<SkillVersion[]>([])
+  const [restoringTs, setRestoringTs] = useState<string | null>(null)
+
+  // Refresh the version list each time the drawer opens onto a different skill.
+  // MCP servers have no file-backed body, so no versions exist for them.
+  useEffect(() => {
+    if (skill.type === 'mcp') { setVersions([]); return }
+    let cancelled = false
+    fetchSkillVersions(skill.id)
+      .then(v => { if (!cancelled) setVersions(v) })
+      .catch(() => { if (!cancelled) setVersions([]) })
+    return () => { cancelled = true }
+  }, [skill.id, skill.type])
+
+  async function handleRestoreVersion(ts: string) {
+    if (!window.confirm(
+      `Restore this version?\n\nThe current file will be snapshotted first, so this is reversible.`,
+    )) return
+    setRestoringTs(ts)
+    try {
+      await restoreSkillVersion(skill.id, ts)
+      const fresh = await fetchSkillVersions(skill.id)
+      setVersions(fresh)
+      // Tell the parent the skill content changed so the inventory refetches
+      // and the drawer rerenders with the restored body.
+      onSkillChanged?.(skill.id, {})
+    } catch {
+      // Surfacing the error inline is overkill for v1 — leave it as a no-op
+      // and rely on the user reopening the drawer to retry.
+    } finally {
+      setRestoringTs(null)
+    }
+  }
 
   // MCP servers are config-derived, not file-backed — no description/body
   // file exists to rewrite, so the inline editor is hidden for that type.
@@ -331,6 +364,44 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                   <CopyPromptButton getPrompt={() => generateFixHealthPrompt(skill)} label="Fix with Claude Code" />
                 </li>
               </ul>
+            </Section>
+          )}
+
+          {skill.type !== 'mcp' && versions.length > 0 && (
+            <Section
+              title={`History — ${versions.length} version${versions.length === 1 ? '' : 's'}`}
+              defaultOpen={false}
+            >
+              <div className="drawer-meta">
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6 }}>
+                  Pre-image snapshots saved before each edit. Restore creates a fresh snapshot so it's reversible.
+                </div>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {versions.map(v => {
+                    const when = (() => {
+                      // Stored timestamps replace `:` with `-` to stay
+                      // filesystem-safe. Restore them so Date.parse works.
+                      const restored = v.timestamp.replace(/-(\d{2})-(\d{2}\.\d+Z)$/, ':$1:$2')
+                      const d = new Date(restored)
+                      return Number.isNaN(d.getTime())
+                        ? v.timestamp
+                        : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                    })()
+                    return (
+                      <li key={v.timestamp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <span style={{ fontSize: 12 }}>{when} <span style={{ color: 'var(--text-dim)' }}>· {v.sizeBytes} B</span></span>
+                        <button
+                          className="btn btn-sm"
+                          disabled={restoringTs !== null}
+                          onClick={() => handleRestoreVersion(v.timestamp)}
+                        >
+                          {restoringTs === v.timestamp ? 'Restoring…' : 'Restore'}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             </Section>
           )}
 
