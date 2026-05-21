@@ -150,6 +150,62 @@ describe('detectDrift', () => {
     expect(r.details).toMatch(/missing/i)
   })
 
+  it('detects drift for Cursor-target bundles (global)', () => {
+    const b = bundle({ target: 'cursor', slug: 'cursor-bundle' })
+    const rows = rowsFor(b)
+    applyBundle(b, rows)
+    expect(detectDrift(b, rows).status).toBe('ok')
+
+    const cursorMd = path.join(tmp, '.cursor', 'CLAUDE.md')
+    const original = fs.readFileSync(cursorMd, 'utf-8')
+    fs.writeFileSync(cursorMd, original.replace('When refactoring existing code.', 'TAMPERED'))
+    expect(detectDrift(b, rows).status).toBe('block-modified')
+  })
+
+  it('detects drift for Cursor-target bundles (project scope)', () => {
+    const project = path.join(tmp, 'my-cursor-project')
+    fs.mkdirSync(project, { recursive: true })
+    const b = bundle({
+      id: 'cursor-proj',
+      slug: 'cursor-proj',
+      target: 'cursor',
+      scope: { kind: 'project', path: project },
+    })
+    const rows = rowsFor(b)
+    applyBundle(b, rows)
+    fs.appendFileSync(
+      path.join(project, '.cursor', 'super-router', `${b.slug}.md`),
+      '\nUSER EDITED\n',
+    )
+    expect(detectDrift(b, rows).status).toBe('map-modified')
+  })
+
+  it('treats Claude and Cursor bundles in the same CLAUDE.md as independent', () => {
+    const project = path.join(tmp, 'p2')
+    fs.mkdirSync(project, { recursive: true })
+    const claudeB = bundle({
+      id: 'claude-side', slug: 'claude-side', target: 'claude',
+      scope: { kind: 'project', path: project }, name: 'Claude side',
+    })
+    const cursorB = bundle({
+      id: 'cursor-side', slug: 'cursor-side', target: 'cursor',
+      scope: { kind: 'project', path: project }, name: 'Cursor side',
+    })
+    const rowsClaude = rowsFor(claudeB)
+    const rowsCursor = rowsFor(cursorB)
+    applyBundle(claudeB, rowsClaude)
+    applyBundle(cursorB, rowsCursor)
+
+    const md = fs.readFileSync(path.join(project, 'CLAUDE.md'), 'utf-8')
+    const re = new RegExp(`<!-- super-router:cursor-side start -->[\\s\\S]*?<!-- super-router:cursor-side end -->`)
+    fs.writeFileSync(
+      path.join(project, 'CLAUDE.md'),
+      md.replace(re, '<!-- super-router:cursor-side start -->\nTAMPERED\n<!-- super-router:cursor-side end -->'),
+    )
+    expect(detectDrift(claudeB, rowsClaude).status).toBe('ok')
+    expect(detectDrift(cursorB, rowsCursor).status).toBe('block-modified')
+  })
+
   it('distinguishes drift per-bundle when two bundles share CLAUDE.md', () => {
     const project = path.join(tmp, 'p')
     fs.mkdirSync(project, { recursive: true })
