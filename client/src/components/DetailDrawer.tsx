@@ -86,6 +86,15 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
   const [versions, setVersions] = useState<SkillVersion[]>([])
   const [restoringTs, setRestoringTs] = useState<string | null>(null)
 
+  async function refreshVersions() {
+    if (skill.type === 'mcp') { setVersions([]); return }
+    try {
+      setVersions(await fetchSkillVersions(skill.id))
+    } catch {
+      setVersions([])
+    }
+  }
+
   // Refresh the version list each time the drawer opens onto a different skill.
   // MCP servers have no file-backed body, so no versions exist for them.
   useEffect(() => {
@@ -104,8 +113,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     setRestoringTs(ts)
     try {
       await restoreSkillVersion(skill.id, ts)
-      const fresh = await fetchSkillVersions(skill.id)
-      setVersions(fresh)
+      await refreshVersions()
       // Tell the parent the skill content changed so the inventory refetches
       // and the drawer rerenders with the restored body.
       onSkillChanged?.(skill.id, {})
@@ -124,6 +132,9 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     const patch = { [field]: next }
     await updateSkillContent(skill.id, patch)
     onSkillChanged?.(skill.id, patch)
+    // The server snapshotted the pre-image before applying the patch — pull
+    // the fresh list so the History section reflects the new entry.
+    refreshVersions()
   }
   const saveDescription = (next: string) => saveField('description', next)
   const saveBody = (next: string) => saveField('body', next)
