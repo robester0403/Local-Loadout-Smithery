@@ -158,6 +158,10 @@ export default function InventoryTable({
           {skills.map(skill => {
             const isMCP = skill.type === 'mcp'
             const isCursor = skill.account === 'cursor'
+            // Codex behaves like Cursor for the cost columns — no per-skill
+            // billing data, no activation signal — but has no live-usage
+            // repurpose either, so all three dollar cells just show "—".
+            const isCodex = skill.account === 'codex'
             // For cursor rows: Active/Loaded columns repurposed as live usage.
             //   Active$  → "Used" cell    (count of activations since polling)
             //   Loaded$  → "Last used"    (relative date of last activation)
@@ -239,7 +243,9 @@ export default function InventoryTable({
                 )}
                 {visible.activeDollars && (
                 <td className="col-activeDollars col-numeric">
-                  {isCursor ? (
+                  {isCodex ? (
+                    <span className="col-mcp-dash" title="Codex doesn't expose a per-skill activation signal.">—</span>
+                  ) : isCursor ? (
                     cursorUsedCount > 0 ? (
                       <span className="cursor-live-count" title={cursorUsedTitle}>
                         {cursorUsedCount}
@@ -264,7 +270,9 @@ export default function InventoryTable({
                 )}
                 {visible.loadedDollars && (
                 <td className="col-loadedDollars col-numeric">
-                  {isCursor ? (
+                  {isCodex ? (
+                    <span className="col-mcp-dash" title="Codex doesn't expose activation timestamps.">—</span>
+                  ) : isCursor ? (
                     <span className={cursorLastSeen ? '' : 'col-mcp-dash'} title={cursorLastSeenTitle}>
                       {fmtRelative(cursorLastSeen)}
                     </span>
@@ -281,7 +289,9 @@ export default function InventoryTable({
                 )}
                 {visible.totalDollars && (
                 <td className="col-totalDollars col-numeric">
-                  {isCursor ? (
+                  {isCodex ? (
+                    <span className="col-mcp-dash" title="Codex doesn't expose per-skill billing.">—</span>
+                  ) : isCursor ? (
                     <span className="col-mcp-dash" title="Cursor billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
                   ) : isMCP ? (
                     skill.totalDollars > 0
@@ -300,7 +310,9 @@ export default function InventoryTable({
                 )}
                 {visible.enabled && (
                 <td className="col-enabled" onClick={e => e.stopPropagation()}>
-                  {isCursor ? (
+                  {isCodex ? (
+                    <span className="col-mcp-dash" title="Codex has no enable/disable mechanism for AGENTS.md — edit the file directly.">—</span>
+                  ) : isCursor ? (
                     <span className="col-mcp-dash" title="Cursor manages skill activation through its own UI">—</span>
                   ) : isMCP ? (
                     <span className="col-mcp-dash" title="Configure in ~/.claude.json">—</span>
