@@ -67,7 +67,7 @@ This is exactly why the *removal candidate* and *dormant* diagnostics exist. A s
 
 ## What it does
 
-- **Inventory** — unified view of all your Claude Code skills, slash commands, subagents, and MCP server tools across all accounts and scopes
+- **Inventory** — unified view of all your Claude Code skills, slash commands, subagents, and MCP server tools across all accounts and scopes. Cursor's `~/.cursor/` artifacts and Codex's `AGENTS.md` files (global + per-project, discovered via session metadata) appear in dedicated tabs alongside Claude Code.
 - **Token tracking** — dual-axis cost per artifact: active cost (when invoked) + loaded cost (context tax on every turn), in tokens and dollars. See [`COST_MODEL.md`](./COST_MODEL.md) for the full spec.
 - **Health diagnostics** — frontmatter linter, broken symlink detection, and health badges with inline issue descriptions
 - **Diagnostic insights** — surfaces removal candidates and dormant artifacts; "Needs review" filter + inline insight banner
