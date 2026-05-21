@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Candidate, CandidateType, AutoSkillAccount, OllamaModel } from '../api'
-import { acceptCandidate, fetchAutoSkillAccounts, fetchOllamaModels, synthBodyApi } from '../api'
+import type { Candidate, CandidateType, AutoSkillAccount, OllamaModel, SecurityScanResult } from '../api'
+import { acceptCandidate, fetchAutoSkillAccounts, fetchOllamaModels, scanTextSecurity, synthBodyApi } from '../api'
 import type { Skill } from '../types'
+import SecurityFindings from './SecurityFindings'
 
 // Rough param-size extraction from an Ollama tag (e.g. "qwen2.5:7b" → 7).
 // Used to default the synth-body picker to the largest installed model.
@@ -45,6 +46,7 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
   const [synthModel, setSynthModel] = useState('')
   const [synthing, setSynthing] = useState(false)
   const [synthMessage, setSynthMessage] = useState('')
+  const [scan, setScan] = useState<SecurityScanResult | null>(null)
 
   useEffect(() => {
     fetchAutoSkillAccounts().then(list => {
@@ -61,6 +63,16 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
       if (sorted[0]) setSynthModel(sorted[0].name)
     }).catch(() => { /* Auto Skill still works without synth */ })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rescan after edits settle. The scanner is pattern-only so even running it
+  // on every keystroke would be cheap, but 200ms keeps the network log quiet.
+  useEffect(() => {
+    const text = `${description}\n\n${body}`
+    const t = setTimeout(() => {
+      scanTextSecurity(text).then(setScan).catch(() => setScan(null))
+    }, 200)
+    return () => clearTimeout(t)
+  }, [description, body])
 
   async function handleSynth() {
     setSynthing(true)
@@ -185,6 +197,32 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
             {synthMessage && <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>{synthMessage}</div>}
             <textarea className="form-input" rows={12} value={body} onChange={e => setBody(e.target.value)} />
           </div>
+
+          {scan && (
+            <details
+              open={scan.summary.high > 0 || scan.summary.medium > 0}
+              style={{
+                border: '1px solid var(--border)',
+                borderRadius: 4,
+                padding: '6px 10px',
+                background: scan.summary.high > 0
+                  ? 'rgba(199, 84, 80, 0.08)'
+                  : scan.summary.medium > 0
+                    ? 'rgba(200, 155, 58, 0.08)'
+                    : 'transparent',
+              }}
+            >
+              <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-dim)' }}>
+                Security check —{' '}
+                {scan.summary.total === 0
+                  ? 'no suspicious patterns'
+                  : `${scan.summary.high} high, ${scan.summary.medium} medium, ${scan.summary.info} info`}
+              </summary>
+              <div style={{ marginTop: 8 }}>
+                <SecurityFindings findings={scan.findings} />
+              </div>
+            </details>
+          )}
 
           {error && <div className="form-error">{error}</div>}
 

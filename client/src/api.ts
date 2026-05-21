@@ -160,6 +160,39 @@ export async function launchClaude(prompt: string): Promise<{ platform: string; 
   return parseResponse<{ ok: boolean; platform: string; launched?: boolean }>(res)
 }
 
+// ─── Security ────────────────────────────────────────────────────────────────
+
+export type FindingSeverity = 'info' | 'medium' | 'high'
+export type FindingKind = 'url' | 'prompt-injection' | 'shell-execution' | 'suspicious-unicode'
+
+export interface SecurityFinding {
+  kind: FindingKind
+  severity: FindingSeverity
+  message: string
+  evidence: string
+  offset: number
+}
+
+export interface SecurityScanResult {
+  summary: { total: number; high: number; medium: number; info: number }
+  findings: SecurityFinding[]
+  skillId?: string
+}
+
+export async function scanSkillSecurity(id: string): Promise<SecurityScanResult> {
+  const res = await fetch(`/api/security/scan/${encodeURIComponent(id)}`)
+  return parseResponse<SecurityScanResult>(res)
+}
+
+export async function scanTextSecurity(text: string): Promise<SecurityScanResult> {
+  const res = await fetch('/api/security/scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  return parseResponse<SecurityScanResult>(res)
+}
+
 // ─── MCP Usage ───────────────────────────────────────────────────────────────
 
 export interface MCPToolUsage { name: string; calls: number; lastInvoked: string }
