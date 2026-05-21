@@ -347,7 +347,11 @@ describe('scanContent', () => {
   })
 
   it('detects a JWT', () => {
-    const f = scanContent('Auth: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4eHgifQ.abc123_signature')
+    // Split the literal at the segment boundary so source-tree secret scanners
+    // (GitGuardian, gitleaks, etc.) don't false-positive on this synthetic
+    // fixture. The scanner under test sees the fully-assembled string.
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9' + '.' + 'eyJzdWIiOiJ4eHgifQ' + '.' + 'abc123fakesig'
+    const f = scanContent(`Auth: ${jwt}`)
     expect(f.some(x => x.kind === 'leaked-secret' && x.ruleId === 'secrets.jwt')).toBe(true)
   })
 
