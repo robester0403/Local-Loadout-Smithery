@@ -23,6 +23,7 @@ import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
 import UninstalledPanel from './components/UninstalledPanel'
 import CursorTab from './components/CursorTab'
+import CodexTab from './components/CodexTab'
 import BundleEditorModal from './components/BundleEditorModal'
 import SuperRouterPanel from './components/SuperRouterPanel'
 import AutoSkillPanel from './components/AutoSkillPanel'
@@ -47,7 +48,7 @@ import {
 } from '@tabler/icons-react'
 import './App.css'
 
-type ActiveTab = 'inventory' | 'cursor'
+type ActiveTab = 'inventory' | 'cursor' | 'codex'
 
 // Safety net for the tab-aware loaders: if the server ever returns the same
 // skill in both the Claude and Cursor responses (e.g. an old build that
@@ -193,17 +194,29 @@ export default function App() {
     })
   }, [])
 
+  // Codex's loader is simpler — no usage / recent reports because Codex
+  // doesn't expose a per-skill activation signal. Discovery + mergeWithCost
+  // for derived-field population (same reason as Cursor) and we're done.
+  const loadCodexBundle = useCallback(async (): Promise<void> => {
+    const codexSkills = await fetchInventory('codex').catch(() => [] as Skill[])
+    const merged = mergeWithCost(codexSkills, [])
+    setSkills(prev => {
+      const others = prev.filter(s => s.account !== 'codex')
+      return dedupById([...others, ...merged])
+    })
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      await Promise.all([loadClaudeBundle(), loadCursorBundle()])
+      await Promise.all([loadClaudeBundle(), loadCursorBundle(), loadCodexBundle()])
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [loadClaudeBundle, loadCursorBundle])
+  }, [loadClaudeBundle, loadCursorBundle, loadCodexBundle])
 
   useEffect(() => { load() }, [load])
 
@@ -230,10 +243,11 @@ export default function App() {
   useEffect(() => {
     const id = setInterval(() => {
       if (activeTab === 'cursor') void loadCursorBundle().catch(() => { })
+      else if (activeTab === 'codex') void loadCodexBundle().catch(() => { })
       else void loadClaudeBundle().catch(() => { })
     }, 30_000)
     return () => clearInterval(id)
-  }, [activeTab, loadClaudeBundle, loadCursorBundle])
+  }, [activeTab, loadClaudeBundle, loadCursorBundle, loadCodexBundle])
 
   useEffect(() => {
     if (!selected) return
@@ -415,7 +429,13 @@ export default function App() {
   // diag-flag gates already applied at reapplyThresholds time, so the
   // "Needs review" check just consults the post-flag insight/dormant.
   const filtered = viewSkills
-    .filter(s => activeTab === 'cursor' ? s.account === 'cursor' : s.account !== 'cursor')
+    .filter(s => {
+      // Three-way ecosystem partition: Cursor tab sees only cursor rows,
+      // Codex tab sees only codex rows, Claude tab sees everything else.
+      if (activeTab === 'cursor') return s.account === 'cursor'
+      if (activeTab === 'codex') return s.account === 'codex'
+      return s.account !== 'cursor' && s.account !== 'codex'
+    })
     .filter(s => {
       if (filters.type.length > 0 && !filters.type.includes(s.type)) return false
       if (filters.scope.length > 0 && !filters.scope.includes(s.scope)) return false
@@ -464,9 +484,10 @@ export default function App() {
   // Code tab should not show "5 dormant" if 4 of those are Cursor skills,
   // and vice versa — the two ecosystems don't share a coherent review
   // surface.
-  const tabSkills = activeTab === 'cursor'
-    ? viewSkills.filter(s => s.account === 'cursor')
-    : viewSkills.filter(s => s.account !== 'cursor')
+  const tabSkills =
+    activeTab === 'cursor' ? viewSkills.filter(s => s.account === 'cursor')
+    : activeTab === 'codex' ? viewSkills.filter(s => s.account === 'codex')
+    : viewSkills.filter(s => s.account !== 'cursor' && s.account !== 'codex')
 
   const counts = {
     skill: tabSkills.filter(s => s.type === 'skill').length,
@@ -478,10 +499,10 @@ export default function App() {
   const totals = computeTotals(skills)
   const review = countReview(tabSkills)
   // Insight banner is only meaningful on the Claude Code tab — Cursor's
-  // activation data (which "removal candidate" / "dormant" rely on) is now
-  // bounded by the persistence fade, so banners would flag every Cursor
-  // skill. Skip the banner on the Cursor tab entirely.
-  const showBanner = !loading && !error && review.total > 0 && !filters.reviewOnly && activeTab !== 'cursor'
+  // activation data is bounded by the persistence fade, and Codex has no
+  // activation signal at all, so on those tabs every row would falsely
+  // count as a removal candidate or dormant.
+  const showBanner = !loading && !error && review.total > 0 && !filters.reviewOnly && activeTab === 'inventory'
 
   return (
     <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
@@ -514,6 +535,11 @@ export default function App() {
             onClick={() => setActiveTab('cursor')}
             title="Cursor skills + activation data scraped from Cursor's local SQLite"
           >Cursor</button>
+          <button
+            className={`header-tab${activeTab === 'codex' ? ' active' : ''}`}
+            onClick={() => setActiveTab('codex')}
+            title="Codex CLI AGENTS.md files — global + per-project (mined from ~/.codex/sessions)"
+          >Codex</button>
         </div>
 
         <div className="header-right">
@@ -524,7 +550,7 @@ export default function App() {
             onCreate={handleCreateProfile}
             onDelete={handleDeleteProfile}
           />
-          {activeTab !== 'cursor' && <TimeframePicker value={timeframe} onChange={setTimeframe} />}
+          {activeTab === 'inventory' && <TimeframePicker value={timeframe} onChange={setTimeframe} />}
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             <IconHelp size={14} stroke={1.75} aria-hidden />
             How costs work
@@ -583,6 +609,7 @@ export default function App() {
               // (which also flips the loading spinner) so the user gets the
               // visual feedback they expect.
               if (activeTab === 'cursor') void loadCursorBundle().catch(() => { })
+              else if (activeTab === 'codex') void loadCodexBundle().catch(() => { })
               else void loadClaudeBundle().catch(() => { })
             }}
             disabled={loading}
@@ -662,7 +689,42 @@ export default function App() {
       </aside>
 
       <main className="main">
-        {activeTab === 'cursor' ? (
+        {activeTab === 'codex' ? (
+          loading ? (
+            <EmptyState variant="loading" />
+          ) : error ? (
+            <EmptyState variant="error" message={error} onRetry={load} />
+          ) : (
+            <>
+              {selectedIds.size > 0 && (
+                <div className="bulk-bar">
+                  <span className="bulk-count">{selectedIds.size} selected</span>
+                  {/* No "Disable selected" or routing-bundle for Codex — we
+                      can't toggle AGENTS.md from here, and SuperRouter
+                      bundles target Claude/Cursor only. */}
+                  <button className="btn btn-sm" onClick={() => setSelectedIds(new Set())}>
+                    Clear
+                  </button>
+                </div>
+              )}
+              <CodexTab
+                skills={filtered}
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleSort}
+                selected={selected}
+                onSelect={setSelected}
+                onToggle={handleToggle}
+                onBreakdown={setBreakdownSkill}
+                timeframe={timeframe}
+                selectedIds={selectedIds}
+                onSelectId={handleSelectId}
+                onSelectAll={handleSelectAll}
+                onReclassify={handleReclassify}
+              />
+            </>
+          )
+        ) : activeTab === 'cursor' ? (
           loading ? (
             <EmptyState variant="loading" />
           ) : error ? (
