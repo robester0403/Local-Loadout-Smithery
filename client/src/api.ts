@@ -48,10 +48,11 @@ async function parseResponse<T>(res: Response): Promise<T> {
 
 /** Optional ecosystem filter:
  *   - 'cursor' → only Cursor's tree
+ *   - 'codex'  → only Codex's tree (~/.codex/)
  *   - 'claude' → every detected Claude account (`.claude`, `.claude-*`)
  *   - undefined → everything (the original behavior)
  * Used by the tab-aware loader so each tab only pays for its own scan. */
-export type InventoryEcosystem = 'claude' | 'cursor'
+export type InventoryEcosystem = 'claude' | 'cursor' | 'codex'
 
 export async function fetchInventory(ecosystem?: InventoryEcosystem): Promise<Skill[]> {
   const qs = ecosystem ? `?ecosystem=${ecosystem}` : ''
