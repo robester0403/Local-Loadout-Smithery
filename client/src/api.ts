@@ -355,7 +355,7 @@ export async function rescanCursorProjects(): Promise<CursorRescanResult> {
 
 // ─── SuperRouter ─────────────────────────────────────────────────────────────
 
-export type BundleTarget = 'claude' | 'cursor'
+export type BundleTarget = 'claude' | 'cursor' | 'codex'
 
 export type BundleScope =
   | { kind: 'global' }

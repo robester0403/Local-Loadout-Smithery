@@ -26,8 +26,8 @@ export function validateBundleInput(
   if (!input.trigger || input.trigger.trim().length === 0) {
     errors.push({ field: 'trigger', message: 'Trigger description is required.' })
   }
-  if (input.target !== 'claude' && input.target !== 'cursor') {
-    errors.push({ field: 'target', message: 'Target must be "claude" or "cursor".' })
+  if (input.target !== 'claude' && input.target !== 'cursor' && input.target !== 'codex') {
+    errors.push({ field: 'target', message: 'Target must be "claude", "cursor", or "codex".' })
   }
   if (!input.scope || (input.scope.kind !== 'global' && input.scope.kind !== 'project')) {
     errors.push({ field: 'scope', message: 'Scope must be global or project.' })

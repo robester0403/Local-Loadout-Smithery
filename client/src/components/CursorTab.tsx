@@ -1,9 +1,10 @@
 // Cursor tab — shows artifacts under ~/.cursor in the same InventoryTable
 // the Claude Code tab uses, plus a stats header with activation totals.
 //
-// The cost columns render `—` for cursor-account rows (see InventoryTable's
-// `isCursor` branch) because Cursor's local SQLite no longer carries
-// authoritative tokenCount data.
+// The cost columns render activation count + last-used (the Cursor-style
+// repurpose) instead of dollars, because Cursor's local SQLite no longer
+// carries authoritative tokenCount data. Driven by the `costMode` prop on
+// InventoryTable, not by per-row account inspection.
 
 import type { Skill, SortKey, SortDir, Timeframe } from '../types'
 import type { CursorUsageReport, CursorRecentUsageReport } from '../api'
@@ -109,7 +110,7 @@ export default function CursorTab(props: Props) {
         </div>
       </header>
 
-      <InventoryTable {...props} cursorLiveUsage={liveByName} />
+      <InventoryTable {...props} costMode="cursor-live-usage" liveUsage={liveByName} />
     </div>
   )
 }

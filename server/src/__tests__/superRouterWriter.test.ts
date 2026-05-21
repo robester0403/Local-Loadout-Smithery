@@ -265,6 +265,54 @@ describe('applyBundle (Cursor target)', () => {
     expect(md).toContain('./.cursor/super-router/refactoring.md')
   })
 
+  it('global Codex writes to ~/.codex/AGENTS.md and ~/.codex/super-router/<slug>.md', () => {
+    const origHome = process.env['HOME']
+    process.env['HOME'] = tmp
+    try {
+      const b = bundle({ target: 'codex' })
+      const result = applyBundle(b, [row(skill('foo', 'd'))])
+      expect(result.topFile).toBe(path.join(tmp, '.codex', 'AGENTS.md'))
+      expect(result.mapFile).toBe(path.join(tmp, '.codex', 'super-router', `${b.slug}.md`))
+      expect(fs.existsSync(result.topFile)).toBe(true)
+      const md = fs.readFileSync(result.topFile, 'utf-8')
+      expect(md).toContain('./super-router/refactoring.md')
+      expect(md).toContain('super-router:bundle-123 start')
+    } finally {
+      process.env['HOME'] = origHome
+    }
+  })
+
+  it('project Codex writes to <project>/AGENTS.md and <project>/.codex/super-router/<slug>.md', () => {
+    const project = path.join(tmp, 'codex-project')
+    fs.mkdirSync(project, { recursive: true })
+    const b = bundle({ target: 'codex', scope: { kind: 'project', path: project } })
+    const result = applyBundle(b, [])
+    expect(result.topFile).toBe(path.join(project, 'AGENTS.md'))
+    expect(result.mapFile).toBe(path.join(project, '.codex', 'super-router', `${b.slug}.md`))
+    const md = fs.readFileSync(result.topFile, 'utf-8')
+    expect(md).toContain('./.codex/super-router/refactoring.md')
+  })
+
+  it('Codex bundles can be removed cleanly without touching CLAUDE.md', () => {
+    const origHome = process.env['HOME']
+    process.env['HOME'] = tmp
+    try {
+      // Pre-existing Claude block in CLAUDE.md must survive a Codex bundle's
+      // lifecycle (they live in different files, but defensively verify).
+      const claudeMd = path.join(tmp, '.claude', 'CLAUDE.md')
+      fs.mkdirSync(path.dirname(claudeMd), { recursive: true })
+      fs.writeFileSync(claudeMd, '# My Claude content\n')
+      const b = bundle({ target: 'codex' })
+      applyBundle(b, [])
+      removeBundle(b)
+      expect(fs.readFileSync(claudeMd, 'utf-8')).toContain('# My Claude content')
+    } finally {
+      process.env['HOME'] = origHome
+    }
+  })
+})
+
+describe('applyBundle (Claude + Cursor + Codex coexistence)', () => {
   it('Claude and Cursor bundles coexist in the same CLAUDE.md as distinct blocks', () => {
     const project = path.join(tmp, 'p')
     fs.mkdirSync(project, { recursive: true })

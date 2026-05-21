@@ -28,8 +28,8 @@ function parseInput(body: unknown): BundleInput {
     throw new HttpError(400, 'Request body required')
   }
   const target = b.target
-  if (target !== 'claude' && target !== 'cursor') {
-    throw new HttpError(400, 'target must be "claude" or "cursor"')
+  if (target !== 'claude' && target !== 'cursor' && target !== 'codex') {
+    throw new HttpError(400, 'target must be "claude", "cursor", or "codex"')
   }
   const scope = b.scope
   if (!scope || (scope.kind !== 'global' && scope.kind !== 'project')) {

@@ -19,6 +19,10 @@ function cursorGlobalRoot(): string {
   return path.join(os.homedir(), '.cursor')
 }
 
+function codexGlobalRoot(): string {
+  return path.join(os.homedir(), '.codex')
+}
+
 export function resolvePaths(target: BundleTarget, scope: BundleScope, slug: string): ResolvedPaths {
   if (target === 'claude') {
     if (scope.kind === 'global') {
@@ -33,6 +37,25 @@ export function resolvePaths(target: BundleTarget, scope: BundleScope, slug: str
       topFile: path.join(scope.path, 'CLAUDE.md'),
       mapFile: path.join(scope.path, '.claude', 'super-router', `${slug}.md`),
       mapRelative: `./.claude/super-router/${slug}.md`,
+    }
+  }
+
+  if (target === 'codex') {
+    // Codex CLI reads AGENTS.md instead of CLAUDE.md. Map files live alongside
+    // their respective AGENTS.md so the relative link in the trigger block is
+    // short and unambiguous.
+    if (scope.kind === 'global') {
+      const root = codexGlobalRoot()
+      return {
+        topFile: path.join(root, 'AGENTS.md'),
+        mapFile: path.join(root, 'super-router', `${slug}.md`),
+        mapRelative: `./super-router/${slug}.md`,
+      }
+    }
+    return {
+      topFile: path.join(scope.path, 'AGENTS.md'),
+      mapFile: path.join(scope.path, '.codex', 'super-router', `${slug}.md`),
+      mapRelative: `./.codex/super-router/${slug}.md`,
     }
   }
 
