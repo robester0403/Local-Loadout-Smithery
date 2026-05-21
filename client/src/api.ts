@@ -380,6 +380,25 @@ export async function openBundleFileApi(id: string, which: 'top' | 'map'): Promi
   await parseResponse<{ ok: boolean }>(res)
 }
 
+export type DriftStatus =
+  | 'ok'
+  | 'file-missing'
+  | 'block-missing'
+  | 'markers-corrupted'
+  | 'block-modified'
+  | 'map-modified'
+
+export interface DriftResult {
+  bundleId: string
+  status: DriftStatus
+  details?: string
+}
+
+export async function fetchBundleDrift(): Promise<DriftResult[]> {
+  const res = await fetch('/api/super-router/drift')
+  return (await parseResponse<{ results: DriftResult[] }>(res)).results
+}
+
 // ─── Auto Skill ───────────────────────────────────────────────────────────────
 
 export type CandidateType = 'skill' | 'command' | 'subagent'

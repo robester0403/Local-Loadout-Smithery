@@ -15,6 +15,7 @@ import {
 } from '../superRouter/store'
 import { validateBundleInput } from '../superRouter/validate'
 import { applyBundle, removeBundle, type ResolvedSkillRow } from '../superRouter/writer'
+import { detectDrift } from '../superRouter/drift'
 import { resolveBundlePaths } from '../superRouter/paths'
 import type { Bundle, BundleInput, BundleSkillEntry } from '../superRouter/types'
 import type { Skill } from '../scanner/types'
@@ -86,6 +87,17 @@ function throwValidation(errs: ReturnType<typeof validateBundleInput>): never {
 
 router.get('/super-router/bundles', asyncHandler((_req, res) => {
   res.json({ bundles: listBundles().map(bundleWithPaths) })
+}))
+
+router.get('/super-router/drift', asyncHandler((_req, res) => {
+  const bundles = listBundles().filter(b => b.enabled)
+  if (bundles.length === 0) {
+    res.json({ results: [] })
+    return
+  }
+  const skills = discoverAllSkills()
+  const results = bundles.map(b => detectDrift(b, resolveRows(skills, b.skills)))
+  res.json({ results })
 }))
 
 router.post('/super-router/bundles', asyncHandler((req, res) => {
