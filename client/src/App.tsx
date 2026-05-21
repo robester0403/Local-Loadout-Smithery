@@ -132,91 +132,99 @@ export default function App() {
     localStorage.setItem('loadoutsmith-timeframe', timeframe)
   }, [timeframe])
 
-  // Tab-scoped loaders. Each bundle owns its slice of `skills` (keyed by
+  // Tab-scoped loader. Each ecosystem owns its slice of `skills` (keyed by
   // account) plus its tab-specific side channels (profiles+MCP for Claude,
-  // usage/recent for Cursor). Splitting this way means a refresh on one tab
-  // never re-scans the other ecosystem's files, which dominates scan time.
+  // usage/recent for Cursor). Splitting by ecosystem means a refresh on one
+  // tab never re-scans the others, which dominates scan time.
 
-  // The loaders intentionally do NOT depend on thresholds — that would trigger
-  // a full server refetch (and spinner flicker) on every Settings edit. The
-  // `viewSkills` memo below applies thresholds at render time over whatever
-  // the loaders have populated, so changes reclassify instantly without I/O.
-  // Loaders pass thresholds=undefined (i.e. defaults) for the initial paint;
-  // the memo immediately overwrites those derived fields with current values.
+  // The loader intentionally does NOT depend on thresholds — that would
+  // trigger a full server refetch (and spinner flicker) on every Settings
+  // edit. The `viewSkills` memo below applies thresholds at render time over
+  // whatever the loader has populated, so changes reclassify instantly
+  // without I/O.
   const thresholds = settings.thresholds
 
-  const loadClaudeBundle = useCallback(async (): Promise<void> => {
-    const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
-      fetchInventory('claude'),
-      fetchProfiles().catch(() => null),
-      fetchUninstalled().catch(() => [] as UninstalledEntry[]),
-      fetchMCPInventory().catch(() => [] as MCPRow[]),
-      fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
-      fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
-    ])
-    let summaries: SkillUsageSummary[] = []
-    try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
-    const merged = mergeWithCost(rawSkills, summaries)
-    const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
-    setMcpUsageMap(usageMap)
-    setMcpRelationships(mcpRels)
-    // Replace only the Claude+MCP slice; preserve any Cursor entries already
-    // loaded so switching tabs doesn't blank the other side momentarily.
-    setSkills(prev => {
-      const cursor = prev.filter(s => s.account === 'cursor')
+  type Ecosystem = 'claude' | 'cursor' | 'codex'
+
+  const loadBundle = useCallback(async (ecosystem: Ecosystem): Promise<void> => {
+    if (ecosystem === 'claude') {
+      const [rawSkills, pd, uninstalled, mcpServers, mcpUsage, mcpRels] = await Promise.all([
+        fetchInventory('claude'),
+        fetchProfiles().catch(() => null),
+        fetchUninstalled().catch(() => [] as UninstalledEntry[]),
+        fetchMCPInventory().catch(() => [] as MCPRow[]),
+        fetchMCPUsage(timeframe).catch(() => [] as MCPUsageSummary[]),
+        fetchMCPRelationships().catch(() => [] as MCPRelationship[]),
+      ])
+      let summaries: SkillUsageSummary[] = []
+      try { summaries = await fetchUsageAggregate(timeframe) } catch { /* cost data unavailable */ }
+      const merged = mergeWithCost(rawSkills, summaries)
+      const usageMap = new Map(mcpUsage.map(u => [u.serverName, u]))
+      setMcpUsageMap(usageMap)
+      setMcpRelationships(mcpRels)
       const mcp = mcpServers.map(e => toMCPSkill(e, usageMap.get(e.name)))
-      return dedupById([...merged, ...mcp, ...cursor])
-    })
-    if (pd) setProfilesData(pd)
-    setTrashCount(uninstalled.length)
-  }, [timeframe])
+      // Replace only the Claude+MCP slice; preserve any Cursor or Codex
+      // entries already loaded so switching tabs doesn't blank the others.
+      setSkills(prev => dedupById([
+        ...prev.filter(s => s.account === 'cursor' || s.account === 'codex'),
+        ...merged,
+        ...mcp,
+      ]))
+      if (pd) setProfilesData(pd)
+      setTrashCount(uninstalled.length)
+      return
+    }
 
-  const loadCursorBundle = useCallback(async (): Promise<void> => {
-    const [cursorSkills, cursorReport, cursorRecentReport] = await Promise.all([
-      fetchInventory('cursor').catch(() => [] as Skill[]),
-      fetchCursorUsage().catch((): CursorUsageReport => ({
-        available: false, skills: [], totalActivations: 0, distinctSessions: 0,
-      })),
-      fetchCursorRecentUsage().catch((): CursorRecentUsageReport => ({
-        hasData: false, trackingSince: 0, items: [], totalEvents: 0,
-      })),
-    ])
-    setCursorUsage(cursorReport)
-    setCursorRecent(cursorRecentReport)
-    // Even though Cursor skills have no Claude Code cost data, they need to
-    // pass through mergeWithCost so the derived fields (activeDollars,
-    // loadedDollars, insight, dormant, bloat, descLen) are populated. Without
-    // this the InventoryTable crashes on `undefined.toFixed(...)`.
-    const merged = mergeWithCost(cursorSkills, [])
-    setSkills(prev => {
-      const others = prev.filter(s => s.account !== 'cursor')
-      return dedupById([...others, ...merged])
-    })
-  }, [])
+    if (ecosystem === 'cursor') {
+      const [cursorSkills, cursorReport, cursorRecentReport] = await Promise.all([
+        fetchInventory('cursor').catch(() => [] as Skill[]),
+        fetchCursorUsage().catch((): CursorUsageReport => ({
+          available: false, skills: [], totalActivations: 0, distinctSessions: 0,
+        })),
+        fetchCursorRecentUsage().catch((): CursorRecentUsageReport => ({
+          hasData: false, trackingSince: 0, items: [], totalEvents: 0,
+        })),
+      ])
+      setCursorUsage(cursorReport)
+      setCursorRecent(cursorRecentReport)
+      // Even though Cursor skills have no Claude Code cost data, they need to
+      // pass through mergeWithCost so the derived fields (activeDollars,
+      // loadedDollars, insight, dormant, bloat, descLen) are populated.
+      // Without this the InventoryTable crashes on `undefined.toFixed(...)`.
+      const merged = mergeWithCost(cursorSkills, [])
+      setSkills(prev => dedupById([
+        ...prev.filter(s => s.account !== 'cursor'),
+        ...merged,
+      ]))
+      return
+    }
 
-  // Codex's loader is simpler — no usage / recent reports because Codex
-  // doesn't expose a per-skill activation signal. Discovery + mergeWithCost
-  // for derived-field population (same reason as Cursor) and we're done.
-  const loadCodexBundle = useCallback(async (): Promise<void> => {
+    // Codex — no usage / recent reports because Codex doesn't expose a
+    // per-skill activation signal. Discovery + mergeWithCost for derived-
+    // field population (same reason as Cursor) and we're done.
     const codexSkills = await fetchInventory('codex').catch(() => [] as Skill[])
     const merged = mergeWithCost(codexSkills, [])
-    setSkills(prev => {
-      const others = prev.filter(s => s.account !== 'codex')
-      return dedupById([...others, ...merged])
-    })
-  }, [])
+    setSkills(prev => dedupById([
+      ...prev.filter(s => s.account !== 'codex'),
+      ...merged,
+    ]))
+  }, [timeframe])
+
+  // 'inventory' tab maps to the Claude ecosystem; the other two are 1:1.
+  const tabEcosystem: Ecosystem =
+    activeTab === 'cursor' ? 'cursor' : activeTab === 'codex' ? 'codex' : 'claude'
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      await Promise.all([loadClaudeBundle(), loadCursorBundle(), loadCodexBundle()])
+      await Promise.all([loadBundle('claude'), loadBundle('cursor'), loadBundle('codex')])
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setLoading(false)
     }
-  }, [loadClaudeBundle, loadCursorBundle, loadCodexBundle])
+  }, [loadBundle])
 
   useEffect(() => { load() }, [load])
 
@@ -242,12 +250,10 @@ export default function App() {
   // the user wasn't currently looking at.
   useEffect(() => {
     const id = setInterval(() => {
-      if (activeTab === 'cursor') void loadCursorBundle().catch(() => { })
-      else if (activeTab === 'codex') void loadCodexBundle().catch(() => { })
-      else void loadClaudeBundle().catch(() => { })
+      void loadBundle(tabEcosystem).catch(() => { })
     }, 30_000)
     return () => clearInterval(id)
-  }, [activeTab, loadClaudeBundle, loadCursorBundle, loadCodexBundle])
+  }, [tabEcosystem, loadBundle])
 
   useEffect(() => {
     if (!selected) return
@@ -279,7 +285,7 @@ export default function App() {
       const result = await rescanCursorProjects()
       if (result.addedCount === 0) showToast('No new Cursor projects found.')
       else showToast(`Found ${result.addedCount} new Cursor project${result.addedCount === 1 ? '' : 's'}.`)
-      await loadCursorBundle()
+      await loadBundle('cursor')
     } catch (e) {
       showToast((e as Error).message)
     } finally {
@@ -292,8 +298,8 @@ export default function App() {
     // Reconcile only the ecosystem that owns the edited skill — no need to
     // re-scan the other tree just because we changed a description.
     const edited = skills.find(s => s.id === id)
-    if (edited?.account === 'cursor') void loadCursorBundle().catch(() => { })
-    else void loadClaudeBundle().catch(() => { })
+    if (edited?.account === 'cursor') void loadBundle('cursor').catch(() => { })
+    else void loadBundle('claude').catch(() => { })
   }
 
   function handleSelectId(id: string, checked: boolean) {
@@ -605,12 +611,9 @@ export default function App() {
           <button
             className="btn btn-sm"
             onClick={() => {
-              // Refresh only the active tab's slice. Use the full `load()`
-              // (which also flips the loading spinner) so the user gets the
-              // visual feedback they expect.
-              if (activeTab === 'cursor') void loadCursorBundle().catch(() => { })
-              else if (activeTab === 'codex') void loadCodexBundle().catch(() => { })
-              else void loadClaudeBundle().catch(() => { })
+              // Refresh only the active tab's slice; the full `load()` would
+              // re-scan all three ecosystems.
+              void loadBundle(tabEcosystem).catch(() => { })
             }}
             disabled={loading}
           >
