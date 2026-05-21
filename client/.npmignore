@@ -1,0 +1,1 @@
+# Empty — neutralizes client/.gitignore for npm pack so client/dist/ ships.
