@@ -160,10 +160,41 @@ export async function launchClaude(prompt: string): Promise<{ platform: string; 
   return parseResponse<{ ok: boolean; platform: string; launched?: boolean }>(res)
 }
 
+// ─── Skill version history ───────────────────────────────────────────────────
+
+export interface SkillVersion {
+  timestamp: string
+  sizeBytes: number
+}
+
+export async function fetchSkillVersions(id: string): Promise<SkillVersion[]> {
+  const res = await fetch(`/api/skills/${encodeURIComponent(id)}/versions`)
+  return (await parseResponse<{ versions: SkillVersion[] }>(res)).versions
+}
+
+export async function restoreSkillVersion(id: string, timestamp: string): Promise<void> {
+  const res = await fetch(
+    `/api/skills/${encodeURIComponent(id)}/versions/${encodeURIComponent(timestamp)}/restore`,
+    { method: 'POST' },
+  )
+  await parseResponse<{ ok: boolean }>(res)
+}
+
 // ─── Security ────────────────────────────────────────────────────────────────
 
 export type FindingSeverity = 'info' | 'medium' | 'high'
-export type FindingKind = 'url' | 'prompt-injection' | 'shell-execution' | 'suspicious-unicode'
+export type FindingKind =
+  | 'url'
+  | 'prompt-injection'
+  | 'shell-execution'
+  | 'suspicious-unicode'
+  | 'env-var-exfil'
+  | 'markdown-exfil'
+  | 'conditional-activation'
+  | 'embedded-base64'
+  | 'html-injection'
+  | 'suspicious-destination'
+  | 'combo-exfil'
 
 export interface SecurityFinding {
   kind: FindingKind
@@ -411,6 +442,25 @@ export async function openBundleFileApi(id: string, which: 'top' | 'map'): Promi
     body: JSON.stringify({ which }),
   })
   await parseResponse<{ ok: boolean }>(res)
+}
+
+export type DriftStatus =
+  | 'ok'
+  | 'file-missing'
+  | 'block-missing'
+  | 'markers-corrupted'
+  | 'block-modified'
+  | 'map-modified'
+
+export interface DriftResult {
+  bundleId: string
+  status: DriftStatus
+  details?: string
+}
+
+export async function fetchBundleDrift(): Promise<DriftResult[]> {
+  const res = await fetch('/api/super-router/drift')
+  return (await parseResponse<{ results: DriftResult[] }>(res)).results
 }
 
 // ─── Auto Skill ───────────────────────────────────────────────────────────────

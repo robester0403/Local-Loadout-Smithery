@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { marked } from 'marked'
 import type { Skill } from '../types'
-import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SecurityScanResult } from '../api'
-import { scanSkillSecurity, updateSkillContent } from '../api'
+import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SecurityScanResult, SkillVersion } from '../api'
+import { fetchSkillVersions, restoreSkillVersion, scanSkillSecurity, updateSkillContent } from '../api'
 import CopyPromptButton from './CopyPromptButton'
 import EditableText from './EditableText'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
@@ -35,6 +35,16 @@ function formatDate(iso: string): string {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   })
+}
+
+// Snapshot timestamps replace `:` with `-` for filesystem safety; restore
+// them before parsing so Date can read them.
+function formatVersionTimestamp(ts: string): string {
+  const restored = ts.replace(/-(\d{2})-(\d{2}\.\d+Z)$/, ':$1:$2')
+  const d = new Date(restored)
+  return Number.isNaN(d.getTime())
+    ? ts
+    : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 const META_ROWS: { label: string; getValue: (s: Skill) => string }[] = [
@@ -85,17 +95,32 @@ function Section({
 export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, onSkillChanged, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
   const [showMap, setShowMap] = useState(false)
   const [security, setSecurity] = useState<SecurityScanResult | null>(null)
+  const [versions, setVersions] = useState<SkillVersion[]>([])
+  const [restoringTs, setRestoringTs] = useState<string | null>(null)
+  const [confirmRestoreTs, setConfirmRestoreTs] = useState<string | null>(null)
 
-  // Scan whenever the drawer opens onto a new skill. MCP servers have no
-  // file-backed body to scan — short-circuit to an empty result so the UI
-  // can still render a "no findings" placeholder uniformly.
+  async function refreshVersions() {
+    if (skill.type === 'mcp') { setVersions([]); return }
+    try {
+      setVersions(await fetchSkillVersions(skill.id))
+    } catch {
+      setVersions([])
+    }
+  }
+
+  // Refresh versions + rescan security whenever the drawer opens onto a
+  // different skill. MCP servers have no file-backed body, so both are no-ops.
   useEffect(() => {
     if (skill.type === 'mcp') {
+      setVersions([])
       setSecurity({ summary: { total: 0, high: 0, medium: 0, info: 0 }, findings: [] })
       return
     }
     let cancelled = false
     setSecurity(null)
+    fetchSkillVersions(skill.id)
+      .then(v => { if (!cancelled) setVersions(v) })
+      .catch(() => { if (!cancelled) setVersions([]) })
     scanSkillSecurity(skill.id)
       .then(r => { if (!cancelled) setSecurity(r) })
       .catch(() => { if (!cancelled) setSecurity({ summary: { total: 0, high: 0, medium: 0, info: 0 }, findings: [] }) })
@@ -108,6 +133,23 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     }
   }
 
+  async function handleRestoreVersion(ts: string) {
+    setConfirmRestoreTs(null)
+    setRestoringTs(ts)
+    try {
+      await restoreSkillVersion(skill.id, ts)
+      await refreshVersions()
+      // Tell the parent the skill content changed so the inventory refetches
+      // and the drawer rerenders with the restored body.
+      onSkillChanged?.(skill.id, {})
+    } catch {
+      // Surfacing the error inline is overkill for v1 — leave it as a no-op
+      // and rely on the user reopening the drawer to retry.
+    } finally {
+      setRestoringTs(null)
+    }
+  }
+
   // MCP servers are config-derived, not file-backed — no description/body
   // file exists to rewrite, so the inline editor is hidden for that type.
   const canEdit = skill.type !== 'mcp'
@@ -115,6 +157,9 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     const patch = { [field]: next }
     await updateSkillContent(skill.id, patch)
     onSkillChanged?.(skill.id, patch)
+    // The server snapshotted the pre-image before applying the patch — pull
+    // the fresh list so the History section reflects the new entry.
+    refreshVersions()
   }
   const saveDescription = (next: string) => saveField('description', next)
   const saveBody = (next: string) => saveField('body', next)
@@ -383,6 +428,44 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             )
           })()}
 
+          {skill.type !== 'mcp' && (
+            <Section
+              title={
+                versions.length === 0
+                  ? 'History — no snapshots yet'
+                  : `History — ${versions.length} version${versions.length === 1 ? '' : 's'}`
+              }
+              defaultOpen={false}
+            >
+              <div className="drawer-meta">
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6 }}>
+                  Pre-image snapshots saved before each edit. Restore creates a fresh snapshot so it's reversible.
+                </div>
+                {versions.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                    No snapshots yet — your next edit through this drawer will create one.
+                    Edits made outside the app (in your editor) are not captured.
+                  </div>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {versions.map(v => (
+                      <li key={v.timestamp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <span style={{ fontSize: 12 }}>{formatVersionTimestamp(v.timestamp)} <span style={{ color: 'var(--text-dim)' }}>· {v.sizeBytes} B</span></span>
+                        <button
+                          className="btn btn-sm"
+                          disabled={restoringTs !== null}
+                          onClick={() => setConfirmRestoreTs(v.timestamp)}
+                        >
+                          {restoringTs === v.timestamp ? 'Restoring…' : 'Restore'}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </Section>
+          )}
+
           {skill.account === 'cursor' && (() => {
             const histU = cursorUsage?.skills.find(x => x.skill === skill.name)
             const histActivations = histU?.activations ?? 0
@@ -566,6 +649,41 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           onSelect={onSelect}
           onSkillChanged={onSkillChanged}
         />
+      )}
+
+      {confirmRestoreTs && (
+        <div
+          className="modal-overlay"
+          onClick={e => { if (e.target === e.currentTarget) setConfirmRestoreTs(null) }}
+        >
+          <div className="modal" style={{ maxWidth: 460 }}>
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Restore this version?</div>
+                <div className="modal-subtitle">
+                  Saved {formatVersionTimestamp(confirmRestoreTs)}
+                </div>
+              </div>
+              <button className="btn btn-sm modal-close" onClick={() => setConfirmRestoreTs(null)}>×</button>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-dim)' }}>
+              The current file will be snapshotted first, so this is reversible. The live
+              body and description in the drawer will refresh to match the restored version.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-sm" onClick={() => setConfirmRestoreTs(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm btn-primary"
+                disabled={restoringTs !== null}
+                onClick={() => handleRestoreVersion(confirmRestoreTs)}
+              >
+                {restoringTs === confirmRestoreTs ? 'Restoring…' : 'Restore'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

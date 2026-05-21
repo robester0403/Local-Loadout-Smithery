@@ -13,10 +13,10 @@ export interface ResolvedSkillRow {
 
 const HEADER = '<!-- super-router:'
 
-function startMarker(id: string): string {
+export function startMarker(id: string): string {
   return `${HEADER}${id} start -->`
 }
-function endMarker(id: string): string {
+export function endMarker(id: string): string {
   return `${HEADER}${id} end -->`
 }
 
@@ -31,7 +31,7 @@ function blockRegex(id: string): RegExp {
   )
 }
 
-function renderTriggerBlock(b: Bundle, mapRelative: string): string {
+export function renderTriggerBlock(b: Bundle, mapRelative: string): string {
   return [
     startMarker(b.id),
     `## Skill group: ${b.name}`,
@@ -50,7 +50,7 @@ function describeRow(row: ResolvedSkillRow): string {
   return row.skill.description?.trim() ?? ''
 }
 
-function renderMapFile(b: Bundle, rows: ResolvedSkillRow[]): string {
+export function renderMapFile(b: Bundle, rows: ResolvedSkillRow[]): string {
   const lines: string[] = [
     `# Skill map: ${b.name}`,
     '',

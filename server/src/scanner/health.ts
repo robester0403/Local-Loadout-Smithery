@@ -1,5 +1,6 @@
 import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
+import { scanContent, type Finding } from '../security/scan'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
 const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
@@ -108,11 +109,36 @@ export function computeHealth(
     if (scopeIssue) issues.push(scopeIssue)
   }
 
+  // Security findings — fold into the same issues list so the existing UI
+  // (drawer accordion, Needs-review filter, inventory row badge, diagnostics
+  // tile) surfaces them without separate plumbing. Only high/medium findings
+  // bump the skill's health status; info-only findings (plain URLs) stay
+  // visible in the drawer's dedicated security section but don't mark the
+  // skill as "needs review."
+  if (skill.body || skill.description) {
+    const text = `${skill.description ?? ''}\n\n${skill.body ?? ''}`
+    for (const finding of scanContent(text)) {
+      const mapped = securityFindingToHealthIssue(finding)
+      if (mapped) issues.push(mapped)
+    }
+  }
+
   const hasError = issues.some(i => i.severity === 'error')
   const hasWarn = issues.some(i => i.severity === 'warn')
   const status = hasError ? 'error' : hasWarn ? 'warn' : 'ok'
 
   return { status, issues }
+}
+
+// Severity mapping: scanner `high` → health `error`, scanner `medium` → health
+// `warn`, scanner `info` → not surfaced as a health issue (still visible in
+// the drawer's security accordion via the dedicated API).
+function securityFindingToHealthIssue(f: Finding): HealthIssue | null {
+  if (f.severity === 'info') return null
+  return {
+    severity: f.severity === 'high' ? 'error' : 'warn',
+    message: `Security: ${f.message}`,
+  }
 }
 
 const GLOBAL_PATH_RE = /\/Users\/([^\s"')\]]+)/

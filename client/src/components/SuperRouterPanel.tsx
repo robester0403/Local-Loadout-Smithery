@@ -1,8 +1,22 @@
 import { useEffect, useState } from 'react'
-import type { Bundle } from '../api'
-import { deleteBundleApi, fetchBundles, openBundleFileApi, toggleBundleApi } from '../api'
+import type { Bundle, DriftResult, DriftStatus } from '../api'
+import {
+  deleteBundleApi,
+  fetchBundleDrift,
+  fetchBundles,
+  openBundleFileApi,
+  toggleBundleApi,
+} from '../api'
 import type { Skill } from '../types'
 import BundleEditorModal from './BundleEditorModal'
+
+const DRIFT_LABEL: Record<Exclude<DriftStatus, 'ok'>, string> = {
+  'file-missing': 'CLAUDE.md missing',
+  'block-missing': 'Block removed externally',
+  'markers-corrupted': 'Marker tags broken',
+  'block-modified': 'Block edited externally',
+  'map-modified': 'Map file edited externally',
+}
 
 interface Props {
   allSkills: Skill[]
@@ -17,10 +31,23 @@ function scopeLabel(b: Bundle): string {
 
 export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: Props) {
   const [bundles, setBundles] = useState<Bundle[]>([])
+  const [drift, setDrift] = useState<Record<string, DriftResult>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Bundle | null>(null)
+
+  async function refreshDrift() {
+    try {
+      const results = await fetchBundleDrift()
+      const map: Record<string, DriftResult> = {}
+      for (const r of results) map[r.bundleId] = r
+      setDrift(map)
+    } catch {
+      // Drift detection is best-effort UX sugar — don't block the panel
+      // if the endpoint hiccups.
+    }
+  }
 
   async function load() {
     setLoading(true)
@@ -28,6 +55,7 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
       const list = await fetchBundles()
       setBundles(list)
       onCountChange?.(list.length)
+      await refreshDrift()
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -45,8 +73,25 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
     try {
       const updated = await toggleBundleApi(b.id, next)
       setBundles(prev => prev.map(x => x.id === b.id ? updated : x))
+      await refreshDrift()
     } catch (e) {
       setBundles(prev => prev.map(x => x.id === b.id ? b : x))
+      setError((e as Error).message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function handleReapply(b: Bundle) {
+    setBusyId(b.id)
+    setError(null)
+    try {
+      // Re-running toggle with enabled=true rewrites both files from canonical
+      // content, which is exactly what we want.
+      const updated = await toggleBundleApi(b.id, true)
+      setBundles(prev => prev.map(x => x.id === b.id ? updated : x))
+      await refreshDrift()
+    } catch (e) {
       setError((e as Error).message)
     } finally {
       setBusyId(null)
@@ -117,7 +162,10 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
           </div>
         ) : (
           <div className="trash-list">
-            {bundles.map(b => (
+            {bundles.map(b => {
+              const d = drift[b.id]
+              const isDrifted = b.enabled && d && d.status !== 'ok'
+              return (
               <div key={b.id} className="trash-row" style={{ alignItems: 'flex-start' }}>
                 <div className="trash-info">
                   <div className="trash-name-row">
@@ -133,6 +181,34 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
                     }}>
                       {b.enabled ? 'ON' : 'OFF'}
                     </span>
+                    {b.enabled && d && (
+                      isDrifted ? (
+                        <span
+                          title={d.details ?? DRIFT_LABEL[d.status as Exclude<DriftStatus, 'ok'>]}
+                          style={{
+                            fontSize: 11,
+                            padding: '2px 6px',
+                            borderRadius: 3,
+                            background: 'var(--c-warn, #c89b3a)',
+                            color: '#1D1E24',
+                          }}
+                        >
+                          ⚠ {DRIFT_LABEL[d.status as Exclude<DriftStatus, 'ok'>]}
+                        </span>
+                      ) : (
+                        <span
+                          title="Bundle on disk matches expected state"
+                          aria-label="in sync"
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            background: 'var(--c-success)',
+                            display: 'inline-block',
+                          }}
+                        />
+                      )
+                    )}
                   </div>
                   <div className="trash-desc" style={{ marginTop: 4 }}>{b.trigger}</div>
                   <div className="trash-meta" style={{ marginTop: 4 }}>
@@ -141,6 +217,14 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
                   </div>
                 </div>
                 <div className="trash-actions" style={{ flexDirection: 'column', gap: 4 }}>
+                  {isDrifted && (
+                    <button
+                      className="btn btn-sm btn-primary"
+                      disabled={busyId === b.id}
+                      onClick={() => handleReapply(b)}
+                      title="Rewrite the trigger block and map file from the bundle's canonical state"
+                    >Re-apply</button>
+                  )}
                   <button
                     className={`btn btn-sm ${b.enabled ? 'btn-warn' : 'btn-primary'}`}
                     disabled={busyId === b.id}
@@ -171,7 +255,8 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
                   >Delete</button>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
 

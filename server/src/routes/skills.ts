@@ -10,6 +10,7 @@ import { decodeSkillId, encodeSkillId } from '../lib/ids'
 import { pathParam } from '../lib/params'
 import { assertWithinHome, HttpError, LOADOUT_DIR, MOVE_LOG_PATH } from '../lib/paths'
 import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWriter'
+import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
 
 const router = Router()
 
@@ -112,6 +113,12 @@ router.patch('/skills/:id', asyncHandler((req, res) => {
     }
   } catch { /* fall back to targetPath */ }
 
+  // Snapshot the pre-image so the user can roll back if the edit goes wrong.
+  // Snapshot first, then write — if the write throws, we still have the prior
+  // version on disk. Use the encoded id (req.params.id) as the snapshot key
+  // so it lines up with what the version routes look up.
+  snapshot(pathParam(req, 'id'), writePath)
+
   try {
     updateSkillFile(writePath, { description, body })
   } catch (err) {
@@ -122,6 +129,43 @@ router.patch('/skills/:id', asyncHandler((req, res) => {
   }
 
   res.json({ ok: true })
+}))
+
+// ─── Versions / rollback ─────────────────────────────────────────────────────
+
+function resolveSkillWritePath(encodedId: string): string {
+  const logicalPath = decodeSkillId(encodedId)
+  assertWithinHome(logicalPath)
+  const targetPath = fs.existsSync(logicalPath)
+    ? logicalPath
+    : fs.existsSync(logicalPath + '.disabled')
+      ? logicalPath + '.disabled'
+      : null
+  if (!targetPath) throw new HttpError(404, 'Skill file not found')
+  let writePath = targetPath
+  try {
+    if (fs.lstatSync(targetPath).isSymbolicLink()) {
+      writePath = fs.realpathSync(targetPath)
+      assertWithinHome(writePath)
+    }
+  } catch { /* fall back */ }
+  return writePath
+}
+
+router.get('/skills/:id/versions', asyncHandler((req, res) => {
+  res.json({ versions: listVersions(pathParam(req, 'id')) })
+}))
+
+router.post('/skills/:id/versions/:ts/restore', asyncHandler((req, res) => {
+  const encodedId = pathParam(req, 'id')
+  const ts = pathParam(req, 'ts')
+  const writePath = resolveSkillWritePath(encodedId)
+
+  const prepared = prepareRestore(encodedId, ts, writePath)
+  if (!prepared) throw new HttpError(404, 'Version not found')
+
+  fs.writeFileSync(writePath, prepared.content)
+  res.json({ ok: true, preRestoreSnapshot: prepared.preRestoreSnapshot })
 }))
 
 router.post('/skills/:id/uninstall', asyncHandler((req, res) => {
