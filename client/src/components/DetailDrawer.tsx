@@ -367,40 +367,51 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             </Section>
           )}
 
-          {skill.type !== 'mcp' && versions.length > 0 && (
+          {skill.type !== 'mcp' && (
             <Section
-              title={`History — ${versions.length} version${versions.length === 1 ? '' : 's'}`}
+              title={
+                versions.length === 0
+                  ? 'History — no snapshots yet'
+                  : `History — ${versions.length} version${versions.length === 1 ? '' : 's'}`
+              }
               defaultOpen={false}
             >
               <div className="drawer-meta">
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 6 }}>
                   Pre-image snapshots saved before each edit. Restore creates a fresh snapshot so it's reversible.
                 </div>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {versions.map(v => {
-                    const when = (() => {
-                      // Stored timestamps replace `:` with `-` to stay
-                      // filesystem-safe. Restore them so Date.parse works.
-                      const restored = v.timestamp.replace(/-(\d{2})-(\d{2}\.\d+Z)$/, ':$1:$2')
-                      const d = new Date(restored)
-                      return Number.isNaN(d.getTime())
-                        ? v.timestamp
-                        : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                    })()
-                    return (
-                      <li key={v.timestamp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                        <span style={{ fontSize: 12 }}>{when} <span style={{ color: 'var(--text-dim)' }}>· {v.sizeBytes} B</span></span>
-                        <button
-                          className="btn btn-sm"
-                          disabled={restoringTs !== null}
-                          onClick={() => handleRestoreVersion(v.timestamp)}
-                        >
-                          {restoringTs === v.timestamp ? 'Restoring…' : 'Restore'}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
+                {versions.length === 0 ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                    No snapshots yet — your next edit through this drawer will create one.
+                    Edits made outside the app (in your editor) are not captured.
+                  </div>
+                ) : (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {versions.map(v => {
+                      const when = (() => {
+                        // Stored timestamps replace `:` with `-` to stay
+                        // filesystem-safe. Restore them so Date.parse works.
+                        const restored = v.timestamp.replace(/-(\d{2})-(\d{2}\.\d+Z)$/, ':$1:$2')
+                        const d = new Date(restored)
+                        return Number.isNaN(d.getTime())
+                          ? v.timestamp
+                          : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                      })()
+                      return (
+                        <li key={v.timestamp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                          <span style={{ fontSize: 12 }}>{when} <span style={{ color: 'var(--text-dim)' }}>· {v.sizeBytes} B</span></span>
+                          <button
+                            className="btn btn-sm"
+                            disabled={restoringTs !== null}
+                            onClick={() => handleRestoreVersion(v.timestamp)}
+                          >
+                            {restoringTs === v.timestamp ? 'Restoring…' : 'Restore'}
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
               </div>
             </Section>
           )}
