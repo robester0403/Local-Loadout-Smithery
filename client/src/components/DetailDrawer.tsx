@@ -36,6 +36,16 @@ function formatDate(iso: string): string {
   })
 }
 
+// Snapshot timestamps replace `:` with `-` for filesystem safety; restore
+// them before parsing so Date can read them.
+function formatVersionTimestamp(ts: string): string {
+  const restored = ts.replace(/-(\d{2})-(\d{2}\.\d+Z)$/, ':$1:$2')
+  const d = new Date(restored)
+  return Number.isNaN(d.getTime())
+    ? ts
+    : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 const META_ROWS: { label: string; getValue: (s: Skill) => string }[] = [
   { label: 'Type', getValue: s => s.type },
   { label: 'Scope', getValue: s => s.scope },
@@ -85,6 +95,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
   const [showMap, setShowMap] = useState(false)
   const [versions, setVersions] = useState<SkillVersion[]>([])
   const [restoringTs, setRestoringTs] = useState<string | null>(null)
+  const [confirmRestoreTs, setConfirmRestoreTs] = useState<string | null>(null)
 
   async function refreshVersions() {
     if (skill.type === 'mcp') { setVersions([]); return }
@@ -107,9 +118,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
   }, [skill.id, skill.type])
 
   async function handleRestoreVersion(ts: string) {
-    if (!window.confirm(
-      `Restore this version?\n\nThe current file will be snapshotted first, so this is reversible.`,
-    )) return
+    setConfirmRestoreTs(null)
     setRestoringTs(ts)
     try {
       await restoreSkillVersion(skill.id, ts)
@@ -398,29 +407,18 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                   </div>
                 ) : (
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {versions.map(v => {
-                      const when = (() => {
-                        // Stored timestamps replace `:` with `-` to stay
-                        // filesystem-safe. Restore them so Date.parse works.
-                        const restored = v.timestamp.replace(/-(\d{2})-(\d{2}\.\d+Z)$/, ':$1:$2')
-                        const d = new Date(restored)
-                        return Number.isNaN(d.getTime())
-                          ? v.timestamp
-                          : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                      })()
-                      return (
-                        <li key={v.timestamp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
-                          <span style={{ fontSize: 12 }}>{when} <span style={{ color: 'var(--text-dim)' }}>· {v.sizeBytes} B</span></span>
-                          <button
-                            className="btn btn-sm"
-                            disabled={restoringTs !== null}
-                            onClick={() => handleRestoreVersion(v.timestamp)}
-                          >
-                            {restoringTs === v.timestamp ? 'Restoring…' : 'Restore'}
-                          </button>
-                        </li>
-                      )
-                    })}
+                    {versions.map(v => (
+                      <li key={v.timestamp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 0' }}>
+                        <span style={{ fontSize: 12 }}>{formatVersionTimestamp(v.timestamp)} <span style={{ color: 'var(--text-dim)' }}>· {v.sizeBytes} B</span></span>
+                        <button
+                          className="btn btn-sm"
+                          disabled={restoringTs !== null}
+                          onClick={() => setConfirmRestoreTs(v.timestamp)}
+                        >
+                          {restoringTs === v.timestamp ? 'Restoring…' : 'Restore'}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 )}
               </div>
@@ -610,6 +608,41 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
           onSelect={onSelect}
           onSkillChanged={onSkillChanged}
         />
+      )}
+
+      {confirmRestoreTs && (
+        <div
+          className="modal-overlay"
+          onClick={e => { if (e.target === e.currentTarget) setConfirmRestoreTs(null) }}
+        >
+          <div className="modal" style={{ maxWidth: 460 }}>
+            <div className="modal-header">
+              <div>
+                <div className="modal-title">Restore this version?</div>
+                <div className="modal-subtitle">
+                  Saved {formatVersionTimestamp(confirmRestoreTs)}
+                </div>
+              </div>
+              <button className="btn btn-sm modal-close" onClick={() => setConfirmRestoreTs(null)}>×</button>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-dim)' }}>
+              The current file will be snapshotted first, so this is reversible. The live
+              body and description in the drawer will refresh to match the restored version.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-sm" onClick={() => setConfirmRestoreTs(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-sm btn-primary"
+                disabled={restoringTs !== null}
+                onClick={() => handleRestoreVersion(confirmRestoreTs)}
+              >
+                {restoringTs === confirmRestoreTs ? 'Restoring…' : 'Restore'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )
