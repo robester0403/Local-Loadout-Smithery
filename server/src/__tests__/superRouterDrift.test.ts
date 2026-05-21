@@ -180,6 +180,37 @@ describe('detectDrift', () => {
     expect(detectDrift(b, rows).status).toBe('map-modified')
   })
 
+  it('detects drift for Codex-target bundles (global)', () => {
+    const b = bundle({ target: 'codex', slug: 'codex-bundle' })
+    const rows = rowsFor(b)
+    applyBundle(b, rows)
+    expect(detectDrift(b, rows).status).toBe('ok')
+
+    // Hand-edit the AGENTS.md the way a user would.
+    const agentsMd = path.join(tmp, '.codex', 'AGENTS.md')
+    const original = fs.readFileSync(agentsMd, 'utf-8')
+    fs.writeFileSync(agentsMd, original.replace('When refactoring existing code.', 'TAMPERED'))
+    expect(detectDrift(b, rows).status).toBe('block-modified')
+  })
+
+  it('detects drift for Codex-target bundles (project scope)', () => {
+    const project = path.join(tmp, 'my-codex-project')
+    fs.mkdirSync(project, { recursive: true })
+    const b = bundle({
+      id: 'codex-proj',
+      slug: 'codex-proj',
+      target: 'codex',
+      scope: { kind: 'project', path: project },
+    })
+    const rows = rowsFor(b)
+    applyBundle(b, rows)
+    fs.appendFileSync(
+      path.join(project, '.codex', 'super-router', `${b.slug}.md`),
+      '\nUSER EDITED\n',
+    )
+    expect(detectDrift(b, rows).status).toBe('map-modified')
+  })
+
   it('treats Claude and Cursor bundles in the same CLAUDE.md as independent', () => {
     const project = path.join(tmp, 'p2')
     fs.mkdirSync(project, { recursive: true })

@@ -170,7 +170,7 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
                 <div className="trash-info">
                   <div className="trash-name-row">
                     <span className="trash-name">{b.name}</span>
-                    <span className={`type-badge type-${b.target === 'claude' ? 'skill' : 'subagent'}`}>{b.target}</span>
+                    <span className={`type-badge type-${b.target === 'claude' ? 'skill' : b.target === 'cursor' ? 'subagent' : 'mcp'}`}>{b.target}</span>
                     <span className={`scope-badge scope-${b.scope.kind}`}>{scopeLabel(b)}</span>
                     <span style={{
                       fontSize: 11,

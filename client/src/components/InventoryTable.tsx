@@ -21,12 +21,21 @@ interface Props {
   onSelectAll?: (checked: boolean) => void
   onReclassify?: (skill: Skill) => void
   /**
-   * When present, indicates this table is rendering the Cursor tab; the cost
-   * cells switch to live-usage cells (count + last-used) for cursor rows.
-   * Map keys are skill names; entries are absent when a skill has no
-   * recorded activations since polling began.
+   * How the cost columns (Active$ / Loaded$ / Total$) render:
+   *   - 'dollars' (default): real dollars from token usage.
+   *   - 'cursor-live-usage': Active$ → activation count, Loaded$ → relative
+   *     last-used time, Total$ → "—". Requires `liveUsage`.
+   *   - 'unavailable': all three cells show "—" with explanatory tooltips
+   *     (used by ecosystems with no per-skill cost or activation signal,
+   *     e.g. Codex today).
+   *
+   * Per-tab decision, not per-row — InventoryTable does not inspect
+   * `skill.account`, so adding a new ecosystem doesn't require editing
+   * this component.
    */
-  cursorLiveUsage?: Map<string, { count: number; lastSeen: number }>
+  costMode?: 'dollars' | 'cursor-live-usage' | 'unavailable'
+  /** Per-skill live activity. Only consulted when costMode === 'cursor-live-usage'. */
+  liveUsage?: Map<string, { count: number; lastSeen: number }>
 }
 
 function tfLabel(tf: Timeframe): string {
@@ -99,7 +108,7 @@ function ContextCell({ skill }: { skill: Skill }) {
 
 export default function InventoryTable({
   skills, sortKey, sortDir, onSort, selected, onSelect, onToggle, onBreakdown, timeframe,
-  selectedIds, onSelectId, onSelectAll, onReclassify, cursorLiveUsage,
+  selectedIds, onSelectId, onSelectAll, onReclassify, liveUsage, costMode = 'dollars',
 }: Props) {
   const { columns: visible } = useSettings()
   const suffix = timeframe ? tfLabel(timeframe) : ''
@@ -157,23 +166,16 @@ export default function InventoryTable({
         <tbody>
           {skills.map(skill => {
             const isMCP = skill.type === 'mcp'
-            const isCursor = skill.account === 'cursor'
-            // Codex behaves like Cursor for the cost columns — no per-skill
-            // billing data, no activation signal — but has no live-usage
-            // repurpose either, so all three dollar cells just show "—".
-            const isCodex = skill.account === 'codex'
-            // For cursor rows: Active/Loaded columns repurposed as live usage.
-            //   Active$  → "Used" cell    (count of activations since polling)
-            //   Loaded$  → "Last used"    (relative date of last activation)
-            //   Total$   → "—"            (no meaningful per-skill total)
-            const cursorLive = isCursor ? cursorLiveUsage?.get(skill.name) : undefined
-            const cursorUsedCount = cursorLive?.count ?? 0
-            const cursorLastSeen = cursorLive?.lastSeen ?? 0
-            const cursorUsedTitle = cursorUsedCount > 0
-              ? `${cursorUsedCount} activation${cursorUsedCount === 1 ? '' : 's'} recorded since LSM started polling Cursor's recently-used lists.`
+            const useCursorStyleUsage = costMode === 'cursor-live-usage'
+            const noCostData = costMode === 'unavailable'
+            const liveEntry = useCursorStyleUsage ? liveUsage?.get(skill.name) : undefined
+            const liveUsedCount = liveEntry?.count ?? 0
+            const liveLastSeen = liveEntry?.lastSeen ?? 0
+            const liveUsedTitle = liveUsedCount > 0
+              ? `${liveUsedCount} activation${liveUsedCount === 1 ? '' : 's'} recorded since LSM started polling for live usage.`
               : 'No activations recorded since polling began. Body/listing token sizes are visible in the detail drawer.'
-            const cursorLastSeenTitle = cursorLastSeen
-              ? `Last activation: ${new Date(cursorLastSeen).toLocaleString()}`
+            const liveLastSeenTitle = liveLastSeen
+              ? `Last activation: ${new Date(liveLastSeen).toLocaleString()}`
               : 'No activations recorded yet.'
             return (
               <tr
@@ -243,15 +245,15 @@ export default function InventoryTable({
                 )}
                 {visible.activeDollars && (
                 <td className="col-activeDollars col-numeric">
-                  {isCodex ? (
-                    <span className="col-mcp-dash" title="Codex doesn't expose a per-skill activation signal.">—</span>
-                  ) : isCursor ? (
-                    cursorUsedCount > 0 ? (
-                      <span className="cursor-live-count" title={cursorUsedTitle}>
-                        {cursorUsedCount}
+                  {noCostData ? (
+                    <span className="col-mcp-dash" title="This ecosystem doesn't expose per-skill activation or billing data.">—</span>
+                  ) : useCursorStyleUsage ? (
+                    liveUsedCount > 0 ? (
+                      <span className="cursor-live-count" title={liveUsedTitle}>
+                        {liveUsedCount}
                       </span>
                     ) : (
-                      <span className="col-mcp-dash" title={cursorUsedTitle}>0</span>
+                      <span className="col-mcp-dash" title={liveUsedTitle}>0</span>
                     )
                   ) : isMCP ? (
                     skill.activeDollars > 0
@@ -270,11 +272,11 @@ export default function InventoryTable({
                 )}
                 {visible.loadedDollars && (
                 <td className="col-loadedDollars col-numeric">
-                  {isCodex ? (
-                    <span className="col-mcp-dash" title="Codex doesn't expose activation timestamps.">—</span>
-                  ) : isCursor ? (
-                    <span className={cursorLastSeen ? '' : 'col-mcp-dash'} title={cursorLastSeenTitle}>
-                      {fmtRelative(cursorLastSeen)}
+                  {noCostData ? (
+                    <span className="col-mcp-dash" title="This ecosystem doesn't expose activation timestamps.">—</span>
+                  ) : useCursorStyleUsage ? (
+                    <span className={liveLastSeen ? '' : 'col-mcp-dash'} title={liveLastSeenTitle}>
+                      {fmtRelative(liveLastSeen)}
                     </span>
                   ) : isMCP ? <span className="col-mcp-dash">—</span> : (
                     <span
@@ -289,10 +291,10 @@ export default function InventoryTable({
                 )}
                 {visible.totalDollars && (
                 <td className="col-totalDollars col-numeric">
-                  {isCodex ? (
-                    <span className="col-mcp-dash" title="Codex doesn't expose per-skill billing.">—</span>
-                  ) : isCursor ? (
-                    <span className="col-mcp-dash" title="Cursor billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
+                  {noCostData ? (
+                    <span className="col-mcp-dash" title="This ecosystem doesn't expose per-skill billing.">—</span>
+                  ) : useCursorStyleUsage ? (
+                    <span className="col-mcp-dash" title="Billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
                   ) : isMCP ? (
                     skill.totalDollars > 0
                       ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>
@@ -310,10 +312,11 @@ export default function InventoryTable({
                 )}
                 {visible.enabled && (
                 <td className="col-enabled" onClick={e => e.stopPropagation()}>
-                  {isCodex ? (
-                    <span className="col-mcp-dash" title="Codex has no enable/disable mechanism for AGENTS.md — edit the file directly.">—</span>
-                  ) : isCursor ? (
-                    <span className="col-mcp-dash" title="Cursor manages skill activation through its own UI">—</span>
+                  {/* Toggling is supported only on tabs where we have the
+                      authoritative state (costMode === 'dollars'). Other
+                      ecosystems manage activation through their own UI. */}
+                  {costMode !== 'dollars' ? (
+                    <span className="col-mcp-dash" title="This ecosystem manages skill activation through its own UI — edit the source file or its own controls.">—</span>
                   ) : isMCP ? (
                     <span className="col-mcp-dash" title="Configure in ~/.claude.json">—</span>
                   ) : (

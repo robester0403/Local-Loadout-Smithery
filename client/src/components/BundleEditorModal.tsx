@@ -158,6 +158,7 @@ export default function BundleEditorModal({
               >
                 <option value="claude">Claude</option>
                 <option value="cursor">Cursor</option>
+                <option value="codex">Codex</option>
               </select>
             </div>
             <div style={{ flex: 1 }}>
