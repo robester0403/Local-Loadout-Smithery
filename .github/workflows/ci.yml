@@ -18,5 +18,6 @@ jobs:
       - run: npm ci
       - run: npm --prefix client ci
       - run: npm test
-      - run: npx tsc -p tsconfig.server.json --noEmit
-      - run: npm --prefix client run build
+      - run: npm --prefix client run lint
+        continue-on-error: true
+      - run: npm run build
