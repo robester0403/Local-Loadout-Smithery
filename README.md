@@ -1,5 +1,7 @@
 # Local Loadout Smithery
 
+![CI](https://github.com/robester0403/Local-Loadout-Smithery/actions/workflows/ci.yml/badge.svg)
+
 <img width="250" height="300" alt="image" src="https://github.com/user-attachments/assets/6ac8b937-ae0c-4d0d-82aa-018349d8d837" />
 
 The control panel for your Claude Code loadout. See every skill, slash command, subagent, and MCP server you have, what each one costs in tokens, and which ones aren't pulling their weight — all in one place.
