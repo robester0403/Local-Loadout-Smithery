@@ -39,11 +39,13 @@ export default function CodexTab(props: Props) {
         <div className="cursor-tab-empty-icon">◌</div>
         <div className="cursor-tab-empty-title">No Codex skills discovered</div>
         <div className="cursor-tab-empty-sub">
-          Loadout Smithery looks for a global <code>~/.codex/AGENTS.md</code> and
-          per-project <code>&lt;cwd&gt;/AGENTS.md</code> files (project paths come
-          from Codex's session metadata under <code>~/.codex/sessions/</code>).
-          If Codex isn't installed or you haven't created any AGENTS.md files
-          yet, this tab will stay empty.
+          Loadout Smithery scans <code>~/.codex/skills/</code>,{' '}
+          <code>~/.codex/commands/</code>, <code>~/.codex/agents/</code>, the
+          global <code>~/.codex/AGENTS.md</code>, and per-project{' '}
+          <code>&lt;cwd&gt;/AGENTS.md</code> files (project paths come from
+          Codex's session metadata under <code>~/.codex/sessions/</code>). If
+          Codex isn't installed or you haven't created any of these yet, this
+          tab will stay empty.
         </div>
       </div>
     )
