@@ -563,13 +563,23 @@ export default function App() {
         </div>
 
         <div className="header-right">
-          <ProfileSwitcher
-            profilesData={profilesData}
-            allSkillIds={skills.map(s => s.id)}
-            onActivate={handleActivateProfile}
-            onCreate={handleCreateProfile}
-            onDelete={handleDeleteProfile}
-          />
+          {activeTab === 'inventory' && (
+            // ProfileSwitcher is Claude-only — activation works against
+            // ~/.claude* symlinks. Showing it on Cursor / Codex tabs implies
+            // profiles work everywhere; passing every ecosystem's ids in
+            // allSkillIds also pre-seeded "create profile from all skills"
+            // with Cursor + Codex ids that the server now correctly filters
+            // out (LOC-37) — but the UI surface should match the new scope.
+            <ProfileSwitcher
+              profilesData={profilesData}
+              allSkillIds={skills
+                .filter(s => s.account !== 'cursor' && s.account !== 'codex')
+                .map(s => s.id)}
+              onActivate={handleActivateProfile}
+              onCreate={handleCreateProfile}
+              onDelete={handleDeleteProfile}
+            />
+          )}
           {activeTab === 'inventory' && <TimeframePicker value={timeframe} onChange={setTimeframe} />}
           <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
             <IconHelp size={14} stroke={1.75} aria-hidden />
