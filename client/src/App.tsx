@@ -737,20 +737,24 @@ export default function App() {
               {selectedIds.size > 0 && (
                 <div className="bulk-bar">
                   <span className="bulk-count">{selectedIds.size} selected</span>
-                  <button className="btn btn-sm" onClick={async () => {
-                    const targets = filtered.filter(s => selectedIds.has(s.id))
-                    const prompt = getBundledPrompt(targets)
-                    try {
-                      const result = await launchClaude(prompt)
-                      showToast(result.platform === 'unsupported'
-                        ? 'Prompt copied — open Claude Code manually'
-                        : 'Prompt copied + Claude Code launched')
-                    } catch {
-                      await navigator.clipboard.writeText(prompt)
-                      showToast('Prompt copied to clipboard')
-                    }
-                  }}>
-                    Generate combined prompt
+                  <button
+                    className="btn btn-sm"
+                    title="Generates a Claude-Code-flavored fix-up prompt referencing these Cursor skill paths, then launches Claude Code. Useful for batch-cleaning Cursor health issues from Claude."
+                    onClick={async () => {
+                      const targets = filtered.filter(s => selectedIds.has(s.id))
+                      const prompt = getBundledPrompt(targets)
+                      try {
+                        const result = await launchClaude(prompt)
+                        showToast(result.platform === 'unsupported'
+                          ? 'Prompt copied — open Claude Code manually'
+                          : 'Prompt copied + Claude Code launched')
+                      } catch {
+                        await navigator.clipboard.writeText(prompt)
+                        showToast('Prompt copied to clipboard')
+                      }
+                    }}
+                  >
+                    Fix in Claude Code
                   </button>
                   {/* No "Disable selected" — Cursor manages skill activation
                       through its own UI; we can't toggle it from here. */}
