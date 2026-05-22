@@ -1,7 +1,7 @@
 import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
 import { scanContent, type Finding } from '../security/scan'
-import { reconcileBaseline } from '../state/skillBaselines'
+import { diffAgainstBaseline, reconcileBaseline } from '../state/skillBaselines'
 import { stripSuperRouterBlocks } from '../superRouter/writer'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
@@ -49,7 +49,18 @@ const COMMON_VERBS = new Set([
 
 export function computeHealth(
   skill: Omit<Skill, 'health' | 'disabled' | 'suggestedType'>,
-  context?: { descriptionCounts: Map<string, number> }
+  context?: {
+    descriptionCounts?: Map<string, number>
+    /**
+     * When true, use the read-only diffAgainstBaseline instead of
+     * reconcileBaseline (which writes the baseline on first-seen). Lets
+     * intermediate health computations (e.g. buildSkill's stub pass before
+     * the deduped final recompute) avoid double-writing baselines that
+     * the final pass will write anyway. Default false (writes on first
+     * sighting), preserving the original single-call contract (LOC-50).
+     */
+    skipBaselineWrite?: boolean
+  }
 ): HealthResult {
   const issues: HealthIssue[] = []
 
@@ -85,7 +96,7 @@ export function computeHealth(
       }
 
       // Duplicate description
-      if (context) {
+      if (context?.descriptionCounts) {
         const key = skill.description.toLowerCase().trim()
         const count = context.descriptionCounts.get(key) ?? 0
         if (count >= 2) {
@@ -130,14 +141,19 @@ export function computeHealth(
   // can't retroactively know pre-LSM history); subsequent sightings with
   // different content surface as a warn-level health issue.
   //
-  // Strip super-router trigger blocks before reconciling: the bundle
-  // writer injects those into CLAUDE.md / AGENTS.md / Cursor MD as part
-  // of normal operation, and Codex AGENTS.md is also a discovered skill,
-  // so without this strip enabling a Codex bundle would surface its own
-  // write as a shadow edit. SuperRouter has its own drift detection for
-  // changes *inside* the block (LOC-23).
+  // When skipBaselineWrite is set, we read the baseline but don't write
+  // it — the caller has another pass that will reconcile authoritatively
+  // (LOC-50). Strip super-router trigger blocks first: the bundle writer
+  // injects those into CLAUDE.md / AGENTS.md / Cursor MD as part of normal
+  // operation, and Codex AGENTS.md is also a discovered skill — so without
+  // this strip, enabling a bundle would surface its own write as a shadow
+  // edit. SuperRouter has its own drift detection for changes *inside* the
+  // block (LOC-23, LOC-41).
   if (skill.body !== undefined) {
-    const drift = reconcileBaseline(skill.id, stripSuperRouterBlocks(skill.body))
+    const stripped = stripSuperRouterBlocks(skill.body)
+    const drift = context?.skipBaselineWrite
+      ? diffAgainstBaseline(skill.id, stripped)
+      : reconcileBaseline(skill.id, stripped)
     if (drift.kind === 'shadow-edit') {
       const detail = drift.summary ? ` ${drift.summary}.` : ''
       issues.push({
