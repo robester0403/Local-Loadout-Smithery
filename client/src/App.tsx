@@ -89,6 +89,19 @@ export default function App() {
   const [lastMove, setLastMove] = useState<{ newId: string; originalType: SkillType; skillName: string } | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('inventory')
+
+  // Switching tabs is a context switch — the user has moved to a different
+  // ecosystem with its own skill set. Carrying selection + drawer + breakdown
+  // across the boundary surfaces stale state from the previous tab (bulk
+  // actions pre-seeded with hidden ids, a drawer floating over the wrong
+  // table, etc). Clear them on every transition.
+  function switchTab(next: ActiveTab) {
+    if (next === activeTab) return
+    setActiveTab(next)
+    setSelected(null)
+    setSelectedIds(new Set())
+    setBreakdownSkill(null)
+  }
   // Sidebar collapse state. Persisted across reloads via localStorage so the
   // user's layout choice survives — same pattern as the `loadoutsmith-timeframe`
   // preference above.
@@ -534,16 +547,16 @@ export default function App() {
         <div className="header-tabs">
           <button
             className={`header-tab${activeTab === 'inventory' ? ' active' : ''}`}
-            onClick={() => setActiveTab('inventory')}
+            onClick={() => switchTab('inventory')}
           >Claude Code</button>
           <button
             className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
-            onClick={() => setActiveTab('cursor')}
+            onClick={() => switchTab('cursor')}
             title="Cursor skills + activation data scraped from Cursor's local SQLite"
           >Cursor</button>
           <button
             className={`header-tab${activeTab === 'codex' ? ' active' : ''}`}
-            onClick={() => setActiveTab('codex')}
+            onClick={() => switchTab('codex')}
             title="Codex CLI AGENTS.md files — global + per-project (mined from ~/.codex/sessions)"
           >Codex</button>
         </div>
