@@ -34,7 +34,11 @@ router.post('/profiles/:name/activate', asyncHandler((req, res) => {
   // The synthetic name '__all__' represents "no profile, restore everything".
   const raw = pathParam(req, 'name')
   const name = raw === '__all__' ? null : raw
-  const skills = discoverAllSkills()
+  // Profiles are a Claude-only concept — activation disables every skill NOT
+  // in the profile set, so iterating Cursor + Codex here would rename their
+  // skill files (~/.cursor/**/SKILL.md, ~/.codex/AGENTS.md) to *.disabled and
+  // silently break those installs. Mirror the inventory route's exclude.
+  const skills = discoverAllSkills({ excludeAccounts: ['cursor', 'codex'] })
   activateProfile(name, skills.map(s => ({ id: s.id, disabled: s.disabled })))
   res.json({ ok: true })
 }))
