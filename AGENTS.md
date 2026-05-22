@@ -18,10 +18,11 @@ security scans, cost tracking, and SuperRouter bundle management.
 ## Boot sequence — do this every session
 
 1. **Read LOC-5.** The "Status" section at the top is the live critical path and recent landings. If it's stale, that's the first thing to flag.
-2. **Find next work.** Query Linear for the highest-priority `Todo` issue in the team:
-   ```
-   mcp__linear__list_issues team=Local-loadout-smithery state=Todo orderBy=priority limit=5
-   ```
+2. **Find next work + check for collisions.** Two queries:
+   - Candidates: `mcp__linear__list_issues team=Local-loadout-smithery state=Todo orderBy=priority limit=5`
+   - In-flight: `mcp__linear__list_issues team=Local-loadout-smithery state="In Progress"`
+
+   If your top candidate Todo shares any `hot-file:*` label with an in-flight ticket, skip it and try the next. Hot-file labels mean "two PRs touching this file will conflict at merge — serialize." This is the only coordination another concurrent agent needs.
 3. **Read the ticket.** `Todo` = "Ready for agent" = self-contained spec. The description must include files to touch, tests to add, and acceptance criteria. If it doesn't, **ask the human** before executing — don't guess.
 4. **Move it to In Progress** so other agents don't pick the same one:
    ```
