@@ -96,14 +96,19 @@ export function findAccounts(): string[] {
   }
 
   // Codex CLI: single ~/.codex/ tree, no settings.json. Sentinel against
-  // either an AGENTS.md at the root OR a sessions/ dir — either is enough
-  // proof that Codex is installed and worth scanning.
+  // any of the recognized loadout surfaces — modern Codex installs use
+  // the same skills/commands/agents layout Claude does, older ones rely
+  // on a global AGENTS.md, and either way the sessions/ dir is created
+  // on first use. Any one is enough proof that Codex is installed.
   const codexDir = path.join(home, '.codex')
   try {
     if (fs.statSync(codexDir).isDirectory()) {
       const hasLoadout = (
         fileExists(path.join(codexDir, 'AGENTS.md')) ||
-        isDir(path.join(codexDir, 'sessions'))
+        isDir(path.join(codexDir, 'sessions')) ||
+        isDir(path.join(codexDir, 'skills')) ||
+        isDir(path.join(codexDir, 'commands')) ||
+        isDir(path.join(codexDir, 'agents'))
       )
       if (hasLoadout) accounts.push(codexDir)
     }
@@ -351,11 +356,20 @@ function resolveClaudeProjectCwds(accountDir: string): string[] {
 }
 
 function discoverInAccount(accountDir: string, account: string): Skill[] {
-  // Codex's file model differs from Claude/Cursor — it uses a single
-  // AGENTS.md per scope rather than skills/commands/agents directories.
-  // Route it through a dedicated module instead of bending AccountAdapter
-  // to fit both shapes.
-  if (account === 'codex') return discoverCodexSkills(accountDir)
+  // Codex has two coexisting layouts:
+  //   - AGENTS.md (global + per-project) — the legacy convention,
+  //     handled by the dedicated codex/discover module.
+  //   - skills/ commands/ agents/ — the modern Codex CLI layout, identical
+  //     to Claude's shape and handled by the shared helpers below.
+  // Both can coexist on the same machine, so we union the results.
+  if (account === 'codex') {
+    const skills: Skill[] = []
+    skills.push(...discoverCodexSkills(accountDir))
+    skills.push(...discoverSkillsDir(path.join(accountDir, 'skills'), 'global', account))
+    skills.push(...discoverCommandsDir(path.join(accountDir, 'commands'), 'global', account))
+    skills.push(...discoverAgentsDir(path.join(accountDir, 'agents'), 'global', account))
+    return skills
+  }
 
   const adapter = adapterFor(accountDir, account)
   const skills: Skill[] = []

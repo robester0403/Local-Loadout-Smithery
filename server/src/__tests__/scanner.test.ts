@@ -216,4 +216,74 @@ describe('discoverAllSkills (fixture)', () => {
 
     expect(skills).toEqual([])
   })
+
+  // LOC-61: modern Codex installs use the same skills/ commands/ agents/
+  // layout Claude does. Pre-fix, findAccounts only recognized ~/.codex/ when
+  // AGENTS.md or sessions/ existed, and discovery never read the dirs.
+  it('discovers ~/.codex/skills, commands, and agents (no AGENTS.md required)', () => {
+    const codexHome = path.join(tmp, 'codex-modern-home')
+    write(
+      path.join(codexHome, '.codex', 'skills', 'pdf', 'SKILL.md'),
+      '---\nname: pdf\ndescription: Read and create PDFs reliably.\n---\nPdf body.\n',
+    )
+    write(
+      path.join(codexHome, '.codex', 'commands', 'codex-cmd.md'),
+      '---\nname: codex-cmd\ndescription: a codex command.\n---\nCmd body.\n',
+    )
+    write(
+      path.join(codexHome, '.codex', 'agents', 'codex-agent.md'),
+      '---\nname: codex-agent\ndescription: a codex agent.\n---\nAgent body.\n',
+    )
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = codexHome
+    const skills = discoverAllSkills()
+    process.env['HOME'] = orig
+
+    const codex = skills.filter(s => s.account === 'codex')
+    const byName = Object.fromEntries(codex.map(s => [s.name, s]))
+
+    expect(byName['pdf']).toBeDefined()
+    expect(byName['pdf'].type).toBe('skill')
+    expect(byName['pdf'].scope).toBe('global')
+
+    expect(byName['codex-cmd']).toBeDefined()
+    expect(byName['codex-cmd'].type).toBe('command')
+
+    expect(byName['codex-agent']).toBeDefined()
+    expect(byName['codex-agent'].type).toBe('subagent')
+  })
+
+  it('discovers AGENTS.md and ~/.codex/skills together', () => {
+    const codexHome = path.join(tmp, 'codex-coexist-home')
+    write(path.join(codexHome, '.codex', 'AGENTS.md'), '# global codex notes\n')
+    write(
+      path.join(codexHome, '.codex', 'skills', 'pdf', 'SKILL.md'),
+      '---\nname: pdf\ndescription: Read and create PDFs reliably.\n---\nbody.\n',
+    )
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = codexHome
+    const skills = discoverAllSkills()
+    process.env['HOME'] = orig
+
+    const codex = skills.filter(s => s.account === 'codex')
+    const names = codex.map(s => s.name).sort()
+    // AGENTS.md surfaces as the "AGENTS" override name; pdf from skills/ dir
+    expect(names).toEqual(['AGENTS', 'pdf'])
+  })
+})
+
+describe('findAccounts (Codex modern layout)', () => {
+  it('detects ~/.codex/ when only skills/ exists', () => {
+    const codexHome = path.join(tmp, 'codex-skills-only')
+    fs.mkdirSync(path.join(codexHome, '.codex', 'skills'), { recursive: true })
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = codexHome
+    const accounts = findAccounts()
+    process.env['HOME'] = orig
+
+    expect(accounts.map(a => path.basename(a))).toContain('.codex')
+  })
 })
