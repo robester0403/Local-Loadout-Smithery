@@ -8,3 +8,8 @@ dist/
 coverage/
 planning_notes/
 .claude/
+
+# Override the global gitignore that blocks CLAUDE.md — for THIS repo,
+# CLAUDE.md is the canonical project briefing (sibling of AGENTS.md and
+# .cursor/rules/project.mdc) and must be committed.
+!CLAUDE.md

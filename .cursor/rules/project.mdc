@@ -1,0 +1,130 @@
+---
+description: Local Loadout Smithery project briefing — workflow, conventions, and how to find next work
+alwaysApply: true
+---
+
+# Local Loadout Smithery — Agent Briefing
+
+> **Read this on every fresh session.** Identical copies live at
+> `CLAUDE.md`, `AGENTS.md`, and `.cursor/rules/project.mdc`. Keep them in
+> sync — if you edit one, edit all three.
+
+## What this is
+
+A local control panel for your Claude Code / Cursor / Codex skill
+loadouts. Scans `~/.claude*`, `~/.cursor`, `~/.codex` and presents
+skills, commands, and subagents in a single React UI with health checks,
+security scans, cost tracking, and SuperRouter bundle management.
+
+- Repo: https://github.com/robester0403/Local-Loadout-Smithery
+- Linear team: `Local-loadout-smithery`
+- Live roadmap: **LOC-5** — read this first. Its description has the current critical path **and the Linear team manifest** (live IDs for backlog parents, archive, etc.). When you need a parent issue ID, look it up there, not here — that keeps this briefing stable across renumbers and lets Linear stay the dynamic source of truth.
+
+## Boot sequence — do this every session
+
+1. **Read LOC-5.** The "Status" section at the top is the live critical path and recent landings. If it's stale, that's the first thing to flag.
+2. **Find next work + check for collisions.** Two queries:
+   - Candidates: `mcp__linear__list_issues team=Local-loadout-smithery state=Todo orderBy=priority limit=5`
+   - In-flight: `mcp__linear__list_issues team=Local-loadout-smithery state="In Progress"`
+
+   If your top candidate Todo shares any `hot-file:*` label with an in-flight ticket, skip it and try the next. Hot-file labels mean "two PRs touching this file will conflict at merge — serialize." This is the only coordination another concurrent agent needs.
+3. **Read the ticket.** `Todo` = "Ready for agent" = self-contained spec. The description must include files to touch, tests to add, and acceptance criteria. If it doesn't, **ask the human** before executing — don't guess.
+4. **Move it to In Progress** so other agents don't pick the same one:
+   ```
+   mcp__linear__save_issue id=<LOC-X> state="In Progress"
+   ```
+5. **Branch off `main`** using Linear's `gitBranchName` (it's on every issue):
+   ```
+   git checkout main && git pull --ff-only
+   git checkout -b robkso/loc-X-short-slug
+   ```
+6. **Code, test, commit, push, PR.** PR body must contain `Fixes LOC-X` so Linear's GitHub integration auto-closes the issue on merge.
+7. After merge, the issue auto-flips to `Done`. No manual state change needed.
+
+## State machine
+
+- **Backlog** — unrefined / META parents (LOC-5, LOC-28, LOC-30, LOC-62). Never pick these up directly.
+- **Todo** — ready for agent. Self-contained spec. Pick up the highest-priority one.
+- **In Progress** — you're working on it. Set this when you start.
+- **In Review** — PR open, awaiting human merge.
+- **Done** — merged. GitHub integration auto-transitions.
+- **Canceled** — won't-fix or archived.
+
+## Conventions
+
+### Branches
+- Format: `robkso/loc-XX-short-slug` (Linear gives this exact string on each issue as `gitBranchName`)
+- One issue per branch. Don't pull in scope from neighbors without asking.
+
+### Commits
+- Conventional Commits: `feat(scope): …`, `fix(scope): …`, `refactor(scope): …`, `chore(scope): …`
+- Body explains **WHY**, not WHAT. The diff already shows what.
+- No `Co-Authored-By: Claude` lines. No "Generated with Claude Code" footers.
+
+### PRs
+- Title matches the commit subject
+- Body must contain `Fixes LOC-XX` (or `Closes LOC-XX`) so Linear auto-closes on merge
+- Include a Test Plan checklist (the test commands you ran + manual steps to verify)
+- No emoji in titles or bodies unless the human asks
+
+### Hot files (serialize, don't parallelize)
+
+If two `Todo` issues both touch one of these, work them sequentially — running them in parallel will produce merge conflicts:
+
+- `client/src/App.tsx`
+- `server/src/routes/skills.ts`
+- `server/src/scanner/discover.ts`
+- `server/src/scanner/health.ts`
+
+Linear tickets touching these files should carry a `hot-file:*` label.
+
+### Parity rule (non-negotiable)
+
+This app is a unified control panel for **Claude, Cursor, AND Codex**. Any feature touching Claude artifacts MUST also work for the other two — or the ticket must explicitly say "Claude-only scope" with a reason.
+
+Concrete: every code path branching on `BundleTarget = 'claude' | 'cursor' | 'codex'` must handle all three cases. The discovery layer (`server/src/scanner/discover.ts`) unifies all three into one `Skill` shape — keep it that way.
+
+When you plan a ticket, explicitly state how Cursor and Codex are covered. If an issue scopes one ecosystem out, say so in the Linear comment.
+
+## Tooling
+
+### Run + test
+- `npm install` — first time
+- `npm run dev` — server + client concurrently (server on default port, client on Vite)
+- `npm test` — vitest suite (~415 tests as of v0.0.0)
+- `cd client && npm run build` — production client build (tsc -b + vite)
+- `cd client && npm run lint` — ESLint (some pre-existing warnings; count must not increase)
+
+### MCP servers expected
+- **Linear MCP** — required for reading/updating issues. Without it, agents can't follow this workflow.
+- **GitHub** — `gh` CLI on PATH for opening PRs.
+
+## What NOT to do
+
+- **Don't merge PRs** without explicit human authorization (branch protection enforces review anyway)
+- **Don't push to `main`** directly
+- **Don't run `npm publish`** without explicit human go-ahead — it's irreversible and external
+- **Don't skip pre-commit hooks** (`--no-verify`)
+- **Don't use destructive git** (`reset --hard`, `clean -f`, `branch -D`, force-push) without authorization
+- **Don't commit gitignored paths** (`.claude/`, `dist/`, `node_modules/`, `*.local.*`)
+
+## Codebase shape
+
+- `client/` — React + TypeScript UI (Vite, vitest)
+- `server/` — Express + scanner/discovery (tsx, vitest)
+- `server/src/scanner/` — unified discovery. `discoverAllSkills` returns a `Skill[]` covering Claude/Cursor/Codex.
+- `server/src/state/` — local on-disk state (baselines, profiles, versions, uninstalled trash)
+- `server/src/superRouter/` — bundle writer that injects trigger blocks into CLAUDE.md / AGENTS.md / Cursor MD
+- `server/src/codex/`, `server/src/cursor/` — per-ecosystem discovery overrides
+- `client/src/components/` — UI surface (`InventoryTable`, `DetailDrawer`, `CursorTab`, `CodexTab`, `SuperRouterPanel`, etc.)
+
+## When you finish a batch of issues
+
+Run `/linear-bug-archive` to compress completed bug fixes into LOC-28 META Bugs Archive. Keeps active ticket counts low and the backlog clean.
+
+## Human-side conventions (so multiple humans can collaborate)
+
+- The human reviews + merges PRs. Agents don't self-merge.
+- For ambiguous scope, the agent asks before guessing. The human locks v1 scope in a Linear comment, then sets the ticket to `Todo`.
+- For new ideas the agent discovers mid-task: create a child issue under LOC-62 (Idea Backlog) with state `Backlog`. Don't act on it without triage.
+- For new bugs the agent discovers mid-task: create a child issue under LOC-30 (Backlog) with state `Backlog`, label `Bug` + `area:*`. Don't act on it without triage.
