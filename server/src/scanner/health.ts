@@ -1,7 +1,7 @@
 import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
 import { scanContent, type Finding } from '../security/scan'
-import { reconcileBaseline } from '../state/skillBaselines'
+import { diffAgainstBaseline, reconcileBaseline } from '../state/skillBaselines'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
 const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
@@ -48,7 +48,18 @@ const COMMON_VERBS = new Set([
 
 export function computeHealth(
   skill: Omit<Skill, 'health' | 'disabled' | 'suggestedType'>,
-  context?: { descriptionCounts: Map<string, number> }
+  context?: {
+    descriptionCounts?: Map<string, number>
+    /**
+     * When true, use the read-only diffAgainstBaseline instead of
+     * reconcileBaseline (which writes the baseline on first-seen). Lets
+     * intermediate health computations (e.g. buildSkill's stub pass before
+     * the deduped final recompute) avoid double-writing baselines that
+     * the final pass will write anyway. Default false (writes on first
+     * sighting), preserving the original single-call contract (LOC-50).
+     */
+    skipBaselineWrite?: boolean
+  }
 ): HealthResult {
   const issues: HealthIssue[] = []
 
@@ -84,7 +95,7 @@ export function computeHealth(
       }
 
       // Duplicate description
-      if (context) {
+      if (context?.descriptionCounts) {
         const key = skill.description.toLowerCase().trim()
         const count = context.descriptionCounts.get(key) ?? 0
         if (count >= 2) {
@@ -128,8 +139,13 @@ export function computeHealth(
   // observed baseline. First sighting silently writes the baseline (we
   // can't retroactively know pre-LSM history); subsequent sightings with
   // different content surface as a warn-level health issue.
+  //
+  // When skipBaselineWrite is set, we read the baseline but don't write
+  // it — the caller has another pass that will reconcile authoritatively.
   if (skill.body !== undefined) {
-    const drift = reconcileBaseline(skill.id, skill.body)
+    const drift = context?.skipBaselineWrite
+      ? diffAgainstBaseline(skill.id, skill.body)
+      : reconcileBaseline(skill.id, skill.body)
     if (drift.kind === 'shadow-edit') {
       const detail = drift.summary ? ` ${drift.summary}.` : ''
       issues.push({

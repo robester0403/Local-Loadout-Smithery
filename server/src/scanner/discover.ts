@@ -179,7 +179,12 @@ export function buildSkill(
       lastModified: stat.mtime.toISOString(),
       references: [],
     }
-    const health: HealthResult = computeHealth(base)
+    // Initial health pass here is throwaway — discoverAllSkills runs a
+    // final two-pass recompute with descriptionCounts after dedup that
+    // overwrites this. Skip the baseline write so we don't bake a
+    // first-sighting baseline before dedup has had a chance to drop
+    // symlink duplicates (LOC-50).
+    const health: HealthResult = computeHealth(base, { skipBaselineWrite: true })
     return { ...base, health, disabled, suggestedType: null }
   } catch {
     return null
