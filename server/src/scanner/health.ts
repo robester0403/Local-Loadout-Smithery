@@ -2,6 +2,7 @@ import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
 import { scanContent, type Finding } from '../security/scan'
 import { reconcileBaseline } from '../state/skillBaselines'
+import { stripSuperRouterBlocks } from '../superRouter/writer'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
 const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
@@ -128,8 +129,15 @@ export function computeHealth(
   // observed baseline. First sighting silently writes the baseline (we
   // can't retroactively know pre-LSM history); subsequent sightings with
   // different content surface as a warn-level health issue.
+  //
+  // Strip super-router trigger blocks before reconciling: the bundle
+  // writer injects those into CLAUDE.md / AGENTS.md / Cursor MD as part
+  // of normal operation, and Codex AGENTS.md is also a discovered skill,
+  // so without this strip enabling a Codex bundle would surface its own
+  // write as a shadow edit. SuperRouter has its own drift detection for
+  // changes *inside* the block (LOC-23).
   if (skill.body !== undefined) {
-    const drift = reconcileBaseline(skill.id, skill.body)
+    const drift = reconcileBaseline(skill.id, stripSuperRouterBlocks(skill.body))
     if (drift.kind === 'shadow-edit') {
       const detail = drift.summary ? ` ${drift.summary}.` : ''
       issues.push({
