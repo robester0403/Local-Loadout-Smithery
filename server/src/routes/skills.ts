@@ -12,6 +12,7 @@ import { assertWithinHome, HttpError, LOADOUT_DIR, MOVE_LOG_PATH } from '../lib/
 import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWriter'
 import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
 import { writeBaseline } from '../state/skillBaselines'
+import { atomicWrite } from '../lib/atomicWrite'
 
 const router = Router()
 
@@ -176,7 +177,9 @@ router.post('/skills/:id/versions/:ts/restore', asyncHandler((req, res) => {
   const prepared = prepareRestore(encodedId, ts, writePath)
   if (!prepared) throw new HttpError(404, 'Version not found')
 
-  fs.writeFileSync(writePath, prepared.content)
+  // Atomic write so a crash mid-restore can't truncate the live skill
+  // file (LOC-42).
+  atomicWrite(writePath, prepared.content)
   // Restore is one of our own writes — refresh the shadow-edit baseline
   // so the restored content doesn't fire as drift on the next pass.
   writeBaseline(encodedId, prepared.content)

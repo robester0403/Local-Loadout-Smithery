@@ -12,6 +12,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { atomicWrite } from '../lib/atomicWrite'
 
 function root(): string {
   return path.join(os.homedir(), '.loadoutsmith', 'skill-baselines')
@@ -40,9 +41,10 @@ export function getBaseline(skillId: string): Baseline | null {
 }
 
 export function writeBaseline(skillId: string, content: string): void {
-  const file = fileFor(skillId)
-  fs.mkdirSync(path.dirname(file), { recursive: true })
-  fs.writeFileSync(file, content)
+  // Atomic write so a crash mid-flight can't leave a truncated baseline
+  // file — a truncated baseline would make every subsequent scan flag
+  // the skill as shadow-edited until the user re-accepts (LOC-42).
+  atomicWrite(fileFor(skillId), content)
 }
 
 export type DiffKind = 'unchanged' | 'first-seen' | 'shadow-edit'

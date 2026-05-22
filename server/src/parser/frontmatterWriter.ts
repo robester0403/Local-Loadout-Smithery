@@ -19,6 +19,7 @@
 
 import fs from 'fs'
 import path from 'path'
+import { atomicWrite } from '../lib/atomicWrite'
 
 export interface UpdatePatch {
   description?: string
@@ -90,18 +91,5 @@ function formatYamlString(value: string): string {
   return `"${normalized}"`
 }
 
-// Write via a sibling temp file in the same directory so the rename is atomic
-// on the same volume. Skill files always live under the user's home dir, so
-// the temp file is guaranteed same-volume — no cross-device fallback needed.
-function atomicWrite(filePath: string, content: string): void {
-  const dir = path.dirname(filePath)
-  const base = path.basename(filePath)
-  const tmp = path.join(dir, `.${base}.tmp-${process.pid}-${Date.now()}`)
-  fs.writeFileSync(tmp, content, 'utf-8')
-  try {
-    fs.renameSync(tmp, filePath)
-  } catch (err) {
-    try { fs.unlinkSync(tmp) } catch { /* swallow cleanup error */ }
-    throw err
-  }
-}
+// Atomic write (sibling tmp + rename) lives in lib/atomicWrite.ts so every
+// server-side write through the codebase gets the same crash-safety.

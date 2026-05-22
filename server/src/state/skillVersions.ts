@@ -6,6 +6,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { atomicWrite } from '../lib/atomicWrite'
 
 // Per-skill cap. Generous enough for "I broke it on the 5th edit" but small
 // enough that a busy user editing the same skill 200 times doesn't gigabyte
@@ -72,11 +73,11 @@ export function snapshot(skillId: string, filePath: string): string | null {
   } catch {
     return null
   }
-  const dir = dirFor(skillId)
-  fs.mkdirSync(dir, { recursive: true })
   const ts = isoNow()
-  fs.writeFileSync(path.join(dir, `${ts}.md`), content)
-  trimToCap(dir)
+  // Atomic write so a crash during snapshot doesn't leave a truncated
+  // pre-image — an unusable rollback target (LOC-42).
+  atomicWrite(path.join(dirFor(skillId), `${ts}.md`), content)
+  trimToCap(dirFor(skillId))
   return ts
 }
 
