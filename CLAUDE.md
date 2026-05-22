@@ -13,10 +13,7 @@ security scans, cost tracking, and SuperRouter bundle management.
 
 - Repo: https://github.com/robester0403/Local-Loadout-Smithery
 - Linear team: `Local-loadout-smithery`
-- Live roadmap: **LOC-5** — read this first for the current critical path
-- Bug backlog parent: LOC-30
-- Idea backlog parent: LOC-62
-- Bug archive (canceled + summarized): LOC-28
+- Live roadmap: **LOC-5** — read this first. Its description has the current critical path **and the Linear team manifest** (live IDs for backlog parents, archive, etc.). When you need a parent issue ID, look it up there, not here — that keeps this briefing stable across renumbers and lets Linear stay the dynamic source of truth.
 
 ## Boot sequence — do this every session
 
