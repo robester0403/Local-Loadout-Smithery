@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Bundle, DriftResult, DriftStatus } from '../api'
+import type { Bundle, BundleTarget, DriftResult, DriftStatus } from '../api'
 import {
   deleteBundleApi,
   fetchBundleDrift,
@@ -16,6 +16,20 @@ const DRIFT_LABEL: Record<Exclude<DriftStatus, 'ok'>, string> = {
   'markers-corrupted': 'Marker tags broken',
   'block-modified': 'Block edited externally',
   'map-modified': 'Map file edited externally',
+}
+
+// Per-target lookups so Codex bundles don't get mislabeled as MCP (badge) or
+// as CLAUDE.md (open-file button). The badge classes reuse existing
+// .type-{skill,subagent,command} CSS for color variety.
+const TARGET_BADGE_CLASS: Record<BundleTarget, string> = {
+  claude: 'skill',
+  cursor: 'subagent',
+  codex: 'command',
+}
+const TARGET_OPEN_LABEL: Record<BundleTarget, string> = {
+  claude: 'CLAUDE.md',
+  cursor: 'Cursor MD',
+  codex: 'AGENTS.md',
 }
 
 interface Props {
@@ -170,7 +184,7 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
                 <div className="trash-info">
                   <div className="trash-name-row">
                     <span className="trash-name">{b.name}</span>
-                    <span className={`type-badge type-${b.target === 'claude' ? 'skill' : b.target === 'cursor' ? 'subagent' : 'mcp'}`}>{b.target}</span>
+                    <span className={`type-badge type-${TARGET_BADGE_CLASS[b.target]}`}>{b.target}</span>
                     <span className={`scope-badge scope-${b.scope.kind}`}>{scopeLabel(b)}</span>
                     <span style={{
                       fontSize: 11,
@@ -236,7 +250,7 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
                     className="btn btn-sm"
                     onClick={() => handleOpen(b, 'top')}
                     title={`Open ${b.paths.topFile} in your default editor`}
-                  >Open {b.target === 'cursor' ? 'Cursor MD' : 'CLAUDE.md'}</button>
+                  >Open {TARGET_OPEN_LABEL[b.target]}</button>
                   <button
                     className="btn btn-sm"
                     onClick={() => handleOpen(b, 'map')}

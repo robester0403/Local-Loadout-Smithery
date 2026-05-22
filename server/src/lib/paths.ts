@@ -27,6 +27,36 @@ export function assertWithinHome(p: string): void {
 }
 
 /**
+ * Stricter guard for skill-id-derived paths. Skill IDs are user-supplied
+ * (base64 of a path); without this, a request can hand us any path under
+ * $HOME and any write route would happily clobber it (e.g. ~/.ssh/id_rsa).
+ *
+ * Accepts paths that live in one of the recognized loadout roots:
+ *   - a `.claude` or `.claude-*` segment (Claude global or project)
+ *   - a `.cursor` segment (Cursor global or project)
+ *   - a `.codex` segment (Codex global)
+ *   - basename `AGENTS.md` (Codex project — sits at <cwd>/AGENTS.md with no
+ *     `.codex` ancestor; discovery finds these via session metadata)
+ *   - a `.loadoutsmith` segment (uninstalled trash, baselines, versions)
+ *
+ * Still requires the path to be under $HOME via assertWithinHome.
+ */
+export function assertAllowedSkillPath(p: string): void {
+  assertWithinHome(p)
+  const resolved = path.resolve(p)
+  const segments = resolved.split(path.sep)
+  const allowed =
+    segments.some(s => s === '.claude' || s.startsWith('.claude-')) ||
+    segments.some(s => s === '.cursor') ||
+    segments.some(s => s === '.codex') ||
+    segments.some(s => s === '.loadoutsmith') ||
+    path.basename(resolved) === 'AGENTS.md'
+  if (!allowed) {
+    throw new HttpError(403, 'Path not in an allowed loadout root')
+  }
+}
+
+/**
  * Lightweight HTTP-status-bearing error class. Thrown by route handlers and
  * caught by the asyncHandler / global error middleware to map status correctly.
  */

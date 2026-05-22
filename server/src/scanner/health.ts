@@ -2,6 +2,7 @@ import fs from 'fs'
 import type { Skill, HealthResult, HealthIssue, SkillScope } from './types'
 import { scanContent, type Finding } from '../security/scan'
 import { diffAgainstBaseline, reconcileBaseline } from '../state/skillBaselines'
+import { stripSuperRouterBlocks } from '../superRouter/writer'
 
 // Tool names that indicate a skill actually executes things and should declare allowed-tools.
 const TOOL_PATTERN = /\b(Bash|Read|Write|Edit|Glob|Grep|WebFetch|WebSearch|Agent|NotebookEdit)\b/
@@ -141,11 +142,18 @@ export function computeHealth(
   // different content surface as a warn-level health issue.
   //
   // When skipBaselineWrite is set, we read the baseline but don't write
-  // it — the caller has another pass that will reconcile authoritatively.
+  // it — the caller has another pass that will reconcile authoritatively
+  // (LOC-50). Strip super-router trigger blocks first: the bundle writer
+  // injects those into CLAUDE.md / AGENTS.md / Cursor MD as part of normal
+  // operation, and Codex AGENTS.md is also a discovered skill — so without
+  // this strip, enabling a bundle would surface its own write as a shadow
+  // edit. SuperRouter has its own drift detection for changes *inside* the
+  // block (LOC-23, LOC-41).
   if (skill.body !== undefined) {
+    const stripped = stripSuperRouterBlocks(skill.body)
     const drift = context?.skipBaselineWrite
-      ? diffAgainstBaseline(skill.id, skill.body)
-      : reconcileBaseline(skill.id, skill.body)
+      ? diffAgainstBaseline(skill.id, stripped)
+      : reconcileBaseline(skill.id, stripped)
     if (drift.kind === 'shadow-edit') {
       const detail = drift.summary ? ` ${drift.summary}.` : ''
       issues.push({

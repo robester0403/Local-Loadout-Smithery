@@ -10,8 +10,26 @@ import { decodeSkillId, encodeSkillId } from '../lib/ids'
 import { pathParam } from '../lib/params'
 import { assertWithinHome, HttpError, LOADOUT_DIR, MOVE_LOG_PATH } from '../lib/paths'
 import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWriter'
+import { parseFrontmatter } from '../parser/frontmatter'
 import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
 import { writeBaseline } from '../state/skillBaselines'
+import { atomicWrite } from '../lib/atomicWrite'
+
+// Refresh the shadow-edit baseline after one of our own writes. Stores the
+// frontmatter-stripped body so the value matches what scanner/health.ts
+// passes into reconcileBaseline (skill.body) — otherwise discovery sees
+// baseline=<full-file> vs current=<body-only> and flags every UI edit as a
+// shadow edit (LOC-40).
+function refreshBodyBaseline(encodedId: string, filePath: string): void {
+  try {
+    const { body } = parseFrontmatter(filePath)
+    writeBaseline(encodedId, body)
+  } catch {
+    // Baseline refresh is best-effort — if it fails, the next discovery
+    // pass will flag a false-positive shadow edit until the user
+    // re-baselines via the drawer.
+  }
+}
 
 const router = Router()
 
@@ -131,14 +149,7 @@ router.patch('/skills/:id', asyncHandler((req, res) => {
 
   // Refresh the shadow-edit baseline so our own write doesn't fire a
   // "shadow edit detected" finding on the next discovery pass.
-  try {
-    const newContent = fs.readFileSync(writePath, 'utf-8')
-    writeBaseline(pathParam(req, 'id'), newContent)
-  } catch {
-    // Baseline refresh is best-effort — if the read fails, the next
-    // discovery pass will just flag a false-positive shadow edit until
-    // the user re-baselines via the drawer.
-  }
+  refreshBodyBaseline(pathParam(req, 'id'), writePath)
 
   res.json({ ok: true })
 }))
@@ -176,10 +187,13 @@ router.post('/skills/:id/versions/:ts/restore', asyncHandler((req, res) => {
   const prepared = prepareRestore(encodedId, ts, writePath)
   if (!prepared) throw new HttpError(404, 'Version not found')
 
-  fs.writeFileSync(writePath, prepared.content)
+  // Atomic write so a crash mid-restore can't truncate the live skill
+  // file (LOC-42).
+  atomicWrite(writePath, prepared.content)
   // Restore is one of our own writes — refresh the shadow-edit baseline
-  // so the restored content doesn't fire as drift on the next pass.
-  writeBaseline(encodedId, prepared.content)
+  // (body-only, matching discovery's reconcileBaseline input) so the
+  // restored content doesn't fire as drift on the next pass.
+  refreshBodyBaseline(encodedId, writePath)
   res.json({ ok: true, preRestoreSnapshot: prepared.preRestoreSnapshot })
 }))
 
@@ -189,13 +203,12 @@ router.post('/skills/:id/versions/:ts/restore', asyncHandler((req, res) => {
 router.post('/skills/:id/baseline/accept', asyncHandler((req, res) => {
   const encodedId = pathParam(req, 'id')
   const writePath = resolveSkillWritePath(encodedId)
-  let content: string
-  try {
-    content = fs.readFileSync(writePath, 'utf-8')
-  } catch {
+  if (!fs.existsSync(writePath)) {
     throw new HttpError(404, 'Skill file not readable')
   }
-  writeBaseline(encodedId, content)
+  // Body-only baseline so it matches what discovery's reconcileBaseline
+  // compares against on the next pass (see refreshBodyBaseline rationale).
+  refreshBodyBaseline(encodedId, writePath)
   res.json({ ok: true })
 }))
 

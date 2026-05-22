@@ -89,6 +89,19 @@ export default function App() {
   const [lastMove, setLastMove] = useState<{ newId: string; originalType: SkillType; skillName: string } | null>(null)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [activeTab, setActiveTab] = useState<ActiveTab>('inventory')
+
+  // Switching tabs is a context switch — the user has moved to a different
+  // ecosystem with its own skill set. Carrying selection + drawer + breakdown
+  // across the boundary surfaces stale state from the previous tab (bulk
+  // actions pre-seeded with hidden ids, a drawer floating over the wrong
+  // table, etc). Clear them on every transition.
+  function switchTab(next: ActiveTab) {
+    if (next === activeTab) return
+    setActiveTab(next)
+    setSelected(null)
+    setSelectedIds(new Set())
+    setBreakdownSkill(null)
+  }
   // Sidebar collapse state. Persisted across reloads via localStorage so the
   // user's layout choice survives — same pattern as the `loadoutsmith-timeframe`
   // preference above.
@@ -299,6 +312,7 @@ export default function App() {
     // re-scan the other tree just because we changed a description.
     const edited = skills.find(s => s.id === id)
     if (edited?.account === 'cursor') void loadBundle('cursor').catch(() => { })
+    else if (edited?.account === 'codex') void loadBundle('codex').catch(() => { })
     else void loadBundle('claude').catch(() => { })
   }
 
@@ -534,16 +548,16 @@ export default function App() {
         <div className="header-tabs">
           <button
             className={`header-tab${activeTab === 'inventory' ? ' active' : ''}`}
-            onClick={() => setActiveTab('inventory')}
+            onClick={() => switchTab('inventory')}
           >Claude Code</button>
           <button
             className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
-            onClick={() => setActiveTab('cursor')}
+            onClick={() => switchTab('cursor')}
             title="Cursor skills + activation data scraped from Cursor's local SQLite"
           >Cursor</button>
           <button
             className={`header-tab${activeTab === 'codex' ? ' active' : ''}`}
-            onClick={() => setActiveTab('codex')}
+            onClick={() => switchTab('codex')}
             title="Codex CLI AGENTS.md files — global + per-project (mined from ~/.codex/sessions)"
           >Codex</button>
         </div>
@@ -712,6 +726,7 @@ export default function App() {
               )}
               <CodexTab
                 skills={filtered}
+                totalCount={tabSkills.length}
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -737,20 +752,24 @@ export default function App() {
               {selectedIds.size > 0 && (
                 <div className="bulk-bar">
                   <span className="bulk-count">{selectedIds.size} selected</span>
-                  <button className="btn btn-sm" onClick={async () => {
-                    const targets = filtered.filter(s => selectedIds.has(s.id))
-                    const prompt = getBundledPrompt(targets)
-                    try {
-                      const result = await launchClaude(prompt)
-                      showToast(result.platform === 'unsupported'
-                        ? 'Prompt copied — open Claude Code manually'
-                        : 'Prompt copied + Claude Code launched')
-                    } catch {
-                      await navigator.clipboard.writeText(prompt)
-                      showToast('Prompt copied to clipboard')
-                    }
-                  }}>
-                    Generate combined prompt
+                  <button
+                    className="btn btn-sm"
+                    title="Generates a Claude-Code-flavored fix-up prompt referencing these Cursor skill paths, then launches Claude Code. Useful for batch-cleaning Cursor health issues from Claude."
+                    onClick={async () => {
+                      const targets = filtered.filter(s => selectedIds.has(s.id))
+                      const prompt = getBundledPrompt(targets)
+                      try {
+                        const result = await launchClaude(prompt)
+                        showToast(result.platform === 'unsupported'
+                          ? 'Prompt copied — open Claude Code manually'
+                          : 'Prompt copied + Claude Code launched')
+                      } catch {
+                        await navigator.clipboard.writeText(prompt)
+                        showToast('Prompt copied to clipboard')
+                      }
+                    }}
+                  >
+                    Fix in Claude Code
                   </button>
                   {/* No "Disable selected" — Cursor manages skill activation
                       through its own UI; we can't toggle it from here. */}
@@ -764,6 +783,7 @@ export default function App() {
               )}
               <CursorTab
                 skills={filtered}
+                totalCount={tabSkills.length}
                 usage={cursorUsage}
                 recent={cursorRecent}
                 sortKey={sortKey}
@@ -848,10 +868,13 @@ export default function App() {
             ) : error ? (
               <EmptyState variant="error" message={error} onRetry={load} />
             ) : filtered.length === 0 ? (
-              // No filters + no rows across the entire inventory = nothing
-              // installed at all. The plain "empty" variant ("your filters
-              // hid everything") is misleading on a fresh machine.
-              skills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly
+              // Per-tab none-installed check: if THIS tab's ecosystem has no
+              // skills at all (even before search/filter), show "none
+              // installed" — otherwise show "your filters hid everything".
+              // Was previously keyed on global skills.length, which made the
+              // Claude tab show the wrong copy on a machine with only
+              // Cursor + Codex installed.
+              tabSkills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly
                 ? <EmptyState variant="none-installed" />
                 : <EmptyState variant="empty" />
             ) : (

@@ -31,6 +31,19 @@ function blockRegex(id: string): RegExp {
   )
 }
 
+// Matches any super-router trigger block, regardless of bundle id. Used by
+// discovery's shadow-edit detection so the marker block injected into
+// CLAUDE.md / AGENTS.md / Cursor MD doesn't count as a user-side edit.
+// SuperRouter's own drift detection (LOC-23) covers changes inside the
+// block; this strip only affects the comparison against the user-content
+// baseline.
+const ANY_BLOCK_PATTERN =
+  /\n?<!-- super-router:[^>\n]*? start -->[\s\S]*?<!-- super-router:[^>\n]*? end -->\n?/g
+
+export function stripSuperRouterBlocks(content: string): string {
+  return content.replace(ANY_BLOCK_PATTERN, '')
+}
+
 export function renderTriggerBlock(b: Bundle, mapRelative: string): string {
   return [
     startMarker(b.id),
