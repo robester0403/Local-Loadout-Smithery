@@ -299,6 +299,7 @@ export default function App() {
     // re-scan the other tree just because we changed a description.
     const edited = skills.find(s => s.id === id)
     if (edited?.account === 'cursor') void loadBundle('cursor').catch(() => { })
+    else if (edited?.account === 'codex') void loadBundle('codex').catch(() => { })
     else void loadBundle('claude').catch(() => { })
   }
 
