@@ -13,6 +13,7 @@ import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWri
 import { parseFrontmatter } from '../parser/frontmatter'
 import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
 import { writeBaseline } from '../state/skillBaselines'
+import { atomicWrite } from '../lib/atomicWrite'
 
 // Refresh the shadow-edit baseline after one of our own writes. Stores the
 // frontmatter-stripped body so the value matches what scanner/health.ts
@@ -186,7 +187,9 @@ router.post('/skills/:id/versions/:ts/restore', asyncHandler((req, res) => {
   const prepared = prepareRestore(encodedId, ts, writePath)
   if (!prepared) throw new HttpError(404, 'Version not found')
 
-  fs.writeFileSync(writePath, prepared.content)
+  // Atomic write so a crash mid-restore can't truncate the live skill
+  // file (LOC-42).
+  atomicWrite(writePath, prepared.content)
   // Restore is one of our own writes — refresh the shadow-edit baseline
   // (body-only, matching discovery's reconcileBaseline input) so the
   // restored content doesn't fire as drift on the next pass.
