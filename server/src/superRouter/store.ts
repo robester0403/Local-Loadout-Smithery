@@ -49,10 +49,18 @@ function read(): StoreShape {
   }
 }
 
+// All mutators in this module are synchronous (read → mutate → write via
+// fs.*Sync), so Node's single-threaded event loop serializes concurrent
+// HTTP requests at the handler boundary — there is no lost-update race
+// despite the read-modify-write shape. If anyone converts these to async
+// fs.promises calls in the future, wrap the whole sequence in a per-store
+// promise-chain mutex first (see LOC-49 discussion).
 function write(state: StoreShape): void {
   const file = storeFile()
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  const tmp = file + '.tmp'
+  // Process-and-time-scoped tmp so two server processes (e.g. dev + tests)
+  // can't clobber each other's staged writes mid-rename.
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`
   fs.writeFileSync(tmp, JSON.stringify(state, null, 2))
   fs.renameSync(tmp, file)
 }
