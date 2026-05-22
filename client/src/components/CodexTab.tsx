@@ -55,7 +55,7 @@ export default function CodexTab(props: Props) {
         </div>
       </header>
 
-      <InventoryTable {...props} />
+      <InventoryTable {...props} costMode="unavailable" />
     </div>
   )
 }
