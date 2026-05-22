@@ -12,6 +12,13 @@ import InventoryTable from './InventoryTable'
 
 interface Props {
   skills: Skill[]            // already filtered to cursor account
+  /**
+   * Total Cursor skills discovered (unfiltered count). Lets the tab
+   * distinguish "no Cursor skills installed" from "filters hid everything"
+   * — without this, a search query that matches nothing renders the
+   * "Cursor isn't installed" empty state.
+   */
+  totalCount: number
   usage: CursorUsageReport | null
   recent: CursorRecentUsageReport | null
   sortKey: SortKey
@@ -40,9 +47,9 @@ function fmtRelative(ms: number): string {
 }
 
 export default function CursorTab(props: Props) {
-  const { skills, usage, recent } = props
+  const { skills, totalCount, usage, recent } = props
 
-  if (skills.length === 0 && usage?.available === false) {
+  if (totalCount === 0 && usage?.available === false) {
     return (
       <div className="cursor-tab-empty">
         <div className="cursor-tab-empty-icon">◌</div>
@@ -56,7 +63,7 @@ export default function CursorTab(props: Props) {
     )
   }
 
-  if (skills.length === 0) {
+  if (totalCount === 0) {
     return (
       <div className="cursor-tab-empty">
         <div className="cursor-tab-empty-icon">◌</div>
@@ -65,6 +72,20 @@ export default function CursorTab(props: Props) {
           Add skills under <code>~/.cursor/skills/</code>, commands under{' '}
           <code>~/.cursor/commands/</code>, or agents under{' '}
           <code>~/.cursor/agents/</code>.
+        </div>
+      </div>
+    )
+  }
+
+  if (skills.length === 0) {
+    // Cursor IS installed and has skills, but the active search/filter
+    // hides them all — distinct from "no Cursor skills discovered" above.
+    return (
+      <div className="cursor-tab-empty">
+        <div className="cursor-tab-empty-icon">◌</div>
+        <div className="cursor-tab-empty-title">No Cursor skills match your filters</div>
+        <div className="cursor-tab-empty-sub">
+          Try clearing the search or adjusting the filters.
         </div>
       </div>
     )

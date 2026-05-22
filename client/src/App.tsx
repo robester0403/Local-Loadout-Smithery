@@ -712,6 +712,7 @@ export default function App() {
               )}
               <CodexTab
                 skills={filtered}
+                totalCount={tabSkills.length}
                 sortKey={sortKey}
                 sortDir={sortDir}
                 onSort={handleSort}
@@ -764,6 +765,7 @@ export default function App() {
               )}
               <CursorTab
                 skills={filtered}
+                totalCount={tabSkills.length}
                 usage={cursorUsage}
                 recent={cursorRecent}
                 sortKey={sortKey}
@@ -848,10 +850,13 @@ export default function App() {
             ) : error ? (
               <EmptyState variant="error" message={error} onRetry={load} />
             ) : filtered.length === 0 ? (
-              // No filters + no rows across the entire inventory = nothing
-              // installed at all. The plain "empty" variant ("your filters
-              // hid everything") is misleading on a fresh machine.
-              skills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly
+              // Per-tab none-installed check: if THIS tab's ecosystem has no
+              // skills at all (even before search/filter), show "none
+              // installed" — otherwise show "your filters hid everything".
+              // Was previously keyed on global skills.length, which made the
+              // Claude tab show the wrong copy on a machine with only
+              // Cursor + Codex installed.
+              tabSkills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly
                 ? <EmptyState variant="none-installed" />
                 : <EmptyState variant="empty" />
             ) : (
