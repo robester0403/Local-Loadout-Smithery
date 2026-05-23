@@ -143,6 +143,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('loadoutsmith-timeframe', timeframe)
+    localStorage.removeItem('lsm-timeframe')
   }, [timeframe])
 
   // Tab-scoped loader. Each ecosystem owns its slice of `skills` (keyed by
