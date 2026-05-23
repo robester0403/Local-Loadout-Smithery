@@ -4,7 +4,7 @@
 
 <img width="250" height="300" alt="image" src="https://github.com/user-attachments/assets/6ac8b937-ae0c-4d0d-82aa-018349d8d837" />
 
-The control panel for your Claude Code loadout. See every skill, slash command, subagent, and MCP server you have, what each one costs in tokens, and which ones aren't pulling their weight — all in one place.
+The control panel for your AI coding loadout — Claude Code, Cursor, and Codex. See every skill, slash command, subagent, and MCP server across all three ecosystems, what each one costs in tokens, and which ones aren't pulling their weight — all in one place.
 
 ## Install
 
@@ -25,7 +25,11 @@ Opens the UI in your browser at `http://localhost:5173` (dev) or `http://localho
 
 ## First-time setup
 
-No configuration required — the app discovers your loadout automatically by scanning `~/.claude` (and any additional account dirs like `~/.claude-work`) for skills, commands, subagents, and MCP server definitions.
+No configuration required — the app discovers your loadout automatically by scanning all three ecosystem roots:
+
+- **Claude Code** — `~/.claude*` (including multi-account dirs like `~/.claude-work`)
+- **Cursor** — `~/.cursor`
+- **Codex** — `~/.codex`
 
 **Optional:** customize pricing for cost calculations by creating `~/.loadoutsmith/pricing.json`. Defaults ship for current Claude models; override any model's rates in that file to match Anthropic's published pricing.
 
