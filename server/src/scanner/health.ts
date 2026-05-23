@@ -152,8 +152,8 @@ export function computeHealth(
   if (skill.body !== undefined) {
     const stripped = stripSuperRouterBlocks(skill.body)
     const drift = context?.skipBaselineWrite
-      ? diffAgainstBaseline(skill.id, stripped)
-      : reconcileBaseline(skill.id, stripped)
+      ? diffAgainstBaseline(skill.id, stripped, skill.frontmatter)
+      : reconcileBaseline(skill.id, stripped, skill.frontmatter)
     if (drift.kind === 'shadow-edit') {
       const detail = drift.summary ? ` ${drift.summary}.` : ''
       issues.push({

@@ -4,6 +4,7 @@ import type { Skill } from '../types'
 import type { MCPUsageSummary, MCPRelationship, CursorUsageReport, CursorRecentUsageReport, SecurityScanResult, SkillVersion } from '../api'
 import { acceptSkillBaseline, fetchSkillVersions, restoreSkillVersion, scanSkillSecurity, updateSkillContent } from '../api'
 import CopyPromptButton from './CopyPromptButton'
+import DiffModal from './DiffModal'
 import EditableText from './EditableText'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
@@ -94,6 +95,7 @@ function Section({
 
 export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, onSkillChanged, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
   const [showMap, setShowMap] = useState(false)
+  const [showDiffModal, setShowDiffModal] = useState(false)
   const [security, setSecurity] = useState<SecurityScanResult | null>(null)
   const [versions, setVersions] = useState<SkillVersion[]>([])
   const [restoringTs, setRestoringTs] = useState<string | null>(null)
@@ -402,7 +404,14 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                   </li>
                 ))}
                 {issues.some(i => i.message.startsWith('Shadow edit detected')) && (
-                  <li className="accordion-issue accordion-issue-action">
+                  <li className="accordion-issue accordion-issue-action" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setShowDiffModal(true)}
+                      title="See exactly which frontmatter fields and body lines changed."
+                    >
+                      Show changes
+                    </button>
                     <button
                       className="btn btn-sm"
                       onClick={async () => {
@@ -707,6 +716,17 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             </div>
           </div>
         </div>
+      )}
+
+      {showDiffModal && (
+        <DiffModal
+          skillId={skill.id}
+          onClose={() => setShowDiffModal(false)}
+          onAccepted={() => {
+            setShowDiffModal(false)
+            onSkillChanged?.(skill.id, {})
+          }}
+        />
       )}
     </>
   )

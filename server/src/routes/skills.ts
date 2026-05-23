@@ -12,18 +12,17 @@ import { assertWithinHome, HttpError, LOADOUT_DIR, MOVE_LOG_PATH } from '../lib/
 import { FrontmatterWriteError, updateSkillFile } from '../parser/frontmatterWriter'
 import { parseFrontmatter } from '../parser/frontmatter'
 import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
-import { writeBaseline } from '../state/skillBaselines'
+import { diffAgainstBaseline, writeBaseline } from '../state/skillBaselines'
+import { stripSuperRouterBlocks } from '../superRouter/writer'
 import { atomicWrite } from '../lib/atomicWrite'
 
 // Refresh the shadow-edit baseline after one of our own writes. Stores the
-// frontmatter-stripped body so the value matches what scanner/health.ts
-// passes into reconcileBaseline (skill.body) — otherwise discovery sees
-// baseline=<full-file> vs current=<body-only> and flags every UI edit as a
-// shadow edit (LOC-40).
+// frontmatter-stripped body and parsed frontmatter so both are compared on
+// the next discovery pass — otherwise only body changes are detected (LOC-57).
 function refreshBodyBaseline(encodedId: string, filePath: string): void {
   try {
-    const { body } = parseFrontmatter(filePath)
-    writeBaseline(encodedId, body)
+    const { body, meta } = parseFrontmatter(filePath)
+    writeBaseline(encodedId, body, meta)
   } catch {
     // Baseline refresh is best-effort — if it fails, the next discovery
     // pass will flag a false-positive shadow edit until the user
@@ -210,6 +209,18 @@ router.post('/skills/:id/baseline/accept', asyncHandler((req, res) => {
   // compares against on the next pass (see refreshBodyBaseline rationale).
   refreshBodyBaseline(encodedId, writePath)
   res.json({ ok: true })
+}))
+
+// Return the full diff between the stored baseline and the current on-disk
+// content. Used by the DiffModal to show per-field frontmatter changes and
+// before/after body text without requiring a full rediscovery pass.
+router.get('/skills/:id/baseline/diff', asyncHandler((req, res) => {
+  const encodedId = pathParam(req, 'id')
+  const writePath = resolveSkillWritePath(encodedId)
+  const { body, meta } = parseFrontmatter(writePath)
+  const stripped = stripSuperRouterBlocks(body)
+  const diff = diffAgainstBaseline(encodedId, stripped, meta)
+  res.json(diff)
 }))
 
 router.post('/skills/:id/uninstall', asyncHandler((req, res) => {
