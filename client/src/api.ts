@@ -192,6 +192,27 @@ export async function acceptSkillBaseline(id: string): Promise<void> {
   await parseResponse<{ ok: boolean }>(res)
 }
 
+export interface FrontmatterChange {
+  key: string
+  before: unknown
+  after: unknown
+}
+
+export interface BaselineDiff {
+  kind: 'unchanged' | 'first-seen' | 'shadow-edit'
+  summary?: string
+  frontmatterChanges?: FrontmatterChange[]
+  bodyBefore?: string
+  bodyAfter?: string
+}
+
+// Fetch the full diff between the stored baseline and the current on-disk
+// content. Used by DiffModal to show per-field frontmatter changes and body diff.
+export async function fetchBaselineDiff(id: string): Promise<BaselineDiff> {
+  const res = await fetch(`/api/skills/${encodeURIComponent(id)}/baseline/diff`)
+  return parseResponse<BaselineDiff>(res)
+}
+
 // ─── Security ────────────────────────────────────────────────────────────────
 
 export type FindingSeverity = 'info' | 'medium' | 'high'
