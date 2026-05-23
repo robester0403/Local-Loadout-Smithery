@@ -120,4 +120,30 @@ describe('validateBundleInput', () => {
     )
     expect(errs).toEqual([])
   })
+
+  it('passes a well-formed bundle with target="cursor"', () => {
+    const errs = validateBundleInput(
+      { ...baseInput, target: 'cursor' },
+      [skill('s1', '/anywhere/SKILL.md')],
+    )
+    expect(errs).toEqual([])
+  })
+
+  it('passes a well-formed bundle with target="codex"', () => {
+    const errs = validateBundleInput(
+      { ...baseInput, target: 'codex' },
+      [skill('s1', '/anywhere/SKILL.md')],
+    )
+    expect(errs).toEqual([])
+  })
+
+  it('rejects an unknown target', () => {
+    const errs = validateBundleInput(
+      { ...baseInput, target: 'aider' as BundleInput['target'] },
+      [skill('s1', '/anywhere/SKILL.md')],
+    )
+    const err = errs.find(e => e.field === 'target')
+    expect(err).toBeDefined()
+    expect(err?.message).toContain('"claude"')
+  })
 })
