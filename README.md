@@ -12,7 +12,7 @@ The control panel for your AI coding loadout — Claude Code, Cursor, and Codex.
 npm install -g local-loadout-smithery
 ```
 
-Requires Node.js 18+.
+Requires Node.js 20+.
 
 ## Run
 
@@ -21,7 +21,7 @@ local-loadout-smithery     # full name
 lls                        # short alias
 ```
 
-Opens the UI in your browser at `http://localhost:5173` (dev) or `http://localhost:3001` (production build).
+Opens the UI in your browser at `http://localhost:5173` (dev) or `http://localhost:4123` (production build).
 
 ## First-time setup
 

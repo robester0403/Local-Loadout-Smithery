@@ -6,6 +6,7 @@ dist/
 .DS_Store
 *.log
 coverage/
+*.tgz
 planning_notes/
 .claude/
 

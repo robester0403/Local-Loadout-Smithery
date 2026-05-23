@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Transport + lifecycle wiring only. Route handlers live under ./routes/.
 
 import express, { type NextFunction, type Request, type Response } from 'express'
@@ -26,7 +27,7 @@ app.use('/api', api)
 
 // In production, serve the SPA for any non-API route.
 if (process.env.NODE_ENV === 'production') {
-  app.get('*', (_req, res) => {
+  app.get('/{*path}', (_req, res) => {
     res.sendFile(path.join(__dirname, '../../client/dist/index.html'))
   })
 }
