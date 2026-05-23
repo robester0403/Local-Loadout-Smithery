@@ -223,6 +223,11 @@ export default function App() {
     ]))
   }, [timeframe])
 
+  const loadBundleRef = useRef(loadBundle)
+  useEffect(() => {
+    loadBundleRef.current = loadBundle
+  }, [loadBundle])
+
   // 'inventory' tab maps to the Claude ecosystem; the other two are 1:1.
   const tabEcosystem: Ecosystem =
     activeTab === 'cursor' ? 'cursor' : activeTab === 'codex' ? 'codex' : 'claude'
@@ -263,10 +268,10 @@ export default function App() {
   // the user wasn't currently looking at.
   useEffect(() => {
     const id = setInterval(() => {
-      void loadBundle(tabEcosystem).catch(() => { })
+      void loadBundleRef.current(tabEcosystem).catch(() => { })
     }, 30_000)
     return () => clearInterval(id)
-  }, [tabEcosystem, loadBundle])
+  }, [tabEcosystem])
 
   useEffect(() => {
     if (!selected) return
