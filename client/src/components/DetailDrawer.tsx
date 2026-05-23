@@ -353,11 +353,12 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
             <button className="btn" onClick={() => setShowMap(true)} title="Show Mermaid relationship map">
               Relationship map
             </button>
-            {skill.suggestedType && skill.account !== 'cursor' && skill.account !== 'codex' && (
-              // Reclassify (move-on-disk) is Claude-only — the server's
-              // parseLogicalPath knows SKILL.md / commands/ / agents/, none of
-              // which apply to Cursor's tree or Codex's AGENTS.md. Hitting
-              // "Move to X" on a Codex skill 400s with a misleading message.
+            {skill.suggestedType && skill.account !== 'codex' && (
+              // Reclassify works for both Claude and Cursor — they share the
+              // same skills/commands/agents directory structure, and the
+              // server's parseLogicalPath + destinationFor handle both.
+              // Codex is excluded: AGENTS.md is a monolithic file with no
+              // skill/command/subagent split, so reclassify doesn't apply.
               <>
                 <CopyPromptButton
                   getPrompt={() => generateReclassifyPrompt(skill)}
