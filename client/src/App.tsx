@@ -549,6 +549,7 @@ export default function App() {
           <button
             className={`header-tab${activeTab === 'inventory' ? ' active' : ''}`}
             onClick={() => switchTab('inventory')}
+            title="Claude Code skills, commands, subagents, and MCP servers (from ~/.claude*)"
           >Claude Code</button>
           <button
             className={`header-tab${activeTab === 'cursor' ? ' active' : ''}`}
