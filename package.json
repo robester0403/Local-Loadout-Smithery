@@ -21,6 +21,7 @@
     "README.md",
     "LICENSE"
   ],
+  "type": "commonjs",
   "engines": {
     "node": ">=20"
   },
