@@ -12,3 +12,16 @@ export { embedText, clearEmbedCache, embedCacheSize } from './embed'
 export type { EmbedOptions } from './embed'
 export { clusterSummaries, intentEmbeddingText, pickCentroid, cosineDistance } from './cluster'
 export type { ClusterOptions, EmbedFn } from './cluster'
+export { detectCommands } from './detectors/commands'
+export type { CommandDetectorOptions, GeneratedCandidate } from './detectors/commands'
+export { detectRules } from './detectors/rules'
+export type { RuleDetectorOptions, RuleClassifierFn, RuleEmbedFn } from './detectors/rules'
+export { levenshtein, normalizedLevenshtein } from './lib/levenshtein'
+export {
+  computeRuleMarkerId,
+  ruleMarkerStart,
+  ruleMarkerEnd,
+  extractRuleMarkerIds,
+  readExistingRuleFiles,
+} from './lib/ruleMarkers'
+export type { ExistingRuleFile } from './lib/ruleMarkers'
