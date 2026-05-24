@@ -99,7 +99,12 @@ router.patch('/auto-skill/candidates/:id', asyncHandler((req, res) => {
   if (typeof body.name === 'string') patch.name = body.name
   if (typeof body.description === 'string') patch.description = body.description
   if (typeof body.bodyDraft === 'string') patch.bodyDraft = body.bodyDraft
-  if (body.suggestedType === 'skill' || body.suggestedType === 'command' || body.suggestedType === 'subagent') {
+  if (
+    body.suggestedType === 'skill'
+    || body.suggestedType === 'command'
+    || body.suggestedType === 'subagent'
+    || body.suggestedType === 'rule'
+  ) {
     patch.suggestedType = body.suggestedType
   }
   res.json({ candidate: updateFields(id, patch) })
@@ -134,8 +139,13 @@ router.post('/auto-skill/candidates/:id/accept', asyncHandler((req, res) => {
   }
   if (typeof body.accountDir !== 'string') throw new HttpError(400, 'accountDir is required')
   if (body.scope !== 'global' && body.scope !== 'project') throw new HttpError(400, 'scope must be "global" or "project"')
-  if (body.type !== 'skill' && body.type !== 'command' && body.type !== 'subagent') {
-    throw new HttpError(400, 'type must be skill / command / subagent')
+  if (
+    body.type !== 'skill'
+    && body.type !== 'command'
+    && body.type !== 'subagent'
+    && body.type !== 'rule'
+  ) {
+    throw new HttpError(400, 'type must be skill / command / subagent / rule')
   }
   const result = emitFromCandidate(cand, {
     accountDir: body.accountDir,

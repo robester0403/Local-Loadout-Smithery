@@ -159,6 +159,21 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     return [...base].sort((a, b) => b.score - a.score)
   }, [candidates, statusFilter])
 
+  // Group filtered candidates by suggestedType for the new pipeline's
+  // type-segregated rendering (LOC-78). Order matches the four-artifact
+  // taxonomy from docs/signal-detection-pipeline.md.
+  const grouped = useMemo(() => {
+    const kinds: Array<{ kind: Candidate['suggestedType']; label: string }> = [
+      { kind: 'skill',    label: 'Skills' },
+      { kind: 'command',  label: 'Commands' },
+      { kind: 'subagent', label: 'Subagents' },
+      { kind: 'rule',     label: 'CLAUDE.md / AGENTS.md Rules' },
+    ]
+    return kinds
+      .map(k => ({ ...k, items: filtered.filter(c => c.suggestedType === k.kind) }))
+      .filter(g => g.items.length > 0)
+  }, [filtered])
+
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="modal" style={{ maxWidth: 980 }}>
@@ -266,59 +281,92 @@ ollama pull qwen2.5:7b</pre>
           </div>
         ) : (
           <div className="trash-list">
-            {filtered.map(c => (
-              <div key={c.id} className="trash-row" style={{ alignItems: 'flex-start' }}>
-                <div className="trash-info">
-                  <div className="trash-name-row">
-                    <span className="trash-name">{c.name}</span>
-                    <span className={`type-badge type-${c.suggestedType}`}>{c.suggestedType}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>score {fmtScore(c.score)}</span>
-                    <span style={{
-                      fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                      background:
-                        c.status === 'accepted' ? 'var(--c-success)'
-                        : c.status === 'rejected' ? 'var(--border)'
-                        : 'var(--c-warning)',
-                      color: c.status === 'rejected' ? 'var(--text-dim)' : '#1D1E24',
-                    }}>{c.status}</span>
-                    {c.existingMatch && (
-                      <span
-                        title={`Looks similar to "${c.existingMatch.skillName}" (${c.existingMatch.matchKind} similarity ${Math.round(c.existingMatch.similarity * 100)}%)`}
-                        style={{
+            {grouped.map(group => (
+              <div key={group.kind}>
+                <div style={{
+                  fontSize: 12, fontWeight: 600, color: 'var(--text-dim)',
+                  textTransform: 'uppercase', letterSpacing: 0.5,
+                  margin: '14px 0 6px 0',
+                }}>
+                  {group.label} <span style={{ opacity: 0.6, fontWeight: 400 }}>({group.items.length})</span>
+                </div>
+                {group.items.map(c => (
+                  <div key={c.id} className="trash-row" style={{ alignItems: 'flex-start' }}>
+                    <div className="trash-info">
+                      <div className="trash-name-row">
+                        <span className="trash-name">{c.name}</span>
+                        <span className={`type-badge type-${c.suggestedType}`}>{c.suggestedType}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>score {fmtScore(c.score)}</span>
+                        <span style={{
                           fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                          background: 'var(--accent-dim)', color: 'var(--accent)',
-                        }}
-                      >🔁 already in loadout</span>
-                    )}
-                  </div>
-                  <div className="trash-desc" style={{ marginTop: 4 }}>{c.description}</div>
-                  <div className="trash-meta" style={{ marginTop: 4 }}>
-                    {c.sourceRefs.length} conversation{c.sourceRefs.length === 1 ? '' : 's'} · model {c.model}
-                    {c.acceptedPath && <> · <code style={{ fontSize: 11 }}>{c.acceptedPath}</code></>}
-                  </div>
-                  {c.sourceRefs.slice(0, 3).map(r => (
-                    <div key={r.conversationId} style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
-                      <span className={`scope-badge scope-${r.source === 'cursor' ? 'project' : 'global'}`}>{r.source}</span>{' '}
-                      <em>{r.excerpt}</em>
+                          background:
+                            c.status === 'accepted' ? 'var(--c-success)'
+                            : c.status === 'rejected' ? 'var(--border)'
+                            : 'var(--c-warning)',
+                          color: c.status === 'rejected' ? 'var(--text-dim)' : '#1D1E24',
+                        }}>{c.status}</span>
+                        {c.existingMatch && (
+                          <span
+                            title={`Refines existing ${c.suggestedType} "${c.existingMatch.skillName}" (similarity ${Math.round(c.existingMatch.similarity * 100)}%)`}
+                            style={{
+                              fontSize: 11, padding: '2px 6px', borderRadius: 3,
+                              background: 'var(--accent-dim)', color: 'var(--accent)',
+                            }}
+                          >🔁 refines {c.existingMatch.skillName}</span>
+                        )}
+                      </div>
+                      <div className="trash-desc" style={{ marginTop: 4 }}>{c.description}</div>
+                      {c.reasonForUser && (
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontStyle: 'italic' }}>
+                          <span style={{ fontWeight: 600 }}>Why we proposed this:</span> {c.reasonForUser}
+                        </div>
+                      )}
+                      <div className="trash-meta" style={{ marginTop: 4 }}>
+                        {c.sourceRefs.length} conversation{c.sourceRefs.length === 1 ? '' : 's'} · model {c.model}
+                        {c.suggestedType === 'rule' && !c.acceptedPath && (
+                          <> · <em>will append to {c.suggestedSection ? `## ${c.suggestedSection}` : 'Conventions'} in CLAUDE.md / AGENTS.md</em></>
+                        )}
+                        {c.acceptedPath && <> · <code style={{ fontSize: 11 }}>{c.acceptedPath}</code></>}
+                      </div>
+                      {c.sourceRefs.slice(0, 3).map(r => (
+                        <div key={r.conversationId} style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+                          <span className={`scope-badge scope-${r.source === 'cursor' ? 'project' : 'global'}`}>{r.source}</span>{' '}
+                          <em>{r.excerpt}</em>
+                        </div>
+                      ))}
+                      {c.evidenceQuotes && c.evidenceQuotes.length > 0 && (
+                        <details style={{ marginTop: 6 }}>
+                          <summary style={{ fontSize: 11, color: 'var(--text-dim)', cursor: 'pointer' }}>
+                            {c.evidenceQuotes.length} evidence quote{c.evidenceQuotes.length === 1 ? '' : 's'}
+                          </summary>
+                          <div style={{ marginTop: 4, paddingLeft: 12 }}>
+                            {c.evidenceQuotes.slice(0, 5).map((q, i) => (
+                              <div key={i} style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+                                <em>"{q.quote}"</em>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
-                  ))}
-                </div>
-                <div className="trash-actions" style={{ flexDirection: 'column', gap: 4 }}>
-                  {c.status === 'pending' && (
-                    <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => setAccepting(c)}>
-                      Accept
-                    </button>
-                  )}
-                  {c.existingMatch && (
-                    <button className="btn btn-sm" onClick={() => setComparing(c)} title="Ask the local model what this candidate adds over the existing skill">
-                      Compare
-                    </button>
-                  )}
-                  {c.status === 'pending' && (
-                    <button className="btn btn-sm" disabled={busy === c.id} onClick={() => handleReject(c)}>Reject</button>
-                  )}
-                  <button className="btn btn-sm btn-danger" disabled={busy === c.id} onClick={() => handleDelete(c)}>Delete</button>
-                </div>
+                    <div className="trash-actions" style={{ flexDirection: 'column', gap: 4 }}>
+                      {c.status === 'pending' && (
+                        <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => setAccepting(c)}>
+                          Accept
+                        </button>
+                      )}
+                      {c.existingMatch && (
+                        <button className="btn btn-sm" onClick={() => setComparing(c)} title="Ask the local model what this candidate adds over the existing skill">
+                          Compare
+                        </button>
+                      )}
+                      {c.status === 'pending' && (
+                        <button className="btn btn-sm" disabled={busy === c.id} onClick={() => handleReject(c)}>Reject</button>
+                      )}
+                      <button className="btn btn-sm btn-danger" disabled={busy === c.id} onClick={() => handleDelete(c)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
