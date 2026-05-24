@@ -106,6 +106,7 @@ export function extractClaudeConversationById(sessionId: string): ConversationRe
       role: t.role,
       content: t.content,
       timestamp: t.timestamp,
+      ...(t.cwd ? { cwd: t.cwd } : {}),
     }))
     return {
       id: `claude:${sessionId}`,
@@ -151,6 +152,7 @@ export function extractClaudeConversations(since: number): {
       role: t.role,
       content: t.content,
       timestamp: t.timestamp,
+      ...(t.cwd ? { cwd: t.cwd } : {}),
     }))
     records.push({
       id: `claude:${sessionId}`,

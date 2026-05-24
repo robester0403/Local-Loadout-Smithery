@@ -2,3 +2,5 @@
 // own modules under this directory across LOC-71..LOC-79.
 
 export * from './types'
+export { segmentIntoArcs } from './arcs'
+export type { SegmentOptions, LlmBoundaryFn } from './arcs'
