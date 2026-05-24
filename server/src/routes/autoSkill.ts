@@ -25,7 +25,7 @@ router.get('/auto-skill/status', asyncHandler((_req, res) => {
 }))
 
 router.post('/auto-skill/extract', asyncHandler((req, res) => {
-  const body = (req.body ?? {}) as { lookbackDays?: number; sources?: string[] }
+  const body = (req.body ?? {}) as { lookbackDays?: number; sources?: string[]; forceReextract?: boolean }
   let lookbackDays: number | undefined
   if (body.lookbackDays !== undefined) {
     if (typeof body.lookbackDays !== 'number' || body.lookbackDays <= 0 || body.lookbackDays > 365) {
@@ -44,7 +44,8 @@ router.post('/auto-skill/extract', asyncHandler((req, res) => {
       throw new HttpError(400, 'sources must contain at least one of: claude, cursor, codex')
     }
   }
-  const result = runExtraction({ lookbackDays, sources })
+  const forceReextract = body.forceReextract === true
+  const result = runExtraction({ lookbackDays, sources, forceReextract })
   res.json(result)
 }))
 

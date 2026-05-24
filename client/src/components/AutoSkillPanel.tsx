@@ -47,6 +47,7 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   const [running, setRunning] = useState<'idle' | 'extracting' | 'digesting'>('idle')
   const [runMessage, setRunMessage] = useState('')
   const [digestProgress, setDigestProgress] = useState<DigestProgress | null>(null)
+  const [forceReextract, setForceReextract] = useState(false)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [accepting, setAccepting] = useState<Candidate | null>(null)
@@ -104,10 +105,15 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     setError(null)
     try {
       setRunning('extracting')
-      setRunMessage('Extracting conversations…')
-      const extract = await runExtractApi({ lookbackDays: lookback })
+      setRunMessage(forceReextract
+        ? `Re-extracting last ${lookback} days from source…`
+        : 'Extracting conversations…')
+      const extract = await runExtractApi({ lookbackDays: lookback, forceReextract })
       const totalAdded = extract.results.reduce((sum, r) => sum + r.added, 0)
-      setRunMessage(`Extracted ${totalAdded} new conversations. Saving model choice…`)
+      setRunMessage(`Extracted ${totalAdded} ${forceReextract ? 'conversations (force-re-extract)' : 'new conversations'}. Saving model choice…`)
+      // forceReextract is a one-shot — auto-clear after the run so the next
+      // digest doesn't accidentally re-pull the same window.
+      if (forceReextract) setForceReextract(false)
       await patchSettings({ autoSkill: { model } })
       setRunning('digesting')
       setRunMessage(`Digesting with ${model}…`)
@@ -211,6 +217,18 @@ ollama pull qwen2.5:7b</pre>
               {LOOKBACK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-dim)', cursor: 'pointer', paddingBottom: 8 }}
+            title="One-shot: ignore the extraction high-water mark and re-pull conversations within the lookback window even if they've been extracted before. Useful for re-discovering previously-cleared candidates. Auto-clears after the run."
+          >
+            <input
+              type="checkbox"
+              checked={forceReextract}
+              onChange={e => setForceReextract(e.target.checked)}
+              disabled={running !== 'idle'}
+            />
+            Force re-extract
+          </label>
           <button
             className="btn btn-primary btn-sm"
             onClick={handleRun}
