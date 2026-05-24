@@ -79,6 +79,24 @@ export function deleteById(id: string): void {
   persist(readAll().filter(c => c.id !== id))
 }
 
+/**
+ * Bulk-delete every candidate matching `status`. Accepted candidates are
+ * NEVER eligible for this path — they carry an `acceptedPath` back-pointer
+ * to a real on-disk SKILL.md / CLAUDE.md block the user installed, and the
+ * candidate row is the only record of that provenance. The route layer
+ * additionally rejects 'accepted' before reaching here so this is a
+ * belt-and-suspenders guard.
+ *
+ * Returns the number of candidates removed.
+ */
+export function clearByStatus(status: 'pending' | 'rejected'): number {
+  const all = readAll()
+  const kept = all.filter(c => c.status !== status)
+  const removed = all.length - kept.length
+  if (removed > 0) persist(kept)
+  return removed
+}
+
 export function setImprovementNotes(id: string, notes: ImprovementNotes): Candidate {
   const all = readAll()
   const idx = all.findIndex(c => c.id === id)

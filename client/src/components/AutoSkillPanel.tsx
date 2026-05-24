@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Candidate, CandidateStatus, DigestProgress, OllamaModel } from '../api'
 import {
+  clearCandidates,
   deleteCandidate,
   fetchCandidates,
   fetchDigestProgress,
@@ -158,6 +159,26 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     }
   }
 
+  // Bulk-clear all pending candidates. Accepted ones are server-side
+  // protected (they carry an acceptedPath back-pointer to a real installed
+  // file). Useful when accumulated cruft from many digest runs makes the
+  // panel hard to read; the next digest re-surfaces any still-recurring
+  // patterns from real conversation data.
+  async function handleClearPending() {
+    const pendingCount = candidates.filter(c => c.status === 'pending').length
+    if (pendingCount === 0) return
+    if (!window.confirm(`Permanently delete all ${pendingCount} pending candidate${pendingCount === 1 ? '' : 's'}? Accepted skills are not affected. The next digest will re-surface any patterns still recurring in your conversation history.`)) return
+    setBusy('__clear_pending__')
+    try {
+      await clearCandidates('pending')
+      await refreshCandidates()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const filtered = useMemo(() => {
     const base = statusFilter === 'all-active'
       ? candidates.filter(c => c.status !== 'rejected')
@@ -236,14 +257,29 @@ ollama pull qwen2.5:7b</pre>
           >
             {running === 'idle' ? 'Run digest' : runMessage || 'Working…'}
           </button>
-          <div style={{ marginLeft: 'auto' }}>
-            <label className="form-label">Filter</label>
-            <select className="form-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value as CandidateStatus | 'all-active')}>
-              <option value="all-active">Pending + accepted</option>
-              <option value="pending">Pending only</option>
-              <option value="accepted">Accepted</option>
-              <option value="rejected">Rejected</option>
-            </select>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div>
+              <label className="form-label">Filter</label>
+              <select className="form-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value as CandidateStatus | 'all-active')}>
+                <option value="all-active">Pending + accepted</option>
+                <option value="pending">Pending only</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            {(() => {
+              const pendingCount = candidates.filter(c => c.status === 'pending').length
+              return (
+                <button
+                  className="btn btn-sm btn-danger"
+                  disabled={pendingCount === 0 || busy === '__clear_pending__'}
+                  onClick={handleClearPending}
+                  title="Permanently delete all pending candidates. Accepted skills are not affected. The next digest will re-surface any patterns still recurring in your conversations."
+                >
+                  {busy === '__clear_pending__' ? 'Clearing…' : `Clear ${pendingCount} pending`}
+                </button>
+              )
+            })()}
           </div>
         </div>
 

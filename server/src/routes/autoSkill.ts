@@ -5,7 +5,7 @@ import { pathParam } from '../lib/params'
 import { readSentinel, runExtraction } from '../extractors'
 import { runDigest } from '../autoSkill/digest'
 import * as digestProgress from '../autoSkill/progress'
-import { deleteById, getById, readAll, setImprovementNotes, setStatus, updateFields } from '../autoSkill/store'
+import { clearByStatus, deleteById, getById, readAll, setImprovementNotes, setStatus, updateFields } from '../autoSkill/store'
 import { emitFromCandidate } from '../autoSkill/emit'
 import { findExistingMatch } from '../autoSkill/matcher'
 import { compareCandidate } from '../autoSkill/compare'
@@ -121,6 +121,19 @@ router.delete('/auto-skill/candidates/:id', asyncHandler((req, res) => {
   const id = pathParam(req, 'id')
   deleteById(id)
   res.json({ ok: true })
+}))
+
+// Bulk-clear pending or rejected candidates. Accepted candidates are NEVER
+// eligible — they have an acceptedPath back-pointer to an installed artifact,
+// and losing the row would lose that provenance. The store also enforces this
+// guard internally (belt-and-suspenders).
+router.post('/auto-skill/candidates/clear', asyncHandler((req, res) => {
+  const body = (req.body ?? {}) as { status?: string }
+  if (body.status !== 'pending' && body.status !== 'rejected') {
+    throw new HttpError(400, 'status must be "pending" or "rejected"')
+  }
+  const removed = clearByStatus(body.status)
+  res.json({ removed })
 }))
 
 // Accept = write a real SKILL.md (or .md) to a loadout dir. The candidate
