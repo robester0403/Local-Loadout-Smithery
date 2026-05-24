@@ -168,6 +168,77 @@ describe('parseSynthOutput', () => {
   })
 })
 
+// ---- pickExampleQuote + renderSkillBody example section --------------------
+
+describe('pickExampleQuote', () => {
+  it('returns null when no member has a verbatim prompt', () => {
+    const members = [summary('a'), summary('b')]
+    expect(skillsTest.pickExampleQuote(members)).toBeNull()
+  })
+
+  it('skips failed-outcome members even if they have prompts', () => {
+    const ms: ConversationSummary[] = [
+      { ...summary('failed-one', { outcome: 'failed' }), verbatimUserPrompts: ['help me fix this thing that ultimately did not work out'] },
+      { ...summary('ok-one'), verbatimUserPrompts: ['short ok'] },
+    ]
+    const out = skillsTest.pickExampleQuote(ms)
+    expect(out?.prompt).toBe('short ok')
+    expect(out?.outcome).toBe('succeeded')
+  })
+
+  it('picks the longest succeeded prompt across members', () => {
+    const long = 'a really detailed user request that explains exactly what they wanted'
+    const ms: ConversationSummary[] = [
+      { ...summary('m1'), verbatimUserPrompts: ['short'] },
+      { ...summary('m2'), verbatimUserPrompts: [long, 'another short one'] },
+      { ...summary('m3'), verbatimUserPrompts: ['medium-length request'] },
+    ]
+    expect(skillsTest.pickExampleQuote(ms)?.prompt).toBe(long)
+  })
+
+  it('ignores whitespace-only prompts', () => {
+    const ms: ConversationSummary[] = [
+      { ...summary('m1'), verbatimUserPrompts: ['   ', '\n\n'] },
+      { ...summary('m2'), verbatimUserPrompts: ['real prompt'] },
+    ]
+    expect(skillsTest.pickExampleQuote(ms)?.prompt).toBe('real prompt')
+  })
+})
+
+describe('renderSkillBody example section', () => {
+  it('omits ## Example when no example supplied', () => {
+    const body = skillsTest.renderSkillBody(VALID_SYNTH)
+    expect(body).not.toContain('## Example')
+  })
+
+  it('renders ## Example with quoted prompt + outcome line', () => {
+    const body = skillsTest.renderSkillBody(VALID_SYNTH, {
+      prompt: 'add a vitest test for the foo helper',
+      outcome: 'succeeded',
+    })
+    expect(body).toContain('## Example')
+    expect(body).toContain('> add a vitest test for the foo helper')
+    expect(body).toContain('Observed outcome: succeeded.')
+  })
+
+  it('truncates very long example prompts to keep the body compact', () => {
+    const long = 'x'.repeat(2000)
+    const body = skillsTest.renderSkillBody(VALID_SYNTH, { prompt: long, outcome: 'succeeded' })
+    expect(body).toContain('…')
+    expect(body).not.toContain('x'.repeat(2000))
+  })
+
+  it('quotes multi-line prompts line-by-line', () => {
+    const body = skillsTest.renderSkillBody(VALID_SYNTH, {
+      prompt: 'line one\nline two\nline three',
+      outcome: 'succeeded',
+    })
+    expect(body).toContain('> line one')
+    expect(body).toContain('> line two')
+    expect(body).toContain('> line three')
+  })
+})
+
 // ---- detectSkills end-to-end ------------------------------------------------
 
 describe('detectSkills', () => {
@@ -194,7 +265,28 @@ describe('detectSkills', () => {
     expect(cand.bodyDraft).toContain('## Procedure')
     expect(cand.bodyDraft).toContain('## When done')
     expect(cand.bodyDraft).toContain('## Expected output')
+    // No verbatim prompts on the default summary fixtures, so no ## Example
+    // is rendered for this case. Coverage for the populated path lives in
+    // the renderSkillBody example-section tests above.
+    expect(cand.bodyDraft).not.toContain('## Example')
     expect(cand.evidenceQuotes?.length).toBe(2)
+  })
+
+  it('renders ## Example in bodyDraft when cluster members carry verbatim prompts', async () => {
+    const realPrompt = 'add a vitest test for the foo helper and use snapshots'
+    const members = [
+      { ...summary('a'), verbatimUserPrompts: [realPrompt] },
+      { ...summary('b'), verbatimUserPrompts: ['short'] },
+      { ...summary('c'), verbatimUserPrompts: [] },
+    ]
+    const c = cluster(members)
+    const result = await detectSkills([c], members, {
+      llmSynthFn: async () => VALID_SYNTH_JSON,
+      llmConsistencyFn: async () => allPassConsistency,
+    })
+    expect(result.candidates).toHaveLength(1)
+    expect(result.candidates[0].bodyDraft).toContain('## Example')
+    expect(result.candidates[0].bodyDraft).toContain(`> ${realPrompt}`)
   })
 
   it('cluster failing pre-filter (size) → 0 candidates, 0 LLM calls', async () => {

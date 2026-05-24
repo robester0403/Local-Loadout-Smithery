@@ -105,7 +105,7 @@ export async function detectSkills(
       continue
     }
 
-    candidates.push(buildCandidate(cluster, synth, holdouts, consistency, cfg.model))
+    candidates.push(buildCandidate(cluster, synth, members, holdouts, consistency, cfg.model))
   }
 
   return { candidates, warnings }
@@ -418,6 +418,7 @@ const defaultConsistencyFn: SkillConsistencyFn = async (prompt, model) => {
 function buildCandidate(
   cluster: IntentCluster,
   synth: SkillSynthOutput,
+  members: ConversationSummary[],
   holdouts: ConversationSummary[],
   consistency: ConsistencyResult,
   model: string,
@@ -434,11 +435,13 @@ function buildCandidate(
     quote: `[holdout ${h.pass ? 'pass' : 'fail'}] ${h.reason || '(no reason given)'}`.slice(0, 200),
   }))
 
+  const example = pickExampleQuote(members)
+
   return {
     signature: signature('skill', slug),
     name: synth.name,
     description: synth.description,
-    bodyDraft: renderSkillBody(synth),
+    bodyDraft: renderSkillBody(synth, example),
     suggestedType: 'skill',
     score: 0,
     sourceRefs,
@@ -452,8 +455,41 @@ function buildCandidate(
   }
 }
 
-export function renderSkillBody(synth: SkillSynthOutput): string {
-  return [
+export interface SkillBodyExample {
+  prompt: string
+  outcome: ConversationSummary['outcome']
+}
+
+/**
+ * Pick a concrete user prompt to quote in the skill body's ## Example
+ * section. Prefers successful arcs (so the example doesn't celebrate a
+ * failure) and within those picks the longest prompt (more decision-making
+ * fuel for the runtime LLM). Returns null when no usable prompt exists.
+ *
+ * Per arXiv finding (Claude Code skills authoring): "concise stepwise
+ * guidance with at least one working example is often more effective than
+ * exhaustive documentation." This is the cheap version of that — a single
+ * verbatim quote appended to the body. The expensive version (QA-CoT body
+ * generation per arXiv 2502.17321) weaves the example into the procedure
+ * itself; tracked as a future-work ticket.
+ */
+export function pickExampleQuote(members: ConversationSummary[]): SkillBodyExample | null {
+  let best: SkillBodyExample | null = null
+  for (const m of members) {
+    if (m.outcome !== 'succeeded') continue
+    for (const p of m.verbatimUserPrompts) {
+      const trimmed = p.trim()
+      if (trimmed.length === 0) continue
+      if (best == null || trimmed.length > best.prompt.length) {
+        best = { prompt: trimmed, outcome: m.outcome }
+      }
+    }
+  }
+  return best
+}
+
+export function renderSkillBody(synth: SkillSynthOutput, example?: SkillBodyExample | null): string {
+  const lines: string[] = [
     '## When to use',
     synth.applicabilityCondition,
     '',
@@ -466,7 +502,23 @@ export function renderSkillBody(synth: SkillSynthOutput): string {
     '## Expected output',
     synth.expectedOutput,
     '',
-  ].join('\n')
+  ]
+  if (example) {
+    // Cap the quoted prompt so a 4kb verbatim doesn't dominate the body.
+    const quoted = example.prompt.length > 600
+      ? example.prompt.slice(0, 600) + '…'
+      : example.prompt
+    lines.push(
+      '## Example',
+      'A real user prompt that triggered this skill:',
+      '',
+      ...quoted.split('\n').map(l => `> ${l}`),
+      '',
+      `Observed outcome: ${example.outcome}.`,
+      '',
+    )
+  }
+  return lines.join('\n')
 }
 
 function sanitizeSlug(name: string): string {
@@ -490,6 +542,7 @@ export const __test = {
   parseSynthOutput,
   parseConsistencyOutput,
   renderSkillBody,
+  pickExampleQuote,
   sanitizeSlug,
   signature,
   resolveOptions,
