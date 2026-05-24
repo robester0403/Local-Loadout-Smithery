@@ -39,6 +39,12 @@ export type {
   PatternRecurrence,
   PatternInstance,
 } from './detectors/subagents'
+export { deduplicateCandidates } from './dedup'
+export type { DedupOptions, DedupEmbedFn, ExistingArtifact } from './dedup'
+export { rankCandidates } from './rank'
+export type { RankOptions } from './rank'
+export { generateReasonForUser, annotateWithReason } from './explain'
+export type { ExplainOptions } from './explain'
 export { levenshtein, normalizedLevenshtein } from './lib/levenshtein'
 export {
   computeRuleMarkerId,
