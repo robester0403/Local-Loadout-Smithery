@@ -16,6 +16,17 @@ export { detectCommands } from './detectors/commands'
 export type { CommandDetectorOptions, GeneratedCandidate } from './detectors/commands'
 export { detectRules } from './detectors/rules'
 export type { RuleDetectorOptions, RuleClassifierFn, RuleEmbedFn } from './detectors/rules'
+export { detectSkills } from './detectors/skills'
+export type {
+  SkillDetectorOptions,
+  SkillDetectorResult,
+  SkillDetectorWarning,
+  SkillSynthFn,
+  SkillConsistencyFn,
+  SkillSynthOutput,
+  ConsistencyResult,
+  ConsistencyHoldout,
+} from './detectors/skills'
 export { levenshtein, normalizedLevenshtein } from './lib/levenshtein'
 export {
   computeRuleMarkerId,
