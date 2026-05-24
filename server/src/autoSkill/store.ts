@@ -79,6 +79,24 @@ export function deleteById(id: string): void {
   persist(readAll().filter(c => c.id !== id))
 }
 
+/**
+ * Bulk-delete every candidate matching `status`. Accepted candidates are
+ * NEVER eligible for this path — they carry an `acceptedPath` back-pointer
+ * to a real on-disk SKILL.md / CLAUDE.md block the user installed, and the
+ * candidate row is the only record of that provenance. The route layer
+ * additionally rejects 'accepted' before reaching here so this is a
+ * belt-and-suspenders guard.
+ *
+ * Returns the number of candidates removed.
+ */
+export function clearByStatus(status: 'pending' | 'rejected'): number {
+  const all = readAll()
+  const kept = all.filter(c => c.status !== status)
+  const removed = all.length - kept.length
+  if (removed > 0) persist(kept)
+  return removed
+}
+
 export function setImprovementNotes(id: string, notes: ImprovementNotes): Candidate {
   const all = readAll()
   const idx = all.findIndex(c => c.id === id)
@@ -86,6 +104,18 @@ export function setImprovementNotes(id: string, notes: ImprovementNotes): Candid
   all[idx] = { ...all[idx], improvementNotes: notes, updatedAt: new Date().toISOString() }
   persist(all)
   return all[idx]
+}
+
+// Merge `src` into `dst` keeping only the keys whose `src` value is defined.
+// Lets pendingPatch above survive being called with a mix of populated and
+// undefined fields (legacy digest vs new pipeline) without nulling out
+// previously-set enrichment.
+function assignDefined<T extends object>(dst: Partial<T>, src: Partial<T>): Partial<T> {
+  for (const key of Object.keys(src) as Array<keyof T>) {
+    const v = src[key]
+    if (v !== undefined) dst[key] = v
+  }
+  return dst
 }
 
 // Upsert a freshly-generated candidate. Dedup is signature-based: if a
@@ -106,13 +136,44 @@ export function upsertGenerated(c: Omit<Candidate, 'id' | 'status' | 'createdAt'
         seen.add(ref.conversationId)
       }
     }
+    // Pending candidates re-pick up fresh detector output (the user hasn't
+    // triaged yet). Includes the LOC-69 pipeline enrichment fields so a
+    // rule/command/skill/subagent that gets re-emitted by the new pipeline
+    // doesn't lose its per-kind data.
+    //
+    // ONLY DEFINED VALUES OVERWRITE existing fields. The legacy free-form
+    // digest doesn't populate the LOC-70 enrichment fields, so when a user
+    // toggles useSignalPipeline off and re-runs, a naive spread would write
+    // `undefined` over reasonForUser / ruleText / procedure / etc., silently
+    // stripping the pipeline's prior output. assignDefined skips undefined
+    // RHS values so each path only writes what it actually has.
+    const pendingPatch: Partial<Candidate> = existing.status === 'pending'
+      ? assignDefined({}, {
+          name: c.name,
+          description: c.description,
+          bodyDraft: c.bodyDraft,
+          suggestedType: c.suggestedType,
+          reasonForUser: c.reasonForUser,
+          evidenceQuotes: c.evidenceQuotes,
+          ruleText: c.ruleText,
+          suggestedSection: c.suggestedSection,
+          promptText: c.promptText,
+          invocationCount: c.invocationCount,
+          suggestedSlug: c.suggestedSlug,
+          applicabilityCondition: c.applicabilityCondition,
+          procedure: c.procedure,
+          terminationCondition: c.terminationCondition,
+          expectedOutput: c.expectedOutput,
+          constituentSkills: c.constituentSkills,
+          orchestrationPattern: c.orchestrationPattern,
+          inputShape: c.inputShape,
+          outputShape: c.outputShape,
+          sourceClusterId: c.sourceClusterId,
+        })
+      : {}
     const next: Candidate = {
       ...existing,
-      // Update text only if the user hasn't already triaged the candidate;
-      // otherwise we'd silently overwrite their edits next digest run.
-      ...(existing.status === 'pending'
-        ? { name: c.name, description: c.description, bodyDraft: c.bodyDraft, suggestedType: c.suggestedType }
-        : {}),
+      ...pendingPatch,
       sourceRefs: mergedRefs,
       score: Math.max(existing.score, c.score),
       model: c.model,

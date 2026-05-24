@@ -26,17 +26,31 @@ export interface ExtractOptions {
   lookbackDays?: number
   /** Restrict to a subset of sources. Defaults to all known sources. */
   sources?: ConversationSource[]
+  /**
+   * One-shot bypass of the high-water mark. When true, ignore each source's
+   * recorded hwm and re-extract everything within `lookbackDays`, even
+   * conversations already pulled by prior runs. The sentinel still updates
+   * after the run (we take max(old hwm, new hwm), which is a no-op when the
+   * old hwm was already ahead), so the next non-forced extract resumes its
+   * normal incremental behavior. Use when the user wants to re-discover
+   * candidates they previously cleared.
+   */
+  forceReextract?: boolean
 }
 
 export function runExtraction(opts: ExtractOptions = {}): { results: ExtractResult[]; lastRunAt: string } {
   const lookbackDays = opts.lookbackDays ?? 14
   const sources: ConversationSource[] = opts.sources ?? ['claude', 'cursor', 'codex']
+  const forceReextract = opts.forceReextract === true
 
   const sentinel = readSentinel()
   const now = Date.now()
-  // Per-source `since`: max(lookback window, recorded high-water mark) so we
-  // never re-process a turn we already wrote, but we also never reach further
-  // back than the user-asked-for window.
+  // Per-source `since`:
+  //   - default: max(lookback window, recorded high-water mark) — never re-
+  //     process a turn we already wrote, and never reach further back than
+  //     the user-asked-for window.
+  //   - forceReextract: ignore the hwm — use the lookback floor directly so
+  //     conversations in the window get re-pulled (even ones already seen).
   const lookbackFloor = now - lookbackDays * 24 * 60 * 60 * 1000
 
   const results: ExtractResult[] = []
@@ -44,7 +58,7 @@ export function runExtraction(opts: ExtractOptions = {}): { results: ExtractResu
 
   for (const source of sources) {
     const hwm = sentinel.highWaterMark[source] ?? 0
-    const since = Math.max(hwm, lookbackFloor)
+    const since = forceReextract ? lookbackFloor : Math.max(hwm, lookbackFloor)
     let records, warnings, newHwm
     if (source === 'claude') {
       ;({ records, warnings, newHighWaterMark: newHwm } = extractClaudeConversations(since))
@@ -54,6 +68,8 @@ export function runExtraction(opts: ExtractOptions = {}): { results: ExtractResu
       ;({ records, warnings, newHighWaterMark: newHwm } = extractCodexConversations(since))
     }
     const { added, skipped } = appendRecords(records)
+    // Always take max so a forced re-extract can't regress the hwm. If the
+    // user was fully caught up before forcing, hwm stays at its prior value.
     nextHwm[source] = Math.max(hwm, newHwm)
     results.push({ source, added, skipped, warnings })
   }

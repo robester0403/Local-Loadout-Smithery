@@ -9,6 +9,9 @@ export interface Settings {
   autoSkill: {
     /** Ollama model the discovery digest runs against. Empty until the user picks one. */
     model: string
+    /** Route digest through the signal-detection pipeline (LOC-69) instead of
+     *  the legacy free-form digest. Default false; LOC-79 flips on after tuning. */
+    useSignalPipeline?: boolean
   }
 }
 
@@ -17,7 +20,7 @@ function file(): string {
 }
 
 function defaults(): Settings {
-  return { autoSkill: { model: '' } }
+  return { autoSkill: { model: '', useSignalPipeline: false } }
 }
 
 // One-shot read of the old harvester.* key shape for users carrying state

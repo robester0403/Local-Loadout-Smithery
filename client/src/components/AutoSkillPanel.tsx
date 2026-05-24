@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Candidate, CandidateStatus, DigestProgress, OllamaModel } from '../api'
 import {
+  clearCandidates,
   deleteCandidate,
   fetchCandidates,
   fetchDigestProgress,
@@ -47,6 +48,7 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   const [running, setRunning] = useState<'idle' | 'extracting' | 'digesting'>('idle')
   const [runMessage, setRunMessage] = useState('')
   const [digestProgress, setDigestProgress] = useState<DigestProgress | null>(null)
+  const [forceReextract, setForceReextract] = useState(false)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [accepting, setAccepting] = useState<Candidate | null>(null)
@@ -104,10 +106,15 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     setError(null)
     try {
       setRunning('extracting')
-      setRunMessage('Extracting conversations…')
-      const extract = await runExtractApi({ lookbackDays: lookback })
+      setRunMessage(forceReextract
+        ? `Re-extracting last ${lookback} days from source…`
+        : 'Extracting conversations…')
+      const extract = await runExtractApi({ lookbackDays: lookback, forceReextract })
       const totalAdded = extract.results.reduce((sum, r) => sum + r.added, 0)
-      setRunMessage(`Extracted ${totalAdded} new conversations. Saving model choice…`)
+      setRunMessage(`Extracted ${totalAdded} ${forceReextract ? 'conversations (force-re-extract)' : 'new conversations'}. Saving model choice…`)
+      // forceReextract is a one-shot — auto-clear after the run so the next
+      // digest doesn't accidentally re-pull the same window.
+      if (forceReextract) setForceReextract(false)
       await patchSettings({ autoSkill: { model } })
       setRunning('digesting')
       setRunMessage(`Digesting with ${model}…`)
@@ -139,11 +146,59 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     }
   }
 
+  function handleExport() {
+    const countByStatus = candidates.reduce<Record<string, number>>((acc, c) => {
+      acc[c.status] = (acc[c.status] ?? 0) + 1
+      return acc
+    }, {})
+    const countByType = candidates.reduce<Record<string, number>>((acc, c) => {
+      acc[c.suggestedType] = (acc[c.suggestedType] ?? 0) + 1
+      return acc
+    }, {})
+    const exportedAt = new Date().toISOString()
+    const payload = {
+      exportedAt,
+      totalCount: candidates.length,
+      countByStatus,
+      countByType,
+      candidates,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `candidates-export-${exportedAt.replace(/[:.]/g, '-')}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   async function handleDelete(c: Candidate) {
     if (!window.confirm(`Permanently delete candidate "${c.name}"?`)) return
     setBusy(c.id)
     try {
       await deleteCandidate(c.id)
+      await refreshCandidates()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Bulk-clear all pending candidates. Accepted ones are server-side
+  // protected (they carry an acceptedPath back-pointer to a real installed
+  // file). Useful when accumulated cruft from many digest runs makes the
+  // panel hard to read; the next digest re-surfaces any still-recurring
+  // patterns from real conversation data.
+  async function handleClearPending() {
+    const pendingCount = candidates.filter(c => c.status === 'pending').length
+    if (pendingCount === 0) return
+    if (!window.confirm(`Permanently delete all ${pendingCount} pending candidate${pendingCount === 1 ? '' : 's'}? Accepted skills are not affected. The next digest will re-surface any patterns still recurring in your conversation history.`)) return
+    setBusy('__clear_pending__')
+    try {
+      await clearCandidates('pending')
       await refreshCandidates()
     } catch (e) {
       setError((e as Error).message)
@@ -158,6 +213,21 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
       : candidates.filter(c => c.status === statusFilter)
     return [...base].sort((a, b) => b.score - a.score)
   }, [candidates, statusFilter])
+
+  // Group filtered candidates by suggestedType for the new pipeline's
+  // type-segregated rendering (LOC-78). Order matches the four-artifact
+  // taxonomy from docs/signal-detection-pipeline.md.
+  const grouped = useMemo(() => {
+    const kinds: Array<{ kind: Candidate['suggestedType']; label: string }> = [
+      { kind: 'skill',    label: 'Skills' },
+      { kind: 'command',  label: 'Commands' },
+      { kind: 'subagent', label: 'Subagents' },
+      { kind: 'rule',     label: 'CLAUDE.md / AGENTS.md Rules' },
+    ]
+    return kinds
+      .map(k => ({ ...k, items: filtered.filter(c => c.suggestedType === k.kind) }))
+      .filter(g => g.items.length > 0)
+  }, [filtered])
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -196,6 +266,18 @@ ollama pull qwen2.5:7b</pre>
               {LOOKBACK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-dim)', cursor: 'pointer', paddingBottom: 8 }}
+            title="One-shot: ignore the extraction high-water mark and re-pull conversations within the lookback window even if they've been extracted before. Useful for re-discovering previously-cleared candidates. Auto-clears after the run."
+          >
+            <input
+              type="checkbox"
+              checked={forceReextract}
+              onChange={e => setForceReextract(e.target.checked)}
+              disabled={running !== 'idle'}
+            />
+            Force re-extract
+          </label>
           <button
             className="btn btn-primary btn-sm"
             onClick={handleRun}
@@ -203,14 +285,37 @@ ollama pull qwen2.5:7b</pre>
           >
             {running === 'idle' ? 'Run digest' : runMessage || 'Working…'}
           </button>
-          <div style={{ marginLeft: 'auto' }}>
-            <label className="form-label">Filter</label>
-            <select className="form-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value as CandidateStatus | 'all-active')}>
-              <option value="all-active">Pending + accepted</option>
-              <option value="pending">Pending only</option>
-              <option value="accepted">Accepted</option>
-              <option value="rejected">Rejected</option>
-            </select>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <div>
+              <label className="form-label">Filter</label>
+              <select className="form-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value as CandidateStatus | 'all-active')}>
+                <option value="all-active">Pending + accepted</option>
+                <option value="pending">Pending only</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+            <button
+              className="btn btn-sm"
+              onClick={handleExport}
+              disabled={loading || candidates.length === 0}
+              title="Download all candidates as JSON. Exports the full set regardless of the Filter dropdown — useful for diffing pipeline output before/after a change."
+            >
+              Export JSON
+            </button>
+            {(() => {
+              const pendingCount = candidates.filter(c => c.status === 'pending').length
+              return (
+                <button
+                  className="btn btn-sm btn-danger"
+                  disabled={pendingCount === 0 || busy === '__clear_pending__'}
+                  onClick={handleClearPending}
+                  title="Permanently delete all pending candidates. Accepted skills are not affected. The next digest will re-surface any patterns still recurring in your conversations."
+                >
+                  {busy === '__clear_pending__' ? 'Clearing…' : `Clear ${pendingCount} pending`}
+                </button>
+              )
+            })()}
           </div>
         </div>
 
@@ -266,59 +371,98 @@ ollama pull qwen2.5:7b</pre>
           </div>
         ) : (
           <div className="trash-list">
-            {filtered.map(c => (
-              <div key={c.id} className="trash-row" style={{ alignItems: 'flex-start' }}>
-                <div className="trash-info">
-                  <div className="trash-name-row">
-                    <span className="trash-name">{c.name}</span>
-                    <span className={`type-badge type-${c.suggestedType}`}>{c.suggestedType}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>score {fmtScore(c.score)}</span>
-                    <span style={{
-                      fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                      background:
-                        c.status === 'accepted' ? 'var(--c-success)'
-                        : c.status === 'rejected' ? 'var(--border)'
-                        : 'var(--c-warning)',
-                      color: c.status === 'rejected' ? 'var(--text-dim)' : '#1D1E24',
-                    }}>{c.status}</span>
-                    {c.existingMatch && (
-                      <span
-                        title={`Looks similar to "${c.existingMatch.skillName}" (${c.existingMatch.matchKind} similarity ${Math.round(c.existingMatch.similarity * 100)}%)`}
-                        style={{
+            {grouped.map(group => (
+              <div key={group.kind}>
+                <div style={{
+                  fontSize: 12, fontWeight: 600, color: 'var(--text-dim)',
+                  textTransform: 'uppercase', letterSpacing: 0.5,
+                  margin: '14px 0 6px 0',
+                }}>
+                  {group.label} <span style={{ opacity: 0.6, fontWeight: 400 }}>({group.items.length})</span>
+                </div>
+                {group.items.map(c => (
+                  <div key={c.id} className="trash-row" style={{ alignItems: 'flex-start' }}>
+                    <div className="trash-info">
+                      <div className="trash-name-row">
+                        <span className="trash-name">{c.name}</span>
+                        <span className={`type-badge type-${c.suggestedType}`}>{c.suggestedType}</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>score {fmtScore(c.score)}</span>
+                        <span style={{
                           fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                          background: 'var(--accent-dim)', color: 'var(--accent)',
-                        }}
-                      >🔁 already in loadout</span>
-                    )}
-                  </div>
-                  <div className="trash-desc" style={{ marginTop: 4 }}>{c.description}</div>
-                  <div className="trash-meta" style={{ marginTop: 4 }}>
-                    {c.sourceRefs.length} conversation{c.sourceRefs.length === 1 ? '' : 's'} · model {c.model}
-                    {c.acceptedPath && <> · <code style={{ fontSize: 11 }}>{c.acceptedPath}</code></>}
-                  </div>
-                  {c.sourceRefs.slice(0, 3).map(r => (
-                    <div key={r.conversationId} style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
-                      <span className={`scope-badge scope-${r.source === 'cursor' ? 'project' : 'global'}`}>{r.source}</span>{' '}
-                      <em>{r.excerpt}</em>
+                          background:
+                            c.status === 'accepted' ? 'var(--c-success)'
+                            : c.status === 'rejected' ? 'var(--border)'
+                            : 'var(--c-warning)',
+                          color: c.status === 'rejected' ? 'var(--text-dim)' : '#1D1E24',
+                        }}>{c.status}</span>
+                        {c.existingMatch && (() => {
+                          // Fall back to candidate's own type for older
+                          // payloads that pre-date the cross-type kind field.
+                          const matchedKind = c.existingMatch.kind ?? c.suggestedType
+                          const crossType = matchedKind !== c.suggestedType
+                          return (
+                            <span
+                              title={`Refines existing ${matchedKind} "${c.existingMatch.skillName}" (similarity ${Math.round(c.existingMatch.similarity * 100)}%)${crossType ? ` — this ${c.suggestedType} candidate looks like an existing ${matchedKind}` : ''}`}
+                              style={{
+                                fontSize: 11, padding: '2px 6px', borderRadius: 3,
+                                background: 'var(--accent-dim)', color: 'var(--accent)',
+                              }}
+                            >🔁 refines {crossType ? `${matchedKind} ` : ''}{c.existingMatch.skillName}</span>
+                          )
+                        })()}
+                      </div>
+                      <div className="trash-desc" style={{ marginTop: 4 }}>{c.description}</div>
+                      {c.reasonForUser && (
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, fontStyle: 'italic' }}>
+                          <span style={{ fontWeight: 600 }}>Why we proposed this:</span> {c.reasonForUser}
+                        </div>
+                      )}
+                      <div className="trash-meta" style={{ marginTop: 4 }}>
+                        {c.sourceRefs.length} conversation{c.sourceRefs.length === 1 ? '' : 's'} · model {c.model}
+                        {c.suggestedType === 'rule' && !c.acceptedPath && (
+                          <> · <em>will append to {c.suggestedSection ? `## ${c.suggestedSection}` : 'Conventions'} in CLAUDE.md / AGENTS.md</em></>
+                        )}
+                        {c.acceptedPath && <> · <code style={{ fontSize: 11 }}>{c.acceptedPath}</code></>}
+                      </div>
+                      {c.sourceRefs.slice(0, 3).map(r => (
+                        <div key={r.conversationId} style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+                          <span className={`scope-badge scope-${r.source === 'cursor' ? 'project' : 'global'}`}>{r.source}</span>{' '}
+                          <em>{r.excerpt}</em>
+                        </div>
+                      ))}
+                      {c.evidenceQuotes && c.evidenceQuotes.length > 0 && (
+                        <details style={{ marginTop: 6 }}>
+                          <summary style={{ fontSize: 11, color: 'var(--text-dim)', cursor: 'pointer' }}>
+                            {c.evidenceQuotes.length} evidence quote{c.evidenceQuotes.length === 1 ? '' : 's'}
+                          </summary>
+                          <div style={{ marginTop: 4, paddingLeft: 12 }}>
+                            {c.evidenceQuotes.slice(0, 5).map((q, i) => (
+                              <div key={i} style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+                                <em>"{q.quote}"</em>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
-                  ))}
-                </div>
-                <div className="trash-actions" style={{ flexDirection: 'column', gap: 4 }}>
-                  {c.status === 'pending' && (
-                    <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => setAccepting(c)}>
-                      Accept
-                    </button>
-                  )}
-                  {c.existingMatch && (
-                    <button className="btn btn-sm" onClick={() => setComparing(c)} title="Ask the local model what this candidate adds over the existing skill">
-                      Compare
-                    </button>
-                  )}
-                  {c.status === 'pending' && (
-                    <button className="btn btn-sm" disabled={busy === c.id} onClick={() => handleReject(c)}>Reject</button>
-                  )}
-                  <button className="btn btn-sm btn-danger" disabled={busy === c.id} onClick={() => handleDelete(c)}>Delete</button>
-                </div>
+                    <div className="trash-actions" style={{ flexDirection: 'column', gap: 4 }}>
+                      {c.status === 'pending' && (
+                        <button className="btn btn-sm btn-primary" disabled={busy === c.id} onClick={() => setAccepting(c)}>
+                          Accept
+                        </button>
+                      )}
+                      {c.existingMatch && (
+                        <button className="btn btn-sm" onClick={() => setComparing(c)} title="Ask the local model what this candidate adds over the existing skill">
+                          Compare
+                        </button>
+                      )}
+                      {c.status === 'pending' && (
+                        <button className="btn btn-sm" disabled={busy === c.id} onClick={() => handleReject(c)}>Reject</button>
+                      )}
+                      <button className="btn btn-sm btn-danger" disabled={busy === c.id} onClick={() => handleDelete(c)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

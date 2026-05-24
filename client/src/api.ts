@@ -502,7 +502,7 @@ export async function fetchBundleDrift(): Promise<DriftResult[]> {
 
 // ─── Auto Skill ───────────────────────────────────────────────────────────────
 
-export type CandidateType = 'skill' | 'command' | 'subagent'
+export type CandidateType = 'skill' | 'command' | 'subagent' | 'rule'
 export type CandidateStatus = 'pending' | 'accepted' | 'rejected'
 export type ConversationSource = 'claude' | 'cursor' | 'codex'
 
@@ -519,6 +519,9 @@ export interface ExistingMatch {
   skillPath: string
   matchKind: 'name' | 'description'
   similarity: number
+  /** Type of the matched existing artifact. May differ from candidate's
+   *  suggestedType — e.g. a skill candidate refining an existing command. */
+  kind: CandidateType
 }
 
 export type ImprovementKind = 'add-to-description' | 'add-to-body' | 'no-improvement'
@@ -551,6 +554,30 @@ export interface Candidate {
   acceptedPath?: string
   existingMatch?: ExistingMatch | null
   improvementNotes?: ImprovementNotes
+
+  // Signal-detection pipeline enrichment (LOC-69). Optional; populated when
+  // the new pipeline emitted this candidate.
+  reasonForUser?: string
+  evidenceQuotes?: Array<{ conversationId: string; quote: string }>
+  // Rule-only
+  ruleText?: string
+  suggestedSection?: string
+  // Command-only
+  promptText?: string
+  invocationCount?: number
+  suggestedSlug?: string
+  // Skill-only (S = (C, π, T, R))
+  applicabilityCondition?: string
+  procedure?: string[]
+  terminationCondition?: string
+  expectedOutput?: string
+  // Subagent-only
+  constituentSkills?: string[]
+  orchestrationPattern?: string[]
+  inputShape?: string
+  outputShape?: string
+  // Provenance
+  sourceClusterId?: string
 }
 
 export interface DigestResult {
@@ -596,7 +623,15 @@ export async function patchSettings(p: Partial<AppSettings>): Promise<AppSetting
   return parseResponse(res)
 }
 
-export async function runExtractApi(opts: { sources?: ConversationSource[]; lookbackDays?: number } = {}): Promise<ExtractResult> {
+export async function runExtractApi(opts: {
+  sources?: ConversationSource[]
+  lookbackDays?: number
+  /** One-shot bypass of the per-source high-water mark. When true, the
+   *  extractor re-pulls conversations within the lookback window even if it
+   *  has already seen them. Useful for re-discovering previously-cleared
+   *  candidates. The sentinel still updates normally afterward. */
+  forceReextract?: boolean
+} = {}): Promise<ExtractResult> {
   const res = await fetch('/api/auto-skill/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -653,6 +688,21 @@ export async function rejectCandidate(id: string): Promise<Candidate> {
 export async function deleteCandidate(id: string): Promise<void> {
   const res = await fetch(`/api/auto-skill/candidates/${encodeURIComponent(id)}`, { method: 'DELETE' })
   await parseResponse(res)
+}
+
+/**
+ * Bulk-clear pending or rejected candidates. Server rejects 'accepted' (those
+ * have a real on-disk back-pointer and would lose provenance if cleared).
+ * Returns the number of candidates removed.
+ */
+export async function clearCandidates(status: 'pending' | 'rejected'): Promise<number> {
+  const res = await fetch('/api/auto-skill/candidates/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  const body = await parseResponse<{ removed: number }>(res)
+  return body.removed
 }
 
 export interface AcceptInput {

@@ -3,6 +3,8 @@ import path from 'path'
 import { findAccounts } from '../scanner/discover'
 import { assertWithinHome, HttpError } from '../lib/paths'
 import { setStatus } from './store'
+import { emitRuleAppend } from './emitRule'
+import { loadExistingInventory } from './signals/existingInventory'
 import type { Candidate, CandidateType } from './types'
 
 export interface EmitOptions {
@@ -44,6 +46,12 @@ function destinationPath(opts: EmitOptions): string {
       return path.join(baseDir, 'commands', slug + '.md')
     case 'subagent':
       return path.join(baseDir, 'agents', slug + '.md')
+    case 'rule':
+      // Rule candidates land as text blocks inside CLAUDE.md / AGENTS.md.
+      // The actual write happens in emitRuleAppend (called from
+      // emitFromCandidate's rule branch); this case is unreachable in the
+      // normal flow but kept exhaustive for the type checker.
+      throw new HttpError(500, 'Rule candidates use the append path, not destinationPath')
   }
 }
 
@@ -78,6 +86,36 @@ export function emitFromCandidate(c: Candidate, opts: EmitOptions): { path: stri
   if (!accounts.has(opts.accountDir)) {
     throw new HttpError(400, `Unknown account dir: ${opts.accountDir}`)
   }
+
+  // Rule candidates append to the ecosystem's global instructions file
+  // (CLAUDE.md or AGENTS.md). All other kinds create a new file per
+  // destinationPath().
+  if (opts.type === 'rule') {
+    const ruleText = (opts.body && opts.body.trim()) || c.ruleText || c.bodyDraft
+    if (!ruleText.trim()) throw new HttpError(400, 'Rule candidate has no body to append')
+    const suggestedSection = c.suggestedSection
+    const result = emitRuleAppend({
+      accountDir: opts.accountDir,
+      ruleText,
+      suggestedSection,
+    })
+    assertWithinHome(result.path)
+    const updated = setStatus(c.id, 'accepted', result.path)
+    return { path: result.path, candidate: updated }
+  }
+
+  // Belt-and-suspenders (LOC-89): reject cross-type slug collisions. The
+  // upstream pipeline filters these out, but a candidate written by the
+  // legacy free-form digest (which had no cross-type pass) or one accepted
+  // long after a colliding artifact was installed manually can still land
+  // here. The filesystem layout puts skills/commands/subagents in different
+  // sub-directories, so a plain fs.existsSync check would miss it.
+  const slug = sanitizeName(opts.name)
+  const collision = loadExistingInventory().find(a => sanitizeName(a.name) === slug && a.kind !== opts.type)
+  if (collision) {
+    throw new HttpError(409, `Slug "${slug}" already used by existing ${collision.kind} at ${collision.path}`)
+  }
+
   const dest = destinationPath(opts)
   assertWithinHome(dest)
   if (fs.existsSync(dest)) {

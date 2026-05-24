@@ -1,16 +1,11 @@
 import type { Skill } from '../scanner/types'
-import type { Candidate, CandidateType } from './types'
+import type { Candidate, CandidateType, ExistingMatch } from './types'
 
 export type MatchKind = 'name' | 'description'
 
-export interface ExistingMatch {
-  skillId: string
-  skillName: string
-  skillPath: string
-  matchKind: MatchKind
-  /** Jaccard similarity 0-1 (1.0 for exact-name matches). */
-  similarity: number
-}
+// Re-export the shared ExistingMatch type so legacy import sites keep working.
+// Single source of truth lives in ./types.ts.
+export type { ExistingMatch }
 
 const STOPWORDS = new Set([
   'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'has',
@@ -64,16 +59,20 @@ export function findExistingMatch(candidate: Candidate, skills: Skill[]): Existi
 
   let best: ExistingMatch | null = null
 
+  // Consider ALL inventory artifacts, not just the candidate's suggestedType.
+  // A skill candidate can refine an existing command (and vice versa); the
+  // ExistingMatch.kind field carries the matched artifact's type so the UI
+  // can say "refines existing command X" instead of guessing.
   for (const s of skills) {
     const st = asCandidateType(s.type)
-    if (!st || st !== candidate.suggestedType) continue
+    if (!st) continue
     if (s.disabled) continue
 
     // 1) Exact-slug match → confident duplicate.
     if (slugify(s.name) === candSlug) {
       return {
         skillId: s.id, skillName: s.name, skillPath: s.path,
-        matchKind: 'name', similarity: 1.0,
+        matchKind: 'name', similarity: 1.0, kind: st,
       }
     }
 
@@ -83,7 +82,7 @@ export function findExistingMatch(candidate: Candidate, skills: Skill[]): Existi
       if (!best || nameSim > best.similarity) {
         best = {
           skillId: s.id, skillName: s.name, skillPath: s.path,
-          matchKind: 'name', similarity: Number(nameSim.toFixed(3)),
+          matchKind: 'name', similarity: Number(nameSim.toFixed(3)), kind: st,
         }
       }
     }
@@ -94,7 +93,7 @@ export function findExistingMatch(candidate: Candidate, skills: Skill[]): Existi
       if (!best || descSim > best.similarity) {
         best = {
           skillId: s.id, skillName: s.name, skillPath: s.path,
-          matchKind: 'description', similarity: Number(descSim.toFixed(3)),
+          matchKind: 'description', similarity: Number(descSim.toFixed(3)), kind: st,
         }
       }
     }

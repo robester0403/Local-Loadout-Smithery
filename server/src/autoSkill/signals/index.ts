@@ -1,0 +1,56 @@
+// Barrel for the signal-detection pipeline (LOC-69). Phases land in their
+// own modules under this directory across LOC-71..LOC-79.
+
+export * from './types'
+export { segmentIntoArcs } from './arcs'
+export type { SegmentOptions, LlmBoundaryFn } from './arcs'
+export { summarizeArc, buildPrompt, parseSummary, shouldFilter } from './summarize'
+export type { SummarizeOptions, LlmSummarizeFn } from './summarize'
+export { openSummaryCache, computeCacheKey, defaultCacheFile } from './summaryCache'
+export type { SummaryCache } from './summaryCache'
+export { embedText, clearEmbedCache, embedCacheSize } from './embed'
+export type { EmbedOptions } from './embed'
+export { clusterSummaries, intentEmbeddingText, pickCentroid, cosineDistance } from './cluster'
+export type { ClusterOptions, EmbedFn } from './cluster'
+export { detectCommands } from './detectors/commands'
+export type { CommandDetectorOptions, GeneratedCandidate } from './detectors/commands'
+export { detectRules } from './detectors/rules'
+export type { RuleDetectorOptions, RuleClassifierFn, RuleEmbedFn } from './detectors/rules'
+export { detectSkills } from './detectors/skills'
+export type {
+  SkillDetectorOptions,
+  SkillDetectorResult,
+  SkillDetectorWarning,
+  SkillSynthFn,
+  SkillConsistencyFn,
+  SkillSynthOutput,
+  ConsistencyResult,
+  ConsistencyHoldout,
+} from './detectors/skills'
+export { detectSubagents } from './detectors/subagents'
+export type {
+  SubagentDetectorOptions,
+  SubagentDetectorResult,
+  SubagentDetectorWarning,
+  SubagentEmbedFn,
+  SubagentSynthFn,
+  SubagentSynthOutput,
+  SkillRef,
+  PatternRecurrence,
+  PatternInstance,
+} from './detectors/subagents'
+export { deduplicateCandidates } from './dedup'
+export type { DedupOptions, DedupEmbedFn, ExistingArtifact } from './dedup'
+export { rankCandidates } from './rank'
+export type { RankOptions } from './rank'
+export { generateReasonForUser, annotateWithReason } from './explain'
+export type { ExplainOptions } from './explain'
+export { levenshtein, normalizedLevenshtein } from './lib/levenshtein'
+export {
+  computeRuleMarkerId,
+  ruleMarkerStart,
+  ruleMarkerEnd,
+  extractRuleMarkerIds,
+  readExistingRuleFiles,
+} from './lib/ruleMarkers'
+export type { ExistingRuleFile } from './lib/ruleMarkers'
