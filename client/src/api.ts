@@ -679,6 +679,21 @@ export async function deleteCandidate(id: string): Promise<void> {
   await parseResponse(res)
 }
 
+/**
+ * Bulk-clear pending or rejected candidates. Server rejects 'accepted' (those
+ * have a real on-disk back-pointer and would lose provenance if cleared).
+ * Returns the number of candidates removed.
+ */
+export async function clearCandidates(status: 'pending' | 'rejected'): Promise<number> {
+  const res = await fetch('/api/auto-skill/candidates/clear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  const body = await parseResponse<{ removed: number }>(res)
+  return body.removed
+}
+
 export interface AcceptInput {
   accountDir: string
   scope: 'global' | 'project'
