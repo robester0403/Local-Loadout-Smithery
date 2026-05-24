@@ -620,7 +620,15 @@ export async function patchSettings(p: Partial<AppSettings>): Promise<AppSetting
   return parseResponse(res)
 }
 
-export async function runExtractApi(opts: { sources?: ConversationSource[]; lookbackDays?: number } = {}): Promise<ExtractResult> {
+export async function runExtractApi(opts: {
+  sources?: ConversationSource[]
+  lookbackDays?: number
+  /** One-shot bypass of the per-source high-water mark. When true, the
+   *  extractor re-pulls conversations within the lookback window even if it
+   *  has already seen them. Useful for re-discovering previously-cleared
+   *  candidates. The sentinel still updates normally afterward. */
+  forceReextract?: boolean
+} = {}): Promise<ExtractResult> {
   const res = await fetch('/api/auto-skill/extract', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
