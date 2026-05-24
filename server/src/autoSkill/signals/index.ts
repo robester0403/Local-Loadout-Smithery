@@ -4,3 +4,7 @@
 export * from './types'
 export { segmentIntoArcs } from './arcs'
 export type { SegmentOptions, LlmBoundaryFn } from './arcs'
+export { summarizeArc, buildPrompt, parseSummary, shouldFilter } from './summarize'
+export type { SummarizeOptions, LlmSummarizeFn } from './summarize'
+export { openSummaryCache, computeCacheKey, defaultCacheFile } from './summaryCache'
+export type { SummaryCache } from './summaryCache'
