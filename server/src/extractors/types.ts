@@ -18,6 +18,11 @@ export interface ConversationMessage {
   content: string
   /** ISO 8601 timestamp if the source provides one, else empty string. */
   timestamp: string
+  /** Working directory captured at the moment of this turn, when the source
+   *  exposes one (currently only Claude Code). Falls back to the session-wide
+   *  `ConversationRecord.projectPath` when absent. Consumed by the arc
+   *  segmenter (LOC-71) for cwd-shift boundaries. */
+  cwd?: string
 }
 
 export interface ConversationRecord {
