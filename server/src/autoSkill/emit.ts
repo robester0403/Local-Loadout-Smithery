@@ -44,6 +44,12 @@ function destinationPath(opts: EmitOptions): string {
       return path.join(baseDir, 'commands', slug + '.md')
     case 'subagent':
       return path.join(baseDir, 'agents', slug + '.md')
+    case 'rule':
+      // Rule candidates land as text blocks inside CLAUDE.md / AGENTS.md, not
+      // as standalone files. The rule accept flow is implemented in LOC-78;
+      // until then, reject explicitly rather than silently writing the wrong
+      // shape.
+      throw new HttpError(501, "Rule candidates are not yet accepted via this path (see LOC-78)")
   }
 }
 

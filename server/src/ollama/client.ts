@@ -121,3 +121,44 @@ export async function generate(opts: {
     clearTimeout(t)
   }
 }
+
+// Embeddings for the signal-detection pipeline (LOC-69 Phase 2 clustering).
+// Returns the raw vector from Ollama's /api/embeddings — callers handle the
+// math (cosine similarity, k-means, etc.). Unlike generate(), embedding models
+// are tiny and cheap to keep resident, so this does NOT participate in the
+// single-active-model eviction dance.
+export async function embeddings(opts: {
+  /** Embedding model. Default 'nomic-embed-text'. */
+  model?: string
+  prompt: string
+  timeoutMs?: number
+}): Promise<number[]> {
+  const model = opts.model ?? 'nomic-embed-text'
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 30_000)
+  try {
+    const res = await fetch(`${host()}/api/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, prompt: opts.prompt }),
+      signal: ctrl.signal,
+    })
+    if (res.status === 404) {
+      // Ollama returns 404 with a body like {"error":"model 'x' not found, try pulling it first"}.
+      throw new Error(
+        `Embedding model '${model}' is not pulled. Run \`ollama pull ${model}\` and retry.`,
+      )
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Ollama /api/embeddings returned ${res.status}: ${text.slice(0, 200)}`)
+    }
+    const body = await res.json() as { embedding?: number[] }
+    if (!Array.isArray(body.embedding) || body.embedding.length === 0) {
+      throw new Error(`Ollama /api/embeddings returned no embedding for model '${model}'`)
+    }
+    return body.embedding
+  } finally {
+    clearTimeout(t)
+  }
+}

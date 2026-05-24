@@ -1,7 +1,7 @@
 // Candidate = the user-facing output of a digest run. Kept stable across
 // runs (incremental dedup by slugified name + source signature).
 
-export type CandidateType = 'skill' | 'command' | 'subagent'
+export type CandidateType = 'skill' | 'command' | 'subagent' | 'rule'
 export type CandidateStatus = 'pending' | 'accepted' | 'rejected'
 
 export interface CandidateSourceRef {
@@ -64,6 +64,39 @@ export interface Candidate {
   /** Cached output of the compare-against-existing LLM pass. Populated only
    *  when the user clicks "Compare" on a matched row. */
   improvementNotes?: ImprovementNotes
+
+  // --- Signal-detection pipeline enrichment (LOC-69). All optional; populated
+  //     only when produced by the new pipeline (`useSignalPipeline` flag). The
+  //     existing free-form digest never sets these.
+
+  /** Plain-English explanation generated in pipeline Phase 6. */
+  reasonForUser?: string
+  /** Short verbatim snippets from source conversations, shown as evidence. */
+  evidenceQuotes?: Array<{ conversationId: string; quote: string }>
+
+  // Rule-only (suggestedType === 'rule')
+  ruleText?: string
+  suggestedSection?: string
+
+  // Command-only (suggestedType === 'command')
+  promptText?: string
+  invocationCount?: number
+  suggestedSlug?: string
+
+  // Skill-only — S = (C, π, T, R) per arXiv 2602.20867
+  applicabilityCondition?: string
+  procedure?: string[]
+  terminationCondition?: string
+  expectedOutput?: string
+
+  // Subagent-only (suggestedType === 'subagent')
+  constituentSkills?: string[]
+  orchestrationPattern?: string[]
+  inputShape?: string
+  outputShape?: string
+
+  /** Pipeline provenance — the IntentCluster this candidate was promoted from. */
+  sourceClusterId?: string
 }
 
 export interface DigestResult {
