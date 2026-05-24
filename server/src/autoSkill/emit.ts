@@ -4,6 +4,7 @@ import { findAccounts } from '../scanner/discover'
 import { assertWithinHome, HttpError } from '../lib/paths'
 import { setStatus } from './store'
 import { emitRuleAppend } from './emitRule'
+import { loadExistingInventory } from './signals/existingInventory'
 import type { Candidate, CandidateType } from './types'
 
 export interface EmitOptions {
@@ -101,6 +102,18 @@ export function emitFromCandidate(c: Candidate, opts: EmitOptions): { path: stri
     assertWithinHome(result.path)
     const updated = setStatus(c.id, 'accepted', result.path)
     return { path: result.path, candidate: updated }
+  }
+
+  // Belt-and-suspenders (LOC-89): reject cross-type slug collisions. The
+  // upstream pipeline filters these out, but a candidate written by the
+  // legacy free-form digest (which had no cross-type pass) or one accepted
+  // long after a colliding artifact was installed manually can still land
+  // here. The filesystem layout puts skills/commands/subagents in different
+  // sub-directories, so a plain fs.existsSync check would miss it.
+  const slug = sanitizeName(opts.name)
+  const collision = loadExistingInventory().find(a => sanitizeName(a.name) === slug && a.kind !== opts.type)
+  if (collision) {
+    throw new HttpError(409, `Slug "${slug}" already used by existing ${collision.kind} at ${collision.path}`)
   }
 
   const dest = destinationPath(opts)

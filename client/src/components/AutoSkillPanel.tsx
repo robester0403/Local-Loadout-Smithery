@@ -395,15 +395,21 @@ ollama pull qwen2.5:7b</pre>
                             : 'var(--c-warning)',
                           color: c.status === 'rejected' ? 'var(--text-dim)' : '#1D1E24',
                         }}>{c.status}</span>
-                        {c.existingMatch && (
-                          <span
-                            title={`Refines existing ${c.suggestedType} "${c.existingMatch.skillName}" (similarity ${Math.round(c.existingMatch.similarity * 100)}%)`}
-                            style={{
-                              fontSize: 11, padding: '2px 6px', borderRadius: 3,
-                              background: 'var(--accent-dim)', color: 'var(--accent)',
-                            }}
-                          >🔁 refines {c.existingMatch.skillName}</span>
-                        )}
+                        {c.existingMatch && (() => {
+                          // Fall back to candidate's own type for older
+                          // payloads that pre-date the cross-type kind field.
+                          const matchedKind = c.existingMatch.kind ?? c.suggestedType
+                          const crossType = matchedKind !== c.suggestedType
+                          return (
+                            <span
+                              title={`Refines existing ${matchedKind} "${c.existingMatch.skillName}" (similarity ${Math.round(c.existingMatch.similarity * 100)}%)${crossType ? ` — this ${c.suggestedType} candidate looks like an existing ${matchedKind}` : ''}`}
+                              style={{
+                                fontSize: 11, padding: '2px 6px', borderRadius: 3,
+                                background: 'var(--accent-dim)', color: 'var(--accent)',
+                              }}
+                            >🔁 refines {crossType ? `${matchedKind} ` : ''}{c.existingMatch.skillName}</span>
+                          )
+                        })()}
                       </div>
                       <div className="trash-desc" style={{ marginTop: 4 }}>{c.description}</div>
                       {c.reasonForUser && (

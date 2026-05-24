@@ -12,7 +12,6 @@ import os from 'os'
 import path from 'path'
 import { generate, isAvailable } from '../../ollama/client'
 import type { ConversationRecord } from '../../extractors/types'
-import { discoverAllSkills } from '../../scanner/discover'
 import { upsertGenerated } from '../store'
 import * as progress from '../progress'
 import type { Candidate, DigestResult } from '../types'
@@ -27,6 +26,8 @@ import { detectCommands } from './detectors/commands'
 import { detectSkills, type SkillSynthFn, type SkillConsistencyFn } from './detectors/skills'
 import { detectSubagents, type SubagentSynthFn, type SkillRef } from './detectors/subagents'
 import { deduplicateCandidates, type ExistingArtifact } from './dedup'
+import { collapseCrossDetector, rejectNameCollisions } from './crossDedup'
+import { loadExistingInventory } from './existingInventory'
 import { rankCandidates } from './rank'
 import { annotateWithReason } from './explain'
 import { readExistingRuleFiles } from './lib/ruleMarkers'
@@ -194,9 +195,20 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
       ...subagentResult.candidates,
     ]
 
-    // 6. Phase 4 — dedup against existing library.
-    progress.setPhase('finalizing', `Deduplicating ${allCandidates.length} candidates…`)
-    const deduped = await deduplicateCandidates(allCandidates, existingInventory, { embedFn })
+    // 6a. Phase 3.5 — cross-detector dedup (LOC-89). Collapse semantically
+    //     equivalent candidates that came back from multiple detectors, then
+    //     drop any candidate whose slug collides with another candidate or
+    //     an existing artifact of any type. Both passes surface their drops
+    //     as detectorWarnings so the user can see what was suppressed.
+    progress.setPhase('finalizing', `Collapsing ${allCandidates.length} candidates across detectors…`)
+    const collapsed = await collapseCrossDetector(allCandidates, { embedFn })
+    for (const d of collapsed.dropped) detectorWarnings.push(`crossDedup: ${d.reason}`)
+    const uniqueByName = rejectNameCollisions(collapsed.kept, existingInventory)
+    for (const d of uniqueByName.dropped) detectorWarnings.push(`crossDedup: ${d.reason}`)
+
+    // 6b. Phase 4 — dedup against existing library (now cross-type).
+    progress.setPhase('finalizing', `Deduplicating ${uniqueByName.kept.length} candidates…`)
+    const deduped = await deduplicateCandidates(uniqueByName.kept, existingInventory, { embedFn })
 
     // 7. Phase 5 — rank.
     const clusterById = new Map(clusters.map(c => [c.clusterId, c]))
@@ -277,21 +289,6 @@ function loadAllConversations(): ConversationRecord[] {
     }
   }
   return out
-}
-
-function loadExistingInventory(): ExistingArtifact[] {
-  // Reuse the unified scanner — covers Claude / Cursor / Codex via one shape.
-  // The server-side SkillType is 'skill' | 'command' | 'subagent' (the
-  // client-only 'mcp' kind isn't in the candidate space), so the kinds map
-  // directly.
-  const skills = discoverAllSkills()
-  return skills.map(s => ({
-    id: s.id,
-    name: s.name,
-    path: s.path,
-    description: s.description,
-    kind: s.type,
-  }))
 }
 
 // ---- Default LLM functions (route through ollama.generate) ------------------
