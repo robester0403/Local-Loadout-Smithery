@@ -21,6 +21,10 @@ export interface ExistingMatch {
   skillPath: string
   matchKind: 'name' | 'description'
   similarity: number
+  /** Type of the matched existing artifact. May differ from the candidate's
+   *  `suggestedType` — e.g. a skill candidate can refine an existing command.
+   *  Lets the UI render "refines existing command X" instead of guessing. */
+  kind: CandidateType
 }
 
 export type ImprovementKind = 'add-to-description' | 'add-to-body' | 'no-improvement'

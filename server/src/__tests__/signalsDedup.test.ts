@@ -50,11 +50,21 @@ describe('deduplicateCandidates', () => {
     expect(out[0].existingMatch?.similarity).toBeCloseTo(1, 3)
   })
 
-  it('does NOT dedup across different kinds', async () => {
+  it('DOES dedup across different kinds and records the matched artifact kind (LOC-89)', async () => {
     const cs = [cand('skill', 'review-pr', 'walk through diff')]
     const ex = [artifact('command', 'review-pr', 'walk through diff')]
     const out = await deduplicateCandidates(cs, ex, { embedFn: sameTextEmbed })
-    expect(out[0].existingMatch).toBeUndefined()
+    expect(out[0].existingMatch).toBeDefined()
+    expect(out[0].existingMatch?.kind).toBe('command')
+    expect(out[0].existingMatch?.skillName).toBe('review-pr')
+    expect(out[0].existingMatch?.similarity).toBeCloseTo(1, 3)
+  })
+
+  it('records kind on same-kind matches too', async () => {
+    const cs = [cand('skill', 'review-pr', 'Walk through the diff and flag issues')]
+    const ex = [artifact('skill', 'review-pr', 'Walk through the diff and flag issues')]
+    const out = await deduplicateCandidates(cs, ex, { embedFn: sameTextEmbed })
+    expect(out[0].existingMatch?.kind).toBe('skill')
   })
 
   it('keeps candidate unflagged when no existing artifact passes the threshold', async () => {

@@ -68,10 +68,12 @@ describe('findExistingMatch', () => {
     expect(m?.similarity).toBeGreaterThan(0.4)
   })
 
-  it('does not cross types — a skill candidate is not matched against a command', () => {
+  it('DOES cross types and records the matched artifact kind (LOC-89)', () => {
     const cand = candidate('thing', 'Use when the user does the thing.', 'skill')
     const m = findExistingMatch(cand, [skill('thing', 'Use when the user does the thing.', 'command')])
-    expect(m).toBeNull()
+    expect(m).not.toBeNull()
+    expect(m?.kind).toBe('command')
+    expect(m?.skillName).toBe('thing')
   })
 
   it('ignores disabled skills', () => {

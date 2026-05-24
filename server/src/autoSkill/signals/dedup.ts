@@ -51,8 +51,10 @@ export async function deduplicateCandidates(
 
   const out: GeneratedCandidate[] = []
   for (const c of candidates) {
-    const sameKind = existingVectors.filter(e => e.artifact.kind === c.suggestedType)
-    if (sameKind.length === 0) {
+    // Consider existing artifacts of ANY kind, not just the candidate's
+    // suggestedType. A skill candidate can refine an existing command, etc.
+    // The ExistingMatch.kind field tells the UI which type was matched.
+    if (existingVectors.length === 0) {
       out.push(c)
       continue
     }
@@ -60,7 +62,7 @@ export async function deduplicateCandidates(
     const candVec = normalize(await embed(`${c.name}\n${c.description}`))
 
     let best: { artifact: ExistingArtifact; sim: number } | null = null
-    for (const e of sameKind) {
+    for (const e of existingVectors) {
       const sim = dot(candVec, e.vec)
       if (!best || sim > best.sim) best = { artifact: e.artifact, sim }
     }
@@ -74,6 +76,7 @@ export async function deduplicateCandidates(
         // and description carries more signal than name on its own.
         matchKind: 'description',
         similarity: best.sim,
+        kind: best.artifact.kind,
       }
       out.push({ ...c, existingMatch })
     } else {
