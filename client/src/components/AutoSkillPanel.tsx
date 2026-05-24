@@ -146,6 +146,34 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     }
   }
 
+  function handleExport() {
+    const countByStatus = candidates.reduce<Record<string, number>>((acc, c) => {
+      acc[c.status] = (acc[c.status] ?? 0) + 1
+      return acc
+    }, {})
+    const countByType = candidates.reduce<Record<string, number>>((acc, c) => {
+      acc[c.suggestedType] = (acc[c.suggestedType] ?? 0) + 1
+      return acc
+    }, {})
+    const exportedAt = new Date().toISOString()
+    const payload = {
+      exportedAt,
+      totalCount: candidates.length,
+      countByStatus,
+      countByType,
+      candidates,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `candidates-export-${exportedAt.replace(/[:.]/g, '-')}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   async function handleDelete(c: Candidate) {
     if (!window.confirm(`Permanently delete candidate "${c.name}"?`)) return
     setBusy(c.id)
@@ -267,6 +295,14 @@ ollama pull qwen2.5:7b</pre>
                 <option value="rejected">Rejected</option>
               </select>
             </div>
+            <button
+              className="btn btn-sm"
+              onClick={handleExport}
+              disabled={loading || candidates.length === 0}
+              title="Download all candidates as JSON. Exports the full set regardless of the Filter dropdown — useful for diffing pipeline output before/after a change."
+            >
+              Export JSON
+            </button>
             {(() => {
               const pendingCount = candidates.filter(c => c.status === 'pending').length
               return (
