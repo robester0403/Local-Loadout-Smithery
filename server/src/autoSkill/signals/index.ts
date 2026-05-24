@@ -8,3 +8,7 @@ export { summarizeArc, buildPrompt, parseSummary, shouldFilter } from './summari
 export type { SummarizeOptions, LlmSummarizeFn } from './summarize'
 export { openSummaryCache, computeCacheKey, defaultCacheFile } from './summaryCache'
 export type { SummaryCache } from './summaryCache'
+export { embedText, clearEmbedCache, embedCacheSize } from './embed'
+export type { EmbedOptions } from './embed'
+export { clusterSummaries, intentEmbeddingText, pickCentroid, cosineDistance } from './cluster'
+export type { ClusterOptions, EmbedFn } from './cluster'
