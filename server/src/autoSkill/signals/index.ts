@@ -27,6 +27,18 @@ export type {
   ConsistencyResult,
   ConsistencyHoldout,
 } from './detectors/skills'
+export { detectSubagents } from './detectors/subagents'
+export type {
+  SubagentDetectorOptions,
+  SubagentDetectorResult,
+  SubagentDetectorWarning,
+  SubagentEmbedFn,
+  SubagentSynthFn,
+  SubagentSynthOutput,
+  SkillRef,
+  PatternRecurrence,
+  PatternInstance,
+} from './detectors/subagents'
 export { levenshtein, normalizedLevenshtein } from './lib/levenshtein'
 export {
   computeRuleMarkerId,
