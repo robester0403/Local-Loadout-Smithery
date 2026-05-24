@@ -106,13 +106,37 @@ export function upsertGenerated(c: Omit<Candidate, 'id' | 'status' | 'createdAt'
         seen.add(ref.conversationId)
       }
     }
+    // Pending candidates re-pick up fresh detector output (the user hasn't
+    // triaged yet). Includes the LOC-69 pipeline enrichment fields so a
+    // rule/command/skill/subagent that gets re-emitted by the new pipeline
+    // doesn't lose its per-kind data.
+    const pendingPatch: Partial<Candidate> = existing.status === 'pending'
+      ? {
+          name: c.name,
+          description: c.description,
+          bodyDraft: c.bodyDraft,
+          suggestedType: c.suggestedType,
+          reasonForUser: c.reasonForUser,
+          evidenceQuotes: c.evidenceQuotes,
+          ruleText: c.ruleText,
+          suggestedSection: c.suggestedSection,
+          promptText: c.promptText,
+          invocationCount: c.invocationCount,
+          suggestedSlug: c.suggestedSlug,
+          applicabilityCondition: c.applicabilityCondition,
+          procedure: c.procedure,
+          terminationCondition: c.terminationCondition,
+          expectedOutput: c.expectedOutput,
+          constituentSkills: c.constituentSkills,
+          orchestrationPattern: c.orchestrationPattern,
+          inputShape: c.inputShape,
+          outputShape: c.outputShape,
+          sourceClusterId: c.sourceClusterId,
+        }
+      : {}
     const next: Candidate = {
       ...existing,
-      // Update text only if the user hasn't already triaged the candidate;
-      // otherwise we'd silently overwrite their edits next digest run.
-      ...(existing.status === 'pending'
-        ? { name: c.name, description: c.description, bodyDraft: c.bodyDraft, suggestedType: c.suggestedType }
-        : {}),
+      ...pendingPatch,
       sourceRefs: mergedRefs,
       score: Math.max(existing.score, c.score),
       model: c.model,
