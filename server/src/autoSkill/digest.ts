@@ -5,8 +5,10 @@ import crypto from 'crypto'
 import { isAvailable, generate } from '../ollama/client'
 import { purgeRawConversations } from '../extractors/store'
 import type { ConversationRecord } from '../extractors/types'
+import { read as readSettings } from '../state/settings'
 import { upsertGenerated } from './store'
 import * as progress from './progress'
+import { runSignalPipeline } from './signals/runPipeline'
 import type { Candidate, CandidateSourceRef, CandidateType, DigestResult } from './types'
 
 const CONVERSATIONS_ROOT = path.join(os.homedir(), '.loadoutsmith', 'conversations')
@@ -216,6 +218,22 @@ export interface DigestOptions {
 }
 
 export async function runDigest(opts: DigestOptions): Promise<DigestResult> {
+  // Dispatch: if the user has flipped on the signal-detection pipeline
+  // (LOC-69), route through that instead of the legacy free-form digest.
+  // The legacy path stays here until LOC-79 sign-off + the follow-up cleanup
+  // ticket removes it.
+  if (readSettings().autoSkill.useSignalPipeline) {
+    const result = await runSignalPipeline({
+      model: opts.model,
+      sinceIso: opts.sinceIso,
+    })
+    if (opts.purgeRawOnSuccess) {
+      try { purgeRawConversations() }
+      catch (e) { result.warnings.push(`Failed to purge raw conversations: ${(e as Error).message}`) }
+    }
+    return result
+  }
+
   const start = Date.now()
   const warnings: string[] = []
   const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : Date.now() - 14 * 24 * 60 * 60 * 1000
