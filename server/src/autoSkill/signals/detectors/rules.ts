@@ -214,13 +214,26 @@ async function classifyDirectives(
   injected?: RuleClassifierFn,
 ): Promise<boolean[]> {
   if (directives.length === 0) return []
-  if (injected) return injected(directives)
-  // No injected classifier and no default — return all-true so the caller
-  // (LOC-79 orchestrator) can decide whether to wire in Ollama. Tests always
-  // inject. This is a deliberate choice: detectRules shouldn't hard-couple
-  // to Ollama for a single-batch classification call. The orchestrator owns
-  // the model selection and provides the classifier.
-  return directives.map(() => true)
+  if (injected) {
+    try {
+      const result = await injected(directives)
+      // Defensive: classifier may return wrong-shape array. Length mismatch
+      // means we can't trust the alignment; fall back to drop-all.
+      if (!Array.isArray(result) || result.length !== directives.length) {
+        return directives.map(() => false)
+      }
+      return result.map(r => r === true)
+    } catch {
+      // Classifier threw → don't poison CLAUDE.md with un-classified directives.
+      return directives.map(() => false)
+    }
+  }
+  // No injected classifier — drop everything. Rule candidates pollute the
+  // user's global instructions on accept; the conservative default protects
+  // them when the orchestrator hasn't wired a classifier. The bug here used
+  // to be all-true, which can append bogus directives that the user has to
+  // notice + reject one at a time.
+  return directives.map(() => false)
 }
 
 // ---- Semantic dedup ---------------------------------------------------------

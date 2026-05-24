@@ -141,6 +141,44 @@ describe('detectRules', () => {
     expect(out).toEqual([])
   })
 
+  it('classifier that throws drops all directives (LOC-79 batch-1 fix)', async () => {
+    // Previous behavior: classifier failure fell back to all-true, polluting
+    // CLAUDE.md with un-classified directives. Now: failure drops everything
+    // so the bad path can't write to the user's global instructions.
+    const summaries = Array.from({ length: 6 }, (_, i) =>
+      summary({
+        conversationId: `conv-${i}`,
+        personalizationSignals: [{ kind: 'language', evidence: ALWAYS_TS }],
+      }))
+    const out = await detectRules(summaries, [], {
+      llmClassifier: async () => { throw new Error('ollama down') },
+    })
+    expect(out).toEqual([])
+  })
+
+  it('classifier returning wrong-length array drops everything (LOC-79 batch-1 fix)', async () => {
+    // Two DISTINCT directives so the grouper produces 2 separate candidates;
+    // classifier returns only 1 entry → length mismatch → fallback to drop.
+    const summaries = [
+      ...Array.from({ length: 6 }, (_, i) =>
+        summary({
+          conversationId: `ts-conv-${i}`,
+          personalizationSignals: [{ kind: 'language', evidence: 'Always use TypeScript on the server' }],
+        })),
+      ...Array.from({ length: 6 }, (_, i) =>
+        summary({
+          conversationId: `prettier-conv-${i}`,
+          personalizationSignals: [{ kind: 'style', evidence: 'Always run prettier before committing' }],
+        })),
+    ]
+    const out = await detectRules(summaries, [], {
+      // Length mismatch (2 input → 1 output) — alignment isn't safe so we
+      // can't trust ANY entry. Conservative drop.
+      llmClassifier: async (_xs) => [true],
+    })
+    expect(out).toEqual([])
+  })
+
   it('rule that the classifier rejects is dropped', async () => {
     const summaries = Array.from({ length: 6 }, (_, i) =>
       summary({

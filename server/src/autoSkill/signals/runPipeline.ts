@@ -138,7 +138,9 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
     })
     progress.setPhase('chunking', `Detected ${clusters.length} intent cluster(s).`)
 
-    // 5. Phase 3 — four parallel detectors.
+    // 5. Phase 3 — four detectors. Skill detector runs FIRST so the subagent
+    //    detector can consume its candidates; the other three are independent
+    //    and run in parallel after.
     const existingInventory = opts.existingSkillsOverride ?? loadExistingInventory()
     const existingSkillNames = new Set(existingInventory.filter(a => a.kind === 'skill').map(a => a.name))
 
@@ -146,7 +148,23 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
 
     const existingRules = opts.existingRuleFilesOverride ?? readExistingRuleFiles()
 
-    const [ruleResult, commandList, skillResult, subagentResult] = await Promise.all([
+    // Skill detector first — produces the candidate list that the subagent
+    // detector needs as part of its `availableSkills`. Without this, the
+    // subagent detector either misses orchestration patterns involving
+    // newly-proposed skills, or (the previous bug) calls detectSkills
+    // a SECOND time, doubling LLM cost per surviving cluster.
+    const skillResult = await detectSkills(clusters, summaries, {
+      llmSynthFn: opts.skillSynthFn,
+      llmConsistencyFn: opts.skillConsistencyFn,
+      model: opts.model,
+    })
+
+    const subagentAvailableSkills: SkillRef[] = [
+      ...existingInventory.filter(a => a.kind === 'skill').map(a => ({ name: a.name, description: a.description })),
+      ...skillResult.candidates.map(c => ({ name: c.name, description: c.description })),
+    ]
+
+    const [ruleResult, commandList, subagentResult] = await Promise.all([
       detectRules(summaries, clusters, {
         existingRuleFiles: existingRules,
         llmClassifier: opts.ruleClassifierFn ?? defaultRuleClassifier(opts.model),
@@ -159,33 +177,13 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
           .map(a => `${a.name}\n${a.description}`),
         model: opts.model,
       })),
-      detectSkills(clusters, summaries, {
-        llmSynthFn: opts.skillSynthFn,
-        llmConsistencyFn: opts.skillConsistencyFn,
+      detectSubagents(summaries, subagentAvailableSkills, {
+        embedFn,
+        llmSynthFn: opts.subagentSynthFn,
         model: opts.model,
       }),
-      (async (): Promise<{ candidates: GeneratedCandidate[]; warnings: ReturnType<typeof detectSubagents> extends Promise<infer R> ? R extends { warnings: infer W } ? W : never : never }> => {
-        // Run subagent detector with skill candidates from the skill detector
-        // already merged into availableSkills, so the orchestration mining can
-        // see newly-proposed skills.
-        const skillRes = await detectSkills(clusters, summaries, {
-          llmSynthFn: opts.skillSynthFn,
-          llmConsistencyFn: opts.skillConsistencyFn,
-          model: opts.model,
-        })
-        const allSkills: SkillRef[] = [
-          ...existingInventory.filter(a => a.kind === 'skill').map(a => ({ name: a.name, description: a.description })),
-          ...skillRes.candidates.map(c => ({ name: c.name, description: c.description })),
-        ]
-        return detectSubagents(summaries, allSkills, {
-          embedFn,
-          llmSynthFn: opts.subagentSynthFn,
-          model: opts.model,
-        })
-      })(),
     ])
 
-    for (const w of ruleResult) { /* ruleResult is plain candidates array */ void w }
     for (const w of skillResult.warnings) detectorWarnings.push(`skill[${w.clusterId}]: ${w.reason} — ${w.detail}`)
     for (const w of subagentResult.warnings) detectorWarnings.push(`subagent[${w.patternKey}]: ${w.reason} — ${w.detail}`)
 
@@ -316,14 +314,15 @@ function defaultRuleClassifier(model: string): RuleClassifierFn {
       'Output one entry per directive in order.',
     ].join('\n')
     const raw = await generate({ model, prompt, json: true, temperature: 0.1, timeoutMs: 60_000 })
-    try {
-      const parsed = JSON.parse(raw) as { classifications?: unknown }
-      const arr = parsed.classifications
-      if (!Array.isArray(arr)) return directives.map(() => true)
-      return directives.map((_, i) => arr[i] === true)
-    } catch {
-      // Fallback: surface all candidates rather than silently dropping.
-      return directives.map(() => true)
+    // Parse defensively. On any failure (malformed JSON, wrong-shape array,
+    // length mismatch) we DROP the directives rather than accept them — a
+    // bogus rule pollutes the user's CLAUDE.md on accept, which is much
+    // worse than missing one digest cycle of a real rule.
+    const parsed = JSON.parse(raw) as { classifications?: unknown }
+    const arr = parsed.classifications
+    if (!Array.isArray(arr) || arr.length !== directives.length) {
+      return directives.map(() => false)
     }
+    return directives.map((_, i) => arr[i] === true)
   }
 }

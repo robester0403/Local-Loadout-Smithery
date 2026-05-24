@@ -164,6 +164,37 @@ describe('runSignalPipeline', () => {
     })).rejects.toThrow(/no model selected/i)
   })
 
+  it('skill synth fires once per cluster, not twice (LOC-79 batch-1 fix)', async () => {
+    // Previously the orchestrator called detectSkills twice: once in the
+    // Promise.all batch and once inside the subagent IIFE. Real Ollama would
+    // pay 2× the synth + consistency cost per surviving cluster. Lock it in.
+    const convos = [vitestConvo(1), vitestConvo(2), vitestConvo(3)]
+    const cache = openSummaryCache(path.join(tmpHome, 'cache.json'))
+    let synthCalls = 0
+    let consistencyCalls = 0
+
+    await runSignalPipeline({
+      model: 'test-model',
+      sinceIso: '2026-05-01T00:00:00.000Z',
+      conversationsOverride: convos,
+      existingSkillsOverride: [],
+      existingRuleFilesOverride: [],
+      summaryCache: cache,
+      summarizeFn: async () => VALID_SUMMARY,
+      skillSynthFn: async () => { synthCalls += 1; return VALID_SKILL_SYNTH },
+      skillConsistencyFn: async () => { consistencyCalls += 1; return VALID_CONSISTENCY },
+      ruleClassifierFn: async (xs) => xs.map(() => false),
+      subagentSynthFn: async () => '{}',
+      embedFn: async () => [1, 0, 0],
+      skipOllamaCheck: true,
+    })
+
+    // Three convos collapse into one cluster on the same intent → one synth +
+    // one consistency LLM call. The old buggy path would have been 2/2.
+    expect(synthCalls).toBe(1)
+    expect(consistencyCalls).toBe(1)
+  })
+
   it('warnings include detector warnings (synth invalid for skill)', async () => {
     const convos = [vitestConvo(1), vitestConvo(2), vitestConvo(3)]
     const cache = openSummaryCache(path.join(tmpHome, 'cache.json'))

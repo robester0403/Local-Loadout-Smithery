@@ -22,7 +22,7 @@ import { generate } from '../../../ollama/client'
 import type { Candidate, CandidateSourceRef } from '../../types'
 import type { ConversationSummary } from '../types'
 
-const CUSTOM_TAG = '__custom'
+export const CUSTOM_TAG = '__custom'
 const DEFAULT_MIN_PATTERN_CONVOS = 3
 const DEFAULT_MIN_PATTERN_LENGTH = 2
 const DEFAULT_MAX_PATTERN_LENGTH = 6

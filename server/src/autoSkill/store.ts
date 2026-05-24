@@ -106,6 +106,18 @@ export function setImprovementNotes(id: string, notes: ImprovementNotes): Candid
   return all[idx]
 }
 
+// Merge `src` into `dst` keeping only the keys whose `src` value is defined.
+// Lets pendingPatch above survive being called with a mix of populated and
+// undefined fields (legacy digest vs new pipeline) without nulling out
+// previously-set enrichment.
+function assignDefined<T extends object>(dst: Partial<T>, src: Partial<T>): Partial<T> {
+  for (const key of Object.keys(src) as Array<keyof T>) {
+    const v = src[key]
+    if (v !== undefined) dst[key] = v
+  }
+  return dst
+}
+
 // Upsert a freshly-generated candidate. Dedup is signature-based: if a
 // candidate with the same (type + slugified name) already exists, merge the
 // sourceRefs (deduped by conversationId) and bump the score; preserve the
@@ -128,8 +140,15 @@ export function upsertGenerated(c: Omit<Candidate, 'id' | 'status' | 'createdAt'
     // triaged yet). Includes the LOC-69 pipeline enrichment fields so a
     // rule/command/skill/subagent that gets re-emitted by the new pipeline
     // doesn't lose its per-kind data.
+    //
+    // ONLY DEFINED VALUES OVERWRITE existing fields. The legacy free-form
+    // digest doesn't populate the LOC-70 enrichment fields, so when a user
+    // toggles useSignalPipeline off and re-runs, a naive spread would write
+    // `undefined` over reasonForUser / ruleText / procedure / etc., silently
+    // stripping the pipeline's prior output. assignDefined skips undefined
+    // RHS values so each path only writes what it actually has.
     const pendingPatch: Partial<Candidate> = existing.status === 'pending'
-      ? {
+      ? assignDefined({}, {
           name: c.name,
           description: c.description,
           bodyDraft: c.bodyDraft,
@@ -150,7 +169,7 @@ export function upsertGenerated(c: Omit<Candidate, 'id' | 'status' | 'createdAt'
           inputShape: c.inputShape,
           outputShape: c.outputShape,
           sourceClusterId: c.sourceClusterId,
-        }
+        })
       : {}
     const next: Candidate = {
       ...existing,
