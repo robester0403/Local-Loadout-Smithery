@@ -3,6 +3,7 @@ import path from 'path'
 import { findAccounts } from '../scanner/discover'
 import { assertWithinHome, HttpError } from '../lib/paths'
 import { setStatus } from './store'
+import { emitRuleAppend } from './emitRule'
 import type { Candidate, CandidateType } from './types'
 
 export interface EmitOptions {
@@ -45,11 +46,11 @@ function destinationPath(opts: EmitOptions): string {
     case 'subagent':
       return path.join(baseDir, 'agents', slug + '.md')
     case 'rule':
-      // Rule candidates land as text blocks inside CLAUDE.md / AGENTS.md, not
-      // as standalone files. The rule accept flow is implemented in LOC-78;
-      // until then, reject explicitly rather than silently writing the wrong
-      // shape.
-      throw new HttpError(501, "Rule candidates are not yet accepted via this path (see LOC-78)")
+      // Rule candidates land as text blocks inside CLAUDE.md / AGENTS.md.
+      // The actual write happens in emitRuleAppend (called from
+      // emitFromCandidate's rule branch); this case is unreachable in the
+      // normal flow but kept exhaustive for the type checker.
+      throw new HttpError(500, 'Rule candidates use the append path, not destinationPath')
   }
 }
 
@@ -84,6 +85,24 @@ export function emitFromCandidate(c: Candidate, opts: EmitOptions): { path: stri
   if (!accounts.has(opts.accountDir)) {
     throw new HttpError(400, `Unknown account dir: ${opts.accountDir}`)
   }
+
+  // Rule candidates append to the ecosystem's global instructions file
+  // (CLAUDE.md or AGENTS.md). All other kinds create a new file per
+  // destinationPath().
+  if (opts.type === 'rule') {
+    const ruleText = (opts.body && opts.body.trim()) || c.ruleText || c.bodyDraft
+    if (!ruleText.trim()) throw new HttpError(400, 'Rule candidate has no body to append')
+    const suggestedSection = c.suggestedSection
+    const result = emitRuleAppend({
+      accountDir: opts.accountDir,
+      ruleText,
+      suggestedSection,
+    })
+    assertWithinHome(result.path)
+    const updated = setStatus(c.id, 'accepted', result.path)
+    return { path: result.path, candidate: updated }
+  }
+
   const dest = destinationPath(opts)
   assertWithinHome(dest)
   if (fs.existsSync(dest)) {

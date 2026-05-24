@@ -502,7 +502,7 @@ export async function fetchBundleDrift(): Promise<DriftResult[]> {
 
 // ─── Auto Skill ───────────────────────────────────────────────────────────────
 
-export type CandidateType = 'skill' | 'command' | 'subagent'
+export type CandidateType = 'skill' | 'command' | 'subagent' | 'rule'
 export type CandidateStatus = 'pending' | 'accepted' | 'rejected'
 export type ConversationSource = 'claude' | 'cursor' | 'codex'
 
@@ -551,6 +551,30 @@ export interface Candidate {
   acceptedPath?: string
   existingMatch?: ExistingMatch | null
   improvementNotes?: ImprovementNotes
+
+  // Signal-detection pipeline enrichment (LOC-69). Optional; populated when
+  // the new pipeline emitted this candidate.
+  reasonForUser?: string
+  evidenceQuotes?: Array<{ conversationId: string; quote: string }>
+  // Rule-only
+  ruleText?: string
+  suggestedSection?: string
+  // Command-only
+  promptText?: string
+  invocationCount?: number
+  suggestedSlug?: string
+  // Skill-only (S = (C, π, T, R))
+  applicabilityCondition?: string
+  procedure?: string[]
+  terminationCondition?: string
+  expectedOutput?: string
+  // Subagent-only
+  constituentSkills?: string[]
+  orchestrationPattern?: string[]
+  inputShape?: string
+  outputShape?: string
+  // Provenance
+  sourceClusterId?: string
 }
 
 export interface DigestResult {

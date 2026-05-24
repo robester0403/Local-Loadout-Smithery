@@ -133,13 +133,20 @@ export default function AcceptCandidateModal({ candidate, allSkills, onClose, on
                 <option value="skill">Skill</option>
                 <option value="command">Command</option>
                 <option value="subagent">Subagent</option>
+                <option value="rule">Rule (CLAUDE.md / AGENTS.md)</option>
               </select>
             </div>
             <div style={{ flex: 1 }}>
               <label className="form-label">Scope</label>
-              <select className="form-input" value={scope} onChange={e => setScope(e.target.value as 'global' | 'project')}>
+              <select
+                className="form-input"
+                value={scope}
+                onChange={e => setScope(e.target.value as 'global' | 'project')}
+                disabled={type === 'rule'}
+                title={type === 'rule' ? 'Rules always append to the account\'s global instructions file' : undefined}
+              >
                 <option value="global">Global</option>
-                <option value="project" disabled={projects.length === 0}>Project{projects.length === 0 ? ' (none)' : ''}</option>
+                <option value="project" disabled={projects.length === 0 || type === 'rule'}>Project{projects.length === 0 ? ' (none)' : ''}</option>
               </select>
             </div>
           </div>
