@@ -76,11 +76,29 @@ describe('generateReasonForUser', () => {
     const c: Gen = {
       ...base('subagent'),
       constituentSkills: ['pr-review', 'run-tests', 'write-changelog'],
+      sourceClusterId: 'subagent-pattern::pr-review||run-tests||write-changelog',
       sourceRefs: [ref('a', '2026-05-21T00:00:00.000Z'), ref('b', '2026-05-21T00:00:00.000Z'), ref('c', '2026-05-21T00:00:00.000Z')],
     }
     const reason = generateReasonForUser(c)
     expect(reason).toContain('[pr-review, run-tests, write-changelog]')
     expect(reason).toContain('3 conversations')
+    // No custom steps in this pattern → reason doesn't mention "interleaved".
+    expect(reason).not.toContain('interleaved')
+  })
+
+  it('subagent reason flags interleaved custom steps when pattern includes __custom (LOC-79 batch-1 fix)', () => {
+    // Previous behavior: claimed "you ran skills [A, B] in this sequence"
+    // even when the mined pattern was [A, __custom, B]. False claim. Now:
+    // the reason explicitly calls out the interleaved custom work.
+    const c: Gen = {
+      ...base('subagent'),
+      constituentSkills: ['pr-review', 'run-tests'],
+      sourceClusterId: 'subagent-pattern::pr-review||__custom||run-tests',
+      sourceRefs: [ref('a', '2026-05-21T00:00:00.000Z'), ref('b', '2026-05-21T00:00:00.000Z'), ref('c', '2026-05-21T00:00:00.000Z')],
+    }
+    const reason = generateReasonForUser(c)
+    expect(reason).toContain('interleaved with custom steps')
+    expect(reason).toContain('[pr-review, run-tests]')
   })
 
   it('rule reason calls out always-on convention shape', () => {

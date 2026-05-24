@@ -120,18 +120,27 @@ export function detectCommands(
 
 /** Fraction of characters that look code/path-like. Used to drop prompts
  *  that are mostly file paths or fenced code rather than natural-language
- *  templates. Counts the full length of every fenced code block, plus
- *  code-like punctuation in the rest of the text. */
+ *  templates. Counts the full length of every fenced code block ONCE, plus
+ *  code-like punctuation OUTSIDE fenced blocks. The previous version
+ *  double-counted (fence-internal chars contributed via both fenceLen and
+ *  hits), which silently dropped real prompts like
+ *  "Refactor this: ```ts …``` to handle nulls" — a very common command shape. */
 export function codeRatio(text: string): number {
   if (text.length === 0) return 0
 
+  // Mark fence-internal char indices so the hit loop can skip them.
+  const inFence = new Uint8Array(text.length)
   let fenceLen = 0
   const fenceRe = /```[\s\S]*?```/g
   let m: RegExpExecArray | null
-  while ((m = fenceRe.exec(text)) != null) fenceLen += m[0].length
+  while ((m = fenceRe.exec(text)) != null) {
+    fenceLen += m[0].length
+    for (let i = m.index; i < m.index + m[0].length; i++) inFence[i] = 1
+  }
 
   let hits = 0
   for (let i = 0; i < text.length; i++) {
+    if (inFence[i]) continue
     const c = text[i]
     if (c === '/' || c === '.' || c === ':' || c === '`' || c === '_' || c === '{' || c === '}' || c === ';') hits++
   }

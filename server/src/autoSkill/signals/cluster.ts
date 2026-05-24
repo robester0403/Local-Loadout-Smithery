@@ -147,7 +147,13 @@ function pickBestKMeans(vectors: number[][], kCap: number): number[] {
 function kmeans(vectors: number[][], k: number): KMeansFit {
   const dim = vectors[0]?.length ?? 0
   if (k <= 1 || vectors.length === 0) {
-    return { assignments: vectors.map(() => 0), wcss: totalWcss(vectors, [meanVector(vectors, dim)], vectors.map(() => 0)) }
+    // Normalize the mean centroid so cosineDistance (which assumes unit
+    // vectors) returns a comparable value to the iterative path below. Before
+    // this fix, a spread cluster's k=1 WCSS was artificially large because
+    // the unnormalized mean had magnitude < 1, which made the elbow heuristic
+    // oversplit (it thought k=2 was a huge improvement when it wasn't).
+    const centroid = vectors.length > 0 ? normalize(meanVector(vectors, dim)) : meanVector(vectors, dim)
+    return { assignments: vectors.map(() => 0), wcss: totalWcss(vectors, [centroid], vectors.map(() => 0)) }
   }
 
   // Deterministic seed init (k-means++ style, no RNG): first centroid is

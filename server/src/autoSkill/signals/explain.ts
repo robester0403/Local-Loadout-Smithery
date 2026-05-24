@@ -9,6 +9,7 @@
 import type { Candidate } from '../types'
 import type { IntentCluster, ConversationSummary } from './types'
 import type { GeneratedCandidate as CommandGenerated } from './detectors/commands'
+import { CUSTOM_TAG } from './detectors/subagents'
 
 export type GeneratedCandidate = CommandGenerated
 
@@ -62,9 +63,19 @@ function explainCommand(c: GeneratedCandidate, _opts: ExplainOptions): string {
 
 function explainSubagent(c: GeneratedCandidate): string {
   const skills = c.constituentSkills ?? []
-  const skillList = skills.length > 0 ? `[${skills.join(', ')}]` : '[no named skills detected]'
   const n = c.sourceRefs.length
-  return `You ran skills ${skillList} in this sequence across ${n} conversations to accomplish similar bounded outcomes.`
+  // The sourceClusterId is `subagent-pattern::tag1||tag2||…` and includes
+  // CUSTOM_TAG entries when the mined pattern interleaved named skills with
+  // unmatched ("custom") arcs. constituentSkills strips the custom tags for
+  // UI cross-referencing, but if we claim "you ran skills [A, B] in this
+  // sequence" while the actual sequence was [A, custom, B], the user-facing
+  // claim is literally false.
+  const hasCustomInPattern = (c.sourceClusterId ?? '')
+    .split('||')
+    .some(t => t === CUSTOM_TAG)
+  const skillList = skills.length > 0 ? `[${skills.join(', ')}]` : '[no named skills detected]'
+  const interleaved = hasCustomInPattern ? ' interleaved with custom steps' : ''
+  return `You ran skills ${skillList}${interleaved} in this sequence across ${n} conversations to accomplish similar bounded outcomes.`
 }
 
 function explainRule(c: GeneratedCandidate): string {

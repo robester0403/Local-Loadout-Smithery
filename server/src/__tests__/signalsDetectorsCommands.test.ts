@@ -146,6 +146,19 @@ describe('helpers', () => {
     expect(__test.codeRatio('/path/to/file.ts:1:1 broken')).toBeGreaterThan(0.2)
   })
 
+  it('codeRatio does NOT double-count fenced content (LOC-79 batch-1 fix)', () => {
+    // Common command shape: short natural-language prompt with one fenced
+    // code snippet for context. Previously this got dropped because the
+    // fence-internal chars were counted both via fenceLen AND the per-char
+    // hit loop, pushing the ratio over the 0.6 threshold.
+    const prompt = 'Refactor this code to handle the null case more gracefully and add tests:\n\n```ts\nfunction foo(x) { return x.bar }\n```\n\nThanks!'
+    const ratio = __test.codeRatio(prompt)
+    // Roughly half the chars are inside the fence. Ratio should land
+    // comfortably under 0.6 (the drop threshold) so the prompt survives
+    // command mining.
+    expect(ratio).toBeLessThan(0.6)
+  })
+
   it('slugFromPrompt strips stopwords and yields kebab', () => {
     const slug = __test.slugFromPrompt('Review this pull request carefully please')
     expect(slug).toBe('review-pull-request-carefully-please')

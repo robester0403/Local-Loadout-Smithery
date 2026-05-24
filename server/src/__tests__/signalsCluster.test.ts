@@ -113,6 +113,21 @@ describe('pickCentroid', () => {
 // ---- clusterSummaries -------------------------------------------------------
 
 describe('clusterSummaries', () => {
+  it('k=1 fast path normalizes centroid so a tight cluster stays together (LOC-79 batch-1 fix)', async () => {
+    // Previously: k=1 used an unnormalized mean vector for WCSS, which
+    // made spread clusters look worse than they were, leading the elbow
+    // heuristic to oversplit into singletons (all filtered → []).
+    const summaries = Array.from({ length: 4 }, (_, i) => summary({ intent: `vitest variant ${i}` }))
+    // Embedder gives all four vectors the same direction with slight
+    // magnitude variation — unnormalized mean shrinks, normalized stays unit.
+    const out = await clusterSummaries(summaries, {
+      embedFn: async (_t) => [1, 0.1, 0],
+      nowMs: NOW,
+    })
+    expect(out).toHaveLength(1)
+    expect(out[0].recurrenceCount).toBe(4)
+  })
+
   it('three similar-intent summaries form one cluster', async () => {
     const summaries = [
       summary({ intent: 'write a vitest unit test' }),
