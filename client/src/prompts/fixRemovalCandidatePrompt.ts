@@ -5,7 +5,7 @@ export function generateFixRemovalCandidatePrompt(skill: Skill): string {
 Skill: **${skill.name}** (${skill.type})
 Path: ${skill.path}
 Description: "${skill.description || '(none)'}"
-Loaded cost: $${skill.loadedDollars.toFixed(4)} — Active cost: $${skill.activeDollars.toFixed(4)}
+Loaded tokens: ${skill.loadedTokens} per turn — Invocations: ${skill.invocations}
 This skill pays a context tax on every turn but has never been invoked.
 
 ## Task

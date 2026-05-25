@@ -93,7 +93,7 @@ const MCP_STATUS_MAP: Record<MCPRow['status'], Skill['health']['status']> = {
  *  it alongside skills/commands/subagents without branching at every column. */
 export function toMCPSkill(
   entry: MCPRow,
-  usage?: { dollars: number; lastInvoked: string },
+  usage?: { dollars: number; lastInvoked: string; invocations?: number },
   thresholds?: CostThresholds,
 ): Skill {
   const t = resolveThresholds(thresholds)
@@ -129,6 +129,9 @@ export function toMCPSkill(
     activeDollars: usage?.dollars ?? 0,
     loadedDollars: 0,
     totalDollars: usage?.dollars ?? 0,
+    activeTokens: 0,
+    loadedTokens: 0,
+    invocations: usage?.invocations ?? 0,
     insight: null,
     dormant,
     lastInvoked: usage?.lastInvoked ?? '',
@@ -164,6 +167,9 @@ export function mergeWithCost(
     const activeDollars = c?.active.dollars ?? 0
     const loadedDollars = c?.loaded.dollars ?? 0
     const totalDollars = c?.total.dollars ?? 0
+    const activeTokens = c?.active.tokens ?? 0
+    const loadedTokens = c?.loaded.tokens ?? 0
+    const invocations = c?.invocations ?? 0
     const lastInvoked = c?.lastInvoked ?? ''
 
     const descLen = s.description.length
@@ -174,6 +180,9 @@ export function mergeWithCost(
       activeDollars,
       loadedDollars,
       totalDollars,
+      activeTokens,
+      loadedTokens,
+      invocations,
       insight: classifyInsight(s.lastModified, activeDollars, loadedDollars, t, DEFAULT_CLASSIFICATION_FLAGS),
       dormant: isDormant(lastInvoked, t.dormantDays),
       lastInvoked,

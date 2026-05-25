@@ -203,7 +203,8 @@ export default function App() {
       setCursorRecent(cursorRecentReport)
       // Even though Cursor skills have no Claude Code cost data, they need to
       // pass through mergeWithCost so the derived fields (activeDollars,
-      // loadedDollars, insight, dormant, bloat, descLen) are populated.
+      // loadedDollars, activeTokens, loadedTokens, invocations, insight,
+      // dormant, bloat, descLen) are populated.
       // Without this the InventoryTable crashes on `undefined.toFixed(...)`.
       const merged = mergeWithCost(cursorSkills, [])
       setSkills(prev => dedupById([
@@ -491,7 +492,7 @@ export default function App() {
         cmp = HEALTH_ORDER[a.health.status] - HEALTH_ORDER[b.health.status]
       } else if (sortKey === 'insight') {
         cmp = INSIGHT_RANK(a) - INSIGHT_RANK(b)
-      } else if (sortKey === 'activeDollars' || sortKey === 'loadedDollars' || sortKey === 'totalDollars') {
+      } else if (sortKey === 'activeTokens' || sortKey === 'loadedTokens' || sortKey === 'invocations') {
         cmp = (a[sortKey] ?? 0) - (b[sortKey] ?? 0)
       } else {
         const av = a[sortKey] ?? ''

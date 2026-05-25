@@ -27,7 +27,7 @@ export interface ClassificationResult {
 export type Timeframe = 'day' | 'week' | 'month' | 'quarter' | 'year' | 'all'
 export type SkillScope = 'global' | 'project'
 export type HealthStatus = 'ok' | 'warn' | 'error'
-export type SortKey = 'name' | 'type' | 'scope' | 'lastModified' | 'health' | 'activeDollars' | 'loadedDollars' | 'totalDollars' | 'insight'
+export type SortKey = 'name' | 'type' | 'scope' | 'lastModified' | 'health' | 'activeTokens' | 'loadedTokens' | 'invocations' | 'insight'
 export type Insight = 'removal-candidate' | 'winner' | null
 export type SortDir = 'asc' | 'desc'
 
@@ -90,6 +90,9 @@ export interface Skill {
   activeDollars: number
   loadedDollars: number
   totalDollars: number
+  activeTokens: number
+  loadedTokens: number
+  invocations: number
   bodyTokens?: number
   listingTokens?: number
   insight: Insight

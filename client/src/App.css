@@ -1251,9 +1251,9 @@ body {
   white-space: nowrap;
 }
 
-.col-activeDollars,
-.col-loadedDollars,
-.col-totalDollars {
+.col-activeTokens,
+.col-loadedTokens,
+.col-invocations {
   width: var(--col-w-money);
   white-space: nowrap;
 }
@@ -1273,9 +1273,9 @@ body {
   text-align: center;
 }
 
-.inventory-table thead th.col-activeDollars,
-.inventory-table thead th.col-loadedDollars,
-.inventory-table thead th.col-totalDollars {
+.inventory-table thead th.col-activeTokens,
+.inventory-table thead th.col-loadedTokens,
+.inventory-table thead th.col-invocations {
   text-align: right;
 }
 
@@ -1295,7 +1295,7 @@ td.col-numeric {
   color: var(--text-dim);
 }
 
-td.col-totalDollars {
+td.col-invocations {
   color: var(--text);
 }
 

@@ -15,8 +15,9 @@ import { useSettings } from '../hooks/useSettings'
 interface Props {
   insight: Insight
   dormant: boolean
-  activeDollars: number
-  loadedDollars: number
+  activeTokens: number
+  loadedTokens: number
+  invocations: number
   lastInvoked: string
   bloat: boolean
   descLen: number
@@ -25,15 +26,18 @@ interface Props {
   onReclassify?: (skill: Skill) => void
 }
 
-function fmt(n: number): string {
-  return '$' + n.toFixed(4)
+function fmtTokens(n: number): string {
+  if (n <= 0) return '0'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  return String(n)
 }
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-export default function InsightBadge({ insight, dormant, activeDollars, loadedDollars, lastInvoked, bloat, descLen, suggestedType, skill, onReclassify }: Props) {
+export default function InsightBadge({ insight, dormant, activeTokens, loadedTokens, invocations, lastInvoked, bloat, descLen, suggestedType, skill, onReclassify }: Props) {
   const { flags } = useSettings()
   // `mismatch` is the only branch whose source data (suggestedType) doesn't
   // pass through reapplyThresholds, so we gate it here. The removal /
@@ -80,8 +84,8 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
           <IconAlertOctagonFilled size={14} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-removal">Removal candidate</span>
-            <span className="insight-tooltip-row">Loaded cost: <b>{fmt(loadedDollars)}</b></span>
-            <span className="insight-tooltip-row">Active cost: <b>{fmt(activeDollars)}</b> — never invoked</span>
+            <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
+            <span className="insight-tooltip-row">Invocations: <b>{invocations}</b> — never used</span>
             <span className="insight-tooltip-hint">Paying context tax every turn with no return</span>
             {skill && <CopyPromptButton getPrompt={() => generateFixRemovalCandidatePrompt(skill)} />}
           </span>
@@ -99,8 +103,9 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
           <IconCircleCheckFilled size={14} aria-hidden />
           <span className="insight-tooltip">
             <span className="insight-tooltip-title insight-tooltip-winner">Earning its keep</span>
-            <span className="insight-tooltip-row">Active cost: <b>{fmt(activeDollars)}</b></span>
-            <span className="insight-tooltip-row">Loaded cost: <b>{fmt(loadedDollars)}</b></span>
+            <span className="insight-tooltip-row">Active tokens: <b>{fmtTokens(activeTokens)}</b></span>
+            <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
+            <span className="insight-tooltip-row">Invocations: <b>{invocations}</b></span>
             <span className="insight-tooltip-hint">High loaded cost AND actively used</span>
           </span>
         </span>
@@ -121,7 +126,7 @@ export default function InsightBadge({ insight, dormant, activeDollars, loadedDo
             {days !== null && (
               <span className="insight-tooltip-row">Last invoked: <b>{days} days ago</b></span>
             )}
-            <span className="insight-tooltip-row">Loaded cost: <b>{fmt(loadedDollars)}</b></span>
+            <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
             <span className="insight-tooltip-hint">Not invoked in 90+ days</span>
             {skill && <CopyPromptButton getPrompt={() => generateFixDormantPrompt(skill)} />}
           </span>
