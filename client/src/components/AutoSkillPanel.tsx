@@ -66,22 +66,70 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
     (async () => {
       setLoading(true)
       try {
-        const [list, settings, modelInfo] = await Promise.all([
+        const [list, settings, modelInfo, progress] = await Promise.all([
           fetchCandidates(),
           fetchSettings(),
           fetchOllamaModels(),
+          fetchDigestProgress().catch(() => null),
         ])
         setCandidates(list)
         setOllamaAvailable(modelInfo.available)
         setModels(modelInfo.models)
         setModel(settings.autoSkill.model || modelInfo.models[0]?.name || '')
+        // LOC-90: if a digest is still running server-side from a prior
+        // mount of this modal, pick it up rather than dropping the user
+        // into a blank panel. Non-terminal phases re-attach polling;
+        // terminal phases (done/error) just render the bar's final state
+        // briefly so the user sees confirmation.
+        if (progress && progress.phase !== 'idle') {
+          setDigestProgress(progress)
+          if (progress.phase !== 'done' && progress.phase !== 'error') {
+            setRunning('digesting')
+            setRunMessage(progress.message || 'Digesting…')
+            startPolling()
+          }
+        }
       } catch (e) {
         setError((e as Error).message)
       } finally {
         setLoading(false)
       }
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // LOC-90: when polling sees the digest hit a terminal phase from a
+  // re-attached panel (i.e. the user opened the modal mid-run rather
+  // than starting it here), finalize cleanly: stop polling, refresh
+  // candidates, surface the result message. Guarded by `running` so we
+  // only fire the finalization once per re-attach session.
+  useEffect(() => {
+    if (!digestProgress) return
+    if (running !== 'digesting') return
+    if (digestProgress.phase !== 'done' && digestProgress.phase !== 'error') return
+    stopPolling()
+    setRunning('idle')
+    if (digestProgress.phase === 'done') {
+      setRunMessage(digestProgress.message || 'Done.')
+      void refreshCandidates()
+    } else {
+      setRunMessage('')
+      setError(digestProgress.error || 'Digest failed.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [digestProgress, running])
+
+  // LOC-90: terminal-state bar auto-hides after 3s so a successful re-attach
+  // (or a normal run finish) doesn't leave a stale 100% bar pinned in the UI
+  // forever. Only fires when the panel is in idle state and the progress is
+  // terminal — an in-flight progress is left alone.
+  useEffect(() => {
+    if (!digestProgress) return
+    if (running !== 'idle') return
+    if (digestProgress.phase !== 'done' && digestProgress.phase !== 'error') return
+    const t = setTimeout(() => setDigestProgress(null), 3000)
+    return () => clearTimeout(t)
+  }, [digestProgress, running])
 
   // Poll the server-side digest progress every 1.5 s while a digest is in
   // flight. The status endpoint is cheap (in-memory read) so this is fine.
@@ -473,7 +521,7 @@ ollama pull qwen2.5:7b</pre>
             candidate={accepting}
             allSkills={allSkills}
             onClose={() => setAccepting(null)}
-            onAccepted={async (_path, _updated) => {
+            onAccepted={async () => {
               setAccepting(null)
               await refreshCandidates()
               onSkillsChanged()
