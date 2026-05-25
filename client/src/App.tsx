@@ -5,9 +5,7 @@ import type { ProfilesData, UninstalledEntry, MCPUsageSummary, MCPRelationship }
 import {
   HEALTH_ORDER,
   INSIGHT_RANK,
-  computeTotals,
   countReview,
-  fmtUsd,
   mergeWithCost,
   reapplyThresholds,
   toMCPSkill,
@@ -17,7 +15,6 @@ import InventoryTable from './components/InventoryTable'
 import DetailDrawer from './components/DetailDrawer'
 import FilterBar from './components/FilterBar'
 import EmptyState from './components/EmptyState'
-import CostExplainerModal from './components/CostExplainerModal'
 import ProfileSwitcher from './components/ProfileSwitcher'
 import CostBreakdownPanel from './components/CostBreakdownPanel'
 import TimeframePicker from './components/TimeframePicker'
@@ -37,7 +34,6 @@ import {
   IconArrowBackUp,
   IconChevronLeft,
   IconChevronRight,
-  IconHelp,
   IconRefresh,
   IconRoute,
   IconSearch,
@@ -77,7 +73,6 @@ export default function App() {
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [selected, setSelected] = useState<Skill | null>(null)
-  const [showCostModal, setShowCostModal] = useState(false)
   const [breakdownSkill, setBreakdownSkill] = useState<Skill | null>(null)
   const [timeframe, setTimeframe] = useState<Timeframe>(
     () => (localStorage.getItem('loadoutsmith-timeframe') as Timeframe)
@@ -523,7 +518,6 @@ export default function App() {
     mcp: tabSkills.filter(s => s.type === 'mcp').length,
   }
 
-  const totals = computeTotals(skills)
   const review = countReview(tabSkills)
   // Insight banner is only meaningful on the Claude Code tab — Cursor's
   // activation data is bounded by the persistence fade, and Codex has no
@@ -537,20 +531,6 @@ export default function App() {
         <div className="header-left">
           <span className="header-title">Local Loadout Smithery</span>
           <span className="header-count">{skills.length} total</span>
-          <span className="header-cost" title={`Active ${fmtUsd(totals.active)} · Loaded ${fmtUsd(totals.loaded)} (${totals.total > 0 ? Math.round((totals.loaded / totals.total) * 100) : 0}% of total)`}>
-            <span className="header-cost-label">Total</span>
-            <span className="header-cost-value">{fmtUsd(totals.total)}</span>
-            <span className="header-cost-split">
-              <span className="header-cost-active">A {fmtUsd(totals.active)}</span>
-              <span className="header-cost-sep">·</span>
-              <span className="header-cost-loaded">
-                L {fmtUsd(totals.loaded)}
-                {totals.total > 0 && (
-                  <span className="header-cost-pct"> ({Math.round((totals.loaded / totals.total) * 100)}%)</span>
-                )}
-              </span>
-            </span>
-          </span>
         </div>
         <div className="header-tabs">
           <button
@@ -589,10 +569,6 @@ export default function App() {
             />
           )}
           {activeTab === 'inventory' && <TimeframePicker value={timeframe} onChange={setTimeframe} />}
-          <button className="btn btn-sm" onClick={() => setShowCostModal(true)} title="How cost tracking works">
-            <IconHelp size={14} stroke={1.75} aria-hidden />
-            How costs work
-          </button>
           {lastUninstall && (
             <button className="btn btn-sm btn-warn" onClick={handleUninstallUndo} title={`Restore ${lastUninstall.name}`}>
               <IconArrowBackUp size={14} stroke={1.75} aria-hidden />
@@ -940,10 +916,6 @@ export default function App() {
           onRestored={load}
           onCountChange={setTrashCount}
         />
-      )}
-
-      {showCostModal && (
-        <CostExplainerModal onClose={() => setShowCostModal(false)} timeframe={timeframe} />
       )}
 
       {breakdownSkill && (
