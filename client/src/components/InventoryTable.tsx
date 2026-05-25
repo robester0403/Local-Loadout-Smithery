@@ -67,9 +67,9 @@ const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean; title?
   { key: 'type', labelBase: 'Type' },
   { key: 'scope', labelBase: 'Context' },
   { key: 'lastModified', labelBase: 'Modified' },
-  { key: 'activeTokens', labelBase: 'Active tokens', numeric: true, title: "Tokens this skill's body added to context across turns it was loaded. Click for the dollar breakdown." },
-  { key: 'loadedTokens', labelBase: 'Loaded tokens', numeric: true, title: "Tokens this skill's listing added to the system prompt across every turn. Click for the dollar breakdown." },
-  { key: 'invocations', labelBase: 'Invocations', numeric: true, title: 'Number of times this skill was activated in the selected timeframe.' },
+  { key: 'activeTokens', labelBase: 'Active', numeric: true, title: "Tokens this skill's body added to context across turns it was loaded. Click for the dollar breakdown." },
+  { key: 'loadedTokens', labelBase: 'Loaded', numeric: true, title: "Tokens this skill's listing added to the system prompt across every turn. Click for the dollar breakdown." },
+  { key: 'invocations', labelBase: 'Invokes', numeric: true, title: 'Number of times this skill was activated in the selected timeframe.' },
 ]
 
 function fmtTokens(n: number): string {
