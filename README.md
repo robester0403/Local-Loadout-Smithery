@@ -153,6 +153,28 @@ keep_alive. The Ollama daemon itself keeps running (so the next startup
 is instant). Only the model weights get evicted, and only the model this
 app loaded — any unrelated Ollama clients on your machine are untouched.
 
+## Signal-detection pipeline (opt-in)
+
+The default Auto Skill digest hands a whole conversation chunk to one
+LLM call and asks "is there a skill here?" — fast, but noisy, and only
+discovers skills / commands / subagents.
+
+The **signal-detection pipeline** is a structured alternative: each
+conversation gets sliced into intent arcs, summarized per-arc, clustered
+across the corpus, and then fanned out to four parallel detectors —
+**skill, command, subagent, and a new CLAUDE.md rule detector**. Survivors
+go through cross-detector + cross-type dedup against your existing
+library, get ranked, and each candidate carries a plain-English
+*reasonForUser* explaining why it surfaced and what evidence backs it.
+
+Opt in by setting `autoSkill.useSignalPipeline: true` in
+`~/.loadoutsmith/settings.json`. Default is **off** until real-corpus
+tuning lands — the legacy digest stays in place untouched, both paths
+write into the same candidate store.
+
+Design + research backing: [`docs/signal-detection-pipeline.md`](./docs/signal-detection-pipeline.md).
+Phase map + module layout: [`server/src/autoSkill/signals/README.md`](./server/src/autoSkill/signals/README.md).
+
 ## Where data lives
 
 Everything the app writes lives under `~/.loadoutsmith/`. Inspecting or
