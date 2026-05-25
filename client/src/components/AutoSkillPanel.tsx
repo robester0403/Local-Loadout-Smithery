@@ -318,40 +318,42 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
         />
 
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-          <div style={{ minWidth: 200 }}>
-            <label className="form-label">Model</label>
-            <select className="form-input" value={model} onChange={e => setModel(e.target.value)} disabled={!ollamaAvailable}>
-              {models.length === 0 && <option value="">(no models installed)</option>}
-              {models.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
-            </select>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 200 }}>
+              <label className="form-label">Model</label>
+              <select className="form-input" value={model} onChange={e => setModel(e.target.value)} disabled={!ollamaAvailable}>
+                {models.length === 0 && <option value="">(no models installed)</option>}
+                {models.map(m => <option key={m.name} value={m.name}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="form-label">Lookback</label>
+              <select className="form-input" value={lookback} onChange={e => setLookback(Number(e.target.value))}>
+                {LOOKBACK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-dim)', cursor: 'pointer', paddingBottom: 8 }}
+              title="One-shot: ignore the extraction high-water mark and re-pull conversations within the lookback window even if they've been extracted before. Useful for re-discovering previously-cleared candidates. Auto-clears after the run."
+            >
+              <input
+                type="checkbox"
+                checked={forceReextract}
+                onChange={e => setForceReextract(e.target.checked)}
+                disabled={running !== 'idle'}
+              />
+              Force re-extract
+            </label>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleRun}
+              disabled={!ollamaAvailable || running !== 'idle' || !model}
+            >
+              {running === 'idle' ? 'Run digest' : runMessage || 'Working…'}
+            </button>
           </div>
-          <div>
-            <label className="form-label">Lookback</label>
-            <select className="form-input" value={lookback} onChange={e => setLookback(Number(e.target.value))}>
-              {LOOKBACK_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          <label
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-dim)', cursor: 'pointer', paddingBottom: 8 }}
-            title="One-shot: ignore the extraction high-water mark and re-pull conversations within the lookback window even if they've been extracted before. Useful for re-discovering previously-cleared candidates. Auto-clears after the run."
-          >
-            <input
-              type="checkbox"
-              checked={forceReextract}
-              onChange={e => setForceReextract(e.target.checked)}
-              disabled={running !== 'idle'}
-            />
-            Force re-extract
-          </label>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={handleRun}
-            disabled={!ollamaAvailable || running !== 'idle' || !model}
-          >
-            {running === 'idle' ? 'Run digest' : runMessage || 'Working…'}
-          </button>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div>
               <label className="form-label">Filter</label>
               <select className="form-input" value={statusFilter} onChange={e => setStatusFilter(e.target.value as CandidateStatus | 'all-active')}>
