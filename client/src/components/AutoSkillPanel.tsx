@@ -521,7 +521,7 @@ ollama pull qwen2.5:7b</pre>
             candidate={accepting}
             allSkills={allSkills}
             onClose={() => setAccepting(null)}
-            onAccepted={async (_path, _updated) => {
+            onAccepted={async () => {
               setAccepting(null)
               await refreshCandidates()
               onSkillsChanged()
