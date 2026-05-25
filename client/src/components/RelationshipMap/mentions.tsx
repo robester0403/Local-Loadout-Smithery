@@ -47,16 +47,35 @@ export interface BodyJump {
 // Longest-first ordering prevents a short name (e.g. "gh") from greedily
 // matching inside a longer one ("gh-cli"). Boundaries use [\w:-] so internal
 // hyphens / colons inside a name don't fragment a match.
+//
+// LOC-92: candidates are also filtered through `isSkillShaped` to avoid
+// bolding every English-word collision. A loadout that contains an artifact
+// literally named "feedback" or "commit" would otherwise highlight those
+// words anywhere they appear in prose. The same filter ships server-side in
+// `server/src/scanner/references.ts` (LOC-91) so graph edges and rail
+// highlighting stay consistent — keep the two definitions in sync.
 function buildMentionPattern(
   names: ReadonlySet<string>,
   selfName: string,
 ): RegExp | null {
   const candidates = Array.from(names)
-    .filter(n => n.length > 1 && n !== selfName)
+    .filter(n => n.length > 1 && n !== selfName && isSkillShaped(n))
     .sort((a, b) => b.length - a.length)
   if (candidates.length === 0) return null
   const pattern = candidates.map(escapeRegex).join('|')
   return new RegExp(`(?<![\\w:-])(?:${pattern})(?![\\w:-])`, 'g')
+}
+
+/** A name qualifies for body-prose matching only if it's typographically
+ *  distinctive: contains a hyphen (kebab-case), an underscore (snake_case),
+ *  or has a lowercase → uppercase transition (camelCase). Plain single-word
+ *  names are too risky because they collide with English prose. Mirrors the
+ *  server-side helper in `server/src/scanner/references.ts`. */
+export function isSkillShaped(name: string): boolean {
+  if (name.includes('-')) return true
+  if (name.includes('_')) return true
+  if (/[a-z][A-Z]/.test(name)) return true
+  return false
 }
 
 // Find every occurrence of any known artifact name in `body` (excluding
