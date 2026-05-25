@@ -22,13 +22,16 @@ interface Props {
   onSelectAll?: (checked: boolean) => void
   onReclassify?: (skill: Skill) => void
   /**
-   * How the cost columns (Active$ / Loaded$ / Total$) render:
-   *   - 'dollars' (default): real dollars from token usage.
-   *   - 'cursor-live-usage': Active$ → activation count, Loaded$ → relative
-   *     last-used time, Total$ → "—". Requires `liveUsage`.
+   * How the activity columns (Active tokens / Loaded tokens / Invocations)
+   * render:
+   *   - 'dollars' (default): real token counts + invocation count from Claude
+   *     Code session logs. (Name kept for backwards-compat with callers; the
+   *     drill-down still exposes dollars.)
+   *   - 'cursor-live-usage': Active → activation count, Loaded → relative
+   *     last-used time, Invocations → "—". Requires `liveUsage`.
    *   - 'unavailable': all three cells show "—" with explanatory tooltips
-   *     (used by ecosystems with no per-skill cost or activation signal,
-   *     e.g. Codex today).
+   *     (used by ecosystems with no per-skill activity signal, e.g. Codex
+   *     today).
    *
    * Per-tab decision, not per-row — InventoryTable does not inspect
    * `skill.account`, so adding a new ecosystem doesn't require editing
@@ -64,13 +67,20 @@ const BASE_COLUMNS: { key: SortKey; labelBase: string; numeric?: boolean; title?
   { key: 'type', labelBase: 'Type' },
   { key: 'scope', labelBase: 'Context' },
   { key: 'lastModified', labelBase: 'Modified' },
-  { key: 'activeDollars', labelBase: 'Active $', numeric: true, title: "Cost of this skill's body sitting in context across turns it was loaded" },
-  { key: 'loadedDollars', labelBase: 'Loaded $', numeric: true, title: "Cost of this skill's listing in the system prompt across every turn" },
-  { key: 'totalDollars', labelBase: 'Total $', numeric: true },
+  { key: 'activeTokens', labelBase: 'Active tokens', numeric: true, title: "Tokens this skill's body added to context across turns it was loaded. Click for the dollar breakdown." },
+  { key: 'loadedTokens', labelBase: 'Loaded tokens', numeric: true, title: "Tokens this skill's listing added to the system prompt across every turn. Click for the dollar breakdown." },
+  { key: 'invocations', labelBase: 'Invocations', numeric: true, title: 'Number of times this skill was activated in the selected timeframe.' },
 ]
 
-function fmtDollars(n: number): string {
-  return '$' + n.toFixed(4)
+function fmtTokens(n: number): string {
+  if (n <= 0) return '0'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  return String(n)
+}
+
+function fmtCount(n: number): string {
+  return n > 0 ? n.toLocaleString() : '0'
 }
 
 function fmtRelative(ms: number): string {
@@ -116,8 +126,8 @@ export default function InventoryTable({
   const COLUMNS = BASE_COLUMNS
     .filter(col => visible[col.key as ColumnKey])
     .map(col => {
-      const isDollar = col.key === 'activeDollars' || col.key === 'loadedDollars' || col.key === 'totalDollars'
-      const label = isDollar && suffix ? `${col.labelBase} (${suffix})` : col.labelBase
+      const isUsage = col.key === 'activeTokens' || col.key === 'loadedTokens' || col.key === 'invocations'
+      const label = isUsage && suffix ? `${col.labelBase} (${suffix})` : col.labelBase
       return { ...col, label }
     })
 
@@ -206,8 +216,9 @@ export default function InventoryTable({
                     <InsightBadge
                       insight={skill.insight}
                       dormant={skill.dormant}
-                      activeDollars={skill.activeDollars}
-                      loadedDollars={skill.loadedDollars}
+                      activeTokens={skill.activeTokens}
+                      loadedTokens={skill.loadedTokens}
+                      invocations={skill.invocations}
                       lastInvoked={skill.lastInvoked}
                       bloat={skill.bloat}
                       descLen={skill.descLen}
@@ -245,8 +256,8 @@ export default function InventoryTable({
                       : formatDate(skill.lastModified)}
                   </td>
                 )}
-                {visible.activeDollars && (
-                <td className="col-activeDollars col-numeric">
+                {visible.activeTokens && (
+                <td className="col-activeTokens col-numeric">
                   {noCostData ? (
                     <span className="col-mcp-dash" title="This ecosystem doesn't expose per-skill activation or billing data.">—</span>
                   ) : useCursorStyleUsage ? (
@@ -259,21 +270,21 @@ export default function InventoryTable({
                     )
                   ) : isMCP ? (
                     skill.activeDollars > 0
-                      ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost">{fmtDollars(skill.activeDollars)}</span>
+                      ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP active cost (click in detail drawer for dollars)">{fmtTokens(skill.activeTokens)}</span>
                       : <span className="col-mcp-dash">—</span>
                   ) : (
                     <span
                       className="dollar-link"
                       onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
-                      title="Show cost breakdown"
+                      title="Show cost breakdown (dollars)"
                     >
-                      {fmtDollars(skill.activeDollars)}
+                      {fmtTokens(skill.activeTokens)}
                     </span>
                   )}
                 </td>
                 )}
-                {visible.loadedDollars && (
-                <td className="col-loadedDollars col-numeric">
+                {visible.loadedTokens && (
+                <td className="col-loadedTokens col-numeric">
                   {noCostData ? (
                     <span className="col-mcp-dash" title="This ecosystem doesn't expose activation timestamps.">—</span>
                   ) : useCursorStyleUsage ? (
@@ -284,31 +295,33 @@ export default function InventoryTable({
                     <span
                       className="dollar-link"
                       onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
-                      title="Show cost breakdown"
+                      title="Show cost breakdown (dollars)"
                     >
-                      {fmtDollars(skill.loadedDollars)}
+                      {fmtTokens(skill.loadedTokens)}
                     </span>
                   )}
                 </td>
                 )}
-                {visible.totalDollars && (
-                <td className="col-totalDollars col-numeric">
+                {visible.invocations && (
+                <td className="col-invocations col-numeric">
                   {noCostData ? (
-                    <span className="col-mcp-dash" title="This ecosystem doesn't expose per-skill billing.">—</span>
+                    <span className="col-mcp-dash" title="This ecosystem doesn't expose per-skill activation counts.">—</span>
                   ) : useCursorStyleUsage ? (
-                    <span className="col-mcp-dash" title="Billing isn't accessible — see the detail drawer for body/listing token sizes.">—</span>
+                    <span className="col-mcp-dash" title="Activation counts for Cursor live in the Active column (live polling) and detail drawer (historical).">—</span>
                   ) : isMCP ? (
-                    skill.totalDollars > 0
-                      ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP total cost">{fmtDollars(skill.totalDollars)}</span>
+                    skill.invocations > 0
+                      ? <span className="dollar-link" onClick={e => e.stopPropagation()} title="MCP invocations">{fmtCount(skill.invocations)}</span>
                       : <span className="col-mcp-dash">—</span>
                   ) : (
-                    <span
-                      className="dollar-link"
-                      onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
-                      title="Show cost breakdown"
-                    >
-                      {fmtDollars(skill.totalDollars)}
-                    </span>
+                    skill.invocations > 0 ? (
+                      <span
+                        className="dollar-link"
+                        onClick={e => { e.stopPropagation(); onBreakdown(skill) }}
+                        title="Show cost breakdown (dollars)"
+                      >
+                        {fmtCount(skill.invocations)}
+                      </span>
+                    ) : <span className="col-mcp-dash">0</span>
                   )}
                 </td>
                 )}

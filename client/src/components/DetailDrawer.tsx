@@ -272,6 +272,7 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
                 <div className="mcp-usage-section">
                   <div className="mcp-usage-summary">
                     <span><span className="mcp-meta-label">Invocations</span> {usage.invocations}</span>
+                    <span><span className="mcp-meta-label">Tokens</span> {usage.tokens.toLocaleString()}</span>
                     <span><span className="mcp-meta-label">Cost</span> ${usage.dollars.toFixed(4)}</span>
                     <span><span className="mcp-meta-label">Last invoked</span> {formatDate(usage.lastInvoked)}</span>
                   </div>

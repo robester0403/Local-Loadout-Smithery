@@ -316,8 +316,9 @@ export function RelmapInfoRail({
 
       <RailSection label="Stats" className="relmap-rail-stats-section">
         <dl className="relmap-rail-stats">
-          <Stat label="Active $" value={fmtDollars(skill.activeDollars ?? 0)} />
-          <Stat label="Loaded $" value={fmtDollars(skill.loadedDollars ?? 0)} />
+          <Stat label="Active tokens" value={fmtTokens(skill.activeTokens ?? 0)} />
+          <Stat label="Loaded tokens" value={fmtTokens(skill.loadedTokens ?? 0)} />
+          <Stat label="Invocations" value={fmtCount(skill.invocations ?? 0)} />
           <Stat label="Last invoked" value={fmtDate(skill.lastInvoked)} />
           <Stat label="References" value={`${refCount} out`} />
           <Stat
@@ -493,10 +494,15 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function fmtDollars(n: number): string {
-  if (n === 0) return '$0'
-  if (n >= 0.0001) return '$' + n.toFixed(4)
-  return '$' + n.toFixed(6)
+function fmtTokens(n: number): string {
+  if (n <= 0) return '0'
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'k'
+  return String(n)
+}
+
+function fmtCount(n: number): string {
+  return n > 0 ? n.toLocaleString() : '0'
 }
 
 function fmtDate(iso: string | undefined): string {

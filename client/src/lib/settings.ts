@@ -25,7 +25,7 @@ import { z } from 'zod'
 import { DEFAULT_THRESHOLDS } from './cost'
 
 const STORAGE_KEY = 'loadoutsmith-settings'
-const SETTINGS_VERSION = 2
+const SETTINGS_VERSION = 3
 
 /** Every column the inventory table can render. Source of truth for ordering
  *  + label is the table itself; this enum just enumerates the toggle surface. */
@@ -36,9 +36,9 @@ export const COLUMN_KEYS = [
   'type',
   'scope',
   'lastModified',
-  'activeDollars',
-  'loadedDollars',
-  'totalDollars',
+  'activeTokens',
+  'loadedTokens',
+  'invocations',
   'enabled',
 ] as const
 export type ColumnKey = typeof COLUMN_KEYS[number]
@@ -50,10 +50,18 @@ export const COLUMN_LABELS: Record<ColumnKey, string> = {
   type: 'Type',
   scope: 'Context',
   lastModified: 'Modified',
-  activeDollars: 'Active $',
-  loadedDollars: 'Loaded $',
-  totalDollars: 'Total $',
+  activeTokens: 'Active tokens',
+  loadedTokens: 'Loaded tokens',
+  invocations: 'Invocations',
   enabled: 'Enabled',
+}
+
+/** v2→v3: cost columns were renamed from `*Dollars` to a token/invocation
+ *  view. Preserve the user's prior on/off choice when migrating. */
+const LEGACY_COLUMN_RENAME: Record<string, ColumnKey> = {
+  activeDollars: 'activeTokens',
+  loadedDollars: 'loadedTokens',
+  totalDollars: 'invocations',
 }
 
 export const FLAG_KEYS = [
@@ -172,13 +180,38 @@ function migrate(envelope: PersistedEnvelope | unknown): Settings {
     ? (envelope as PersistedEnvelope).data
     : envelope
 
-  const direct = settingsSchema.safeParse(raw)
+  const renamed = renameLegacyColumns(raw)
+
+  const direct = settingsSchema.safeParse(renamed)
   if (direct.success) return direct.data
 
   const defaults = defaultSettings()
-  const merged = deepMerge(defaults, raw)
+  const merged = deepMerge(defaults, renamed)
   const m = settingsSchema.safeParse(merged)
   return m.success ? m.data : defaults
+}
+
+/** Carry forward the user's column-visibility preferences when v2 keys
+ *  (activeDollars / loadedDollars / totalDollars) are present in the
+ *  persisted payload. Done before zod parse so the renamed keys validate
+ *  against the current schema. */
+function renameLegacyColumns(raw: unknown): unknown {
+  if (!isPlainObject(raw)) return raw
+  const cols = raw.columns
+  if (!isPlainObject(cols)) return raw
+  let touched = false
+  const next: Record<string, unknown> = { ...cols }
+  for (const [legacy, current] of Object.entries(LEGACY_COLUMN_RENAME)) {
+    if (legacy in next) {
+      // Only adopt the legacy value if the new key wasn't already set —
+      // otherwise the explicit current-version setting wins.
+      if (!(current in next)) next[current] = next[legacy]
+      delete next[legacy]
+      touched = true
+    }
+  }
+  if (!touched) return raw
+  return { ...raw, columns: next }
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
