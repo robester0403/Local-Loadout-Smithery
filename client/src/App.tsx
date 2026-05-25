@@ -69,7 +69,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState<Filters>({ type: [], scope: [], issuesOnly: false, reviewOnly: false })
+  const [filters, setFilters] = useState<Filters>({ type: [], scope: [], issuesOnly: false, reviewOnly: false, newOnly: false })
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [selected, setSelected] = useState<Skill | null>(null)
@@ -469,6 +469,7 @@ export default function App() {
         if (!counts) return false
       }
       if (filters.reviewOnly && s.insight !== 'removal-candidate' && !s.dormant) return false
+      if (filters.newOnly && !s.isNew) return false
       if (search) {
         const q = search.toLowerCase()
         return s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
@@ -868,7 +869,7 @@ export default function App() {
               // Was previously keyed on global skills.length, which made the
               // Claude tab show the wrong copy on a machine with only
               // Cursor + Codex installed.
-              tabSkills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly
+              tabSkills.length === 0 && !search && filters.type.length === 0 && filters.scope.length === 0 && !filters.issuesOnly && !filters.reviewOnly && !filters.newOnly
                 ? <EmptyState variant="none-installed" />
                 : <EmptyState variant="empty" />
             ) : (

@@ -30,6 +30,11 @@ export const GRACE_PERIOD_DAYS = 10
  *  (commands are exempt because slash commands often need richer descriptions). */
 export const DESC_BLOAT_CHARS = 150
 
+/** LOC-12: a skill installed within this many days gets the "New" badge.
+ *  Independent of `gracePeriodDays` (which exempts new skills from the
+ *  removal-candidate flag) so the two windows can be tuned separately. */
+export const NEW_SKILL_GRACE_DAYS = 10
+
 /** All tunable thresholds in one bag so callers can pass overrides without
  *  juggling argument order. Every field is optional; missing fields fall back
  *  to the module-level constants above. */
@@ -39,6 +44,7 @@ export interface CostThresholds {
   dormantDays?: number
   gracePeriodDays?: number
   descBloatChars?: number
+  newSkillGraceDays?: number
 }
 
 export interface ResolvedThresholds {
@@ -47,6 +53,7 @@ export interface ResolvedThresholds {
   dormantDays: number
   gracePeriodDays: number
   descBloatChars: number
+  newSkillGraceDays: number
 }
 
 export const DEFAULT_THRESHOLDS: ResolvedThresholds = {
@@ -55,6 +62,7 @@ export const DEFAULT_THRESHOLDS: ResolvedThresholds = {
   dormantDays: DORMANT_DAYS,
   gracePeriodDays: GRACE_PERIOD_DAYS,
   descBloatChars: DESC_BLOAT_CHARS,
+  newSkillGraceDays: NEW_SKILL_GRACE_DAYS,
 }
 
 export function resolveThresholds(t?: CostThresholds): ResolvedThresholds {
@@ -65,6 +73,7 @@ export function resolveThresholds(t?: CostThresholds): ResolvedThresholds {
     dormantDays: t.dormantDays ?? DEFAULT_THRESHOLDS.dormantDays,
     gracePeriodDays: t.gracePeriodDays ?? DEFAULT_THRESHOLDS.gracePeriodDays,
     descBloatChars: t.descBloatChars ?? DEFAULT_THRESHOLDS.descBloatChars,
+    newSkillGraceDays: t.newSkillGraceDays ?? DEFAULT_THRESHOLDS.newSkillGraceDays,
   }
 }
 
@@ -126,6 +135,8 @@ export function toMCPSkill(
     disabled: false,
     references: [],
     diagnostics: [],
+    installedAt: '',
+    isNew: false,
     activeDollars: usage?.dollars ?? 0,
     loadedDollars: 0,
     totalDollars: usage?.dollars ?? 0,
@@ -183,6 +194,7 @@ export function mergeWithCost(
       activeTokens,
       loadedTokens,
       invocations,
+      isNew: isWithinNewWindow(s.installedAt, t.newSkillGraceDays),
       insight: classifyInsight(s.lastModified, activeDollars, loadedDollars, t, DEFAULT_CLASSIFICATION_FLAGS),
       dormant: isDormant(lastInvoked, t.dormantDays),
       lastInvoked,
@@ -200,6 +212,7 @@ export interface ClassificationFlags {
   winner: boolean
   dormant: boolean
   bloat: boolean
+  newSkill: boolean
 }
 
 const DEFAULT_CLASSIFICATION_FLAGS: ClassificationFlags = {
@@ -207,6 +220,7 @@ const DEFAULT_CLASSIFICATION_FLAGS: ClassificationFlags = {
   winner: true,
   dormant: true,
   bloat: true,
+  newSkill: true,
 }
 
 /**
@@ -234,6 +248,7 @@ export function reapplyThresholds(
       ...s,
       descLen,
       bloat,
+      isNew: flags.newSkill && isWithinNewWindow(s.installedAt, t.newSkillGraceDays),
       insight: classifyInsight(s.lastModified, s.activeDollars, s.loadedDollars, t, flags),
       dormant: flags.dormant && isDormant(s.lastInvoked, t.dormantDays),
     }
@@ -265,6 +280,16 @@ function isDormant(lastInvokedIso: string | undefined, dormantDays: number): boo
   const t = new Date(lastInvokedIso).getTime()
   if (Number.isNaN(t)) return false
   return (Date.now() - t) / MS_PER_DAY > dormantDays
+}
+
+/** Skill is "new" when its `installedAt` (server-resolved birthtime, mtime
+ *  fallback) is within the grace window. MCP rows and other synthesized
+ *  shapes pass an empty `installedAt` — those never count as new. */
+function isWithinNewWindow(installedAtIso: string | undefined, graceDays: number): boolean {
+  if (!installedAtIso) return false
+  const t = new Date(installedAtIso).getTime()
+  if (Number.isNaN(t)) return false
+  return (Date.now() - t) / MS_PER_DAY <= graceDays
 }
 
 // ─── Aggregate helpers ───────────────────────────────────────────────────────

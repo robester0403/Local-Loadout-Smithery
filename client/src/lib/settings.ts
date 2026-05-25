@@ -73,6 +73,7 @@ export const FLAG_KEYS = [
   'dormant',
   'bloat',
   'mismatch',
+  'newSkill',
 ] as const
 export type FlagKey = typeof FLAG_KEYS[number]
 
@@ -85,16 +86,18 @@ export const FLAG_LABELS: Record<FlagKey, string> = {
   dormant: 'Dormant',
   bloat: 'Description bloat',
   mismatch: 'Possible misclassification',
+  newSkill: 'New skill',
 }
 
 /** Which threshold inputs each flag governs. Used by the modal to grey out
  *  numeric inputs when their owning flag is disabled — the value still
  *  persists, it just becomes inert until the flag is re-enabled. */
-export const FLAG_GOVERNS: Partial<Record<FlagKey, ('loadedHighUsd' | 'activeHighUsd' | 'dormantDays' | 'gracePeriodDays' | 'descBloatChars')[]>> = {
+export const FLAG_GOVERNS: Partial<Record<FlagKey, ('loadedHighUsd' | 'activeHighUsd' | 'dormantDays' | 'gracePeriodDays' | 'descBloatChars' | 'newSkillGraceDays')[]>> = {
   removal: ['loadedHighUsd', 'activeHighUsd', 'gracePeriodDays'],
   winner: ['loadedHighUsd', 'activeHighUsd'],
   dormant: ['dormantDays'],
   bloat: ['descBloatChars'],
+  newSkill: ['newSkillGraceDays'],
 }
 
 // ─── Zod schema (source of truth) ───────────────────────────────────────────
@@ -119,6 +122,7 @@ const thresholdsSchema = z.object({
   dormantDays: z.number().finite().min(0),
   gracePeriodDays: z.number().finite().min(0),
   descBloatChars: z.number().finite().int().min(0),
+  newSkillGraceDays: z.number().finite().min(0),
 })
 
 export const settingsSchema = z.object({

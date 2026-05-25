@@ -1047,6 +1047,32 @@ body {
   color: #F86B63;
 }
 
+.pill-new.active {
+  border-color: var(--accent);
+  background: rgba(54, 162, 239, .12);
+  color: var(--accent);
+}
+
+/* LOC-12: "NEW" tag in the name cell for skills installed within the
+   grace window. Inline-aligned with the skill name so it reads as a
+   modifier, not a separate column. */
+.new-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 14px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: rgba(54, 162, 239, .18);
+  color: var(--accent);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--mono);
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 /* ─── Type / scope badges ───────────────────────────────────────────────── */
 .type-badge {
   display: inline-flex;

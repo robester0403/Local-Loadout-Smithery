@@ -231,7 +231,12 @@ export default function InventoryTable({
                 )}
                 {visible.name && (
                   <td className="col-name">
-                    <span className="skill-name">{skill.name}</span>
+                    <span className="skill-name">
+                      {skill.name}
+                      {skill.isNew && (
+                        <span className="new-badge" title="Installed in the last grace window (default 10 days)">NEW</span>
+                      )}
+                    </span>
                     {skill.description && (
                       <span className="skill-desc">{skill.description}</span>
                     )}

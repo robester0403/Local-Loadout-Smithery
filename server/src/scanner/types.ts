@@ -42,6 +42,9 @@ export interface Skill {
   listingTokens: number
   frontmatter: Record<string, unknown>
   lastModified: string
+  /** File birthtime (creation time), ISO. Falls back to mtime on Linux/ext4
+   *  where birthtime is unreliable. Used client-side to derive `isNew`. */
+  installedAt: string
   health: HealthResult
   disabled: boolean
   references: SkillReference[]
