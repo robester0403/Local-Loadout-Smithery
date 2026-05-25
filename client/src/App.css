@@ -990,31 +990,20 @@ body {
   background: rgba(246, 143, 190, .12);
 }
 
-.health-has-tooltip {
-  position: relative;
-}
-
+/* Floating-ui portal renders `.health-tooltip` at <body>, so it inherits
+   the dark theme box but no longer fights ancestor `overflow: hidden`. */
 .health-tooltip {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  display: flex;
   min-width: 240px;
   max-width: 420px;
   background: var(--c-surface2, #1e2030);
   border: 1px solid var(--c-border, #2e3150);
   border-radius: 6px;
   padding: 8px 10px;
-  z-index: 200;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
   flex-direction: column;
   gap: 4px;
   pointer-events: none;
-}
-
-.health-has-tooltip:hover .health-tooltip {
-  display: flex;
 }
 
 .health-tooltip-item {
@@ -1367,34 +1356,19 @@ td.col-invocations {
   color: var(--accent);
 }
 
-/* `.insight-has-tooltip` is applied to the same element as `.insight-badge`.
-   Keep position:relative for tooltip anchoring but don't fight the badge's
-   inline-flex display mode — omitting `display` here lets the badge rule win. */
-.insight-has-tooltip {
-  position: relative;
-  cursor: default;
-}
-
+/* Floating-ui portal renders `.insight-tooltip` at <body>, so it escapes
+   the table's overflow context. Keep the box styling; positioning is
+   handled by the Tooltip component's middleware. */
 .insight-tooltip {
-  display: none;
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  display: flex;
   min-width: 210px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 10px;
-  z-index: 100;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
   flex-direction: column;
   gap: 4px;
-  pointer-events: none;
-}
-
-.insight-has-tooltip:hover .insight-tooltip {
-  display: flex;
 }
 
 .insight-tooltip-title {
