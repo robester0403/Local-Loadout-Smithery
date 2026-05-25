@@ -7,6 +7,7 @@ import {
 } from '@tabler/icons-react'
 import type { Insight, ClassificationResult, Skill } from '../types'
 import CopyPromptButton from './CopyPromptButton'
+import Tooltip from './Tooltip'
 import { generateFixRemovalCandidatePrompt } from '../prompts/fixRemovalCandidatePrompt'
 import { generateFixDormantPrompt } from '../prompts/fixDormantPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
@@ -45,51 +46,69 @@ export default function InsightBadge({ insight, dormant, activeTokens, loadedTok
   // reapplyThresholds → null/false for disabled flags, which short-circuits
   // the corresponding branches below naturally.
   const mismatchBadge = suggestedType && skill && flags.mismatch ? (
-    <span className="insight-badge insight-badge-mismatch insight-has-tooltip">
-      <IconArrowsShuffle size={14} stroke={1.75} aria-hidden />
-      <span className="insight-tooltip">
-        <span className="insight-tooltip-title insight-tooltip-mismatch">Possible misclassification</span>
-        <span className="insight-tooltip-row">Looks like a <b>{suggestedType.suggested}</b></span>
-        {suggestedType.cues.map((cue, i) => (
-          <span key={i} className="insight-tooltip-row">{cue}</span>
-        ))}
-        <CopyPromptButton getPrompt={() => generateReclassifyPrompt(skill)} label="Reclassify with AI" />
-        {onReclassify && !skill.name.includes(':') && (
-          <button
-            className="prompt-btn"
-            onClick={e => { e.stopPropagation(); onReclassify(skill) }}
-          >
-            Apply: move to {suggestedType.suggested}s
-          </button>
-        )}
+    <Tooltip
+      className="insight-tooltip"
+      content={
+        <>
+          <span className="insight-tooltip-title insight-tooltip-mismatch">Possible misclassification</span>
+          <span className="insight-tooltip-row">Looks like a <b>{suggestedType.suggested}</b></span>
+          {suggestedType.cues.map((cue, i) => (
+            <span key={i} className="insight-tooltip-row">{cue}</span>
+          ))}
+          <CopyPromptButton getPrompt={() => generateReclassifyPrompt(skill)} label="Reclassify with AI" />
+          {onReclassify && !skill.name.includes(':') && (
+            <button
+              className="prompt-btn"
+              onClick={e => { e.stopPropagation(); onReclassify(skill) }}
+            >
+              Apply: move to {suggestedType.suggested}s
+            </button>
+          )}
+        </>
+      }
+    >
+      <span className="insight-badge insight-badge-mismatch">
+        <IconArrowsShuffle size={14} stroke={1.75} aria-hidden />
       </span>
-    </span>
+    </Tooltip>
   ) : null
 
   const bloatBadge = bloat ? (
-    <span className="insight-badge insight-badge-bloat insight-has-tooltip">
-      <IconPackage size={14} stroke={1.75} aria-hidden />
-      <span className="insight-tooltip">
-        <span className="insight-tooltip-title insight-tooltip-bloat">Description bloat</span>
-        <span className="insight-tooltip-row">Description: <b>{descLen} chars</b> (limit: 150)</span>
-        <span className="insight-tooltip-hint">Long descriptions cost tokens every turn. Trim to under 150 chars.</span>
+    <Tooltip
+      className="insight-tooltip"
+      content={
+        <>
+          <span className="insight-tooltip-title insight-tooltip-bloat">Description bloat</span>
+          <span className="insight-tooltip-row">Description: <b>{descLen} chars</b> (limit: 150)</span>
+          <span className="insight-tooltip-hint">Long descriptions cost tokens every turn. Trim to under 150 chars.</span>
+        </>
+      }
+    >
+      <span className="insight-badge insight-badge-bloat">
+        <IconPackage size={14} stroke={1.75} aria-hidden />
       </span>
-    </span>
+    </Tooltip>
   ) : null
 
   if (insight === 'removal-candidate') {
     return (
       <>
-        <span className="insight-badge insight-badge-removal insight-has-tooltip">
-          <IconAlertOctagonFilled size={14} aria-hidden />
-          <span className="insight-tooltip">
-            <span className="insight-tooltip-title insight-tooltip-removal">Removal candidate</span>
-            <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
-            <span className="insight-tooltip-row">Invocations: <b>{invocations}</b> — never used</span>
-            <span className="insight-tooltip-hint">Paying context tax every turn with no return</span>
-            {skill && <CopyPromptButton getPrompt={() => generateFixRemovalCandidatePrompt(skill)} />}
+        <Tooltip
+          className="insight-tooltip"
+          content={
+            <>
+              <span className="insight-tooltip-title insight-tooltip-removal">Removal candidate</span>
+              <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
+              <span className="insight-tooltip-row">Invocations: <b>{invocations}</b> — never used</span>
+              <span className="insight-tooltip-hint">Paying context tax every turn with no return</span>
+              {skill && <CopyPromptButton getPrompt={() => generateFixRemovalCandidatePrompt(skill)} />}
+            </>
+          }
+        >
+          <span className="insight-badge insight-badge-removal">
+            <IconAlertOctagonFilled size={14} aria-hidden />
           </span>
-        </span>
+        </Tooltip>
         {bloatBadge}
         {mismatchBadge}
       </>
@@ -99,16 +118,22 @@ export default function InsightBadge({ insight, dormant, activeTokens, loadedTok
   if (insight === 'winner') {
     return (
       <>
-        <span className="insight-badge insight-badge-winner insight-has-tooltip">
-          <IconCircleCheckFilled size={14} aria-hidden />
-          <span className="insight-tooltip">
-            <span className="insight-tooltip-title insight-tooltip-winner">Earning its keep</span>
-            <span className="insight-tooltip-row">Active tokens: <b>{fmtTokens(activeTokens)}</b></span>
-            <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
-            <span className="insight-tooltip-row">Invocations: <b>{invocations}</b></span>
-            <span className="insight-tooltip-hint">High loaded cost AND actively used</span>
+        <Tooltip
+          className="insight-tooltip"
+          content={
+            <>
+              <span className="insight-tooltip-title insight-tooltip-winner">Earning its keep</span>
+              <span className="insight-tooltip-row">Active tokens: <b>{fmtTokens(activeTokens)}</b></span>
+              <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
+              <span className="insight-tooltip-row">Invocations: <b>{invocations}</b></span>
+              <span className="insight-tooltip-hint">High loaded cost AND actively used</span>
+            </>
+          }
+        >
+          <span className="insight-badge insight-badge-winner">
+            <IconCircleCheckFilled size={14} aria-hidden />
           </span>
-        </span>
+        </Tooltip>
         {bloatBadge}
         {mismatchBadge}
       </>
@@ -119,18 +144,24 @@ export default function InsightBadge({ insight, dormant, activeTokens, loadedTok
     const days = lastInvoked ? daysSince(lastInvoked) : null
     return (
       <>
-        <span className="insight-badge insight-badge-dormant insight-has-tooltip">
-          <IconZzz size={14} stroke={1.75} aria-hidden />
-          <span className="insight-tooltip">
-            <span className="insight-tooltip-title insight-tooltip-dormant">Dormant</span>
-            {days !== null && (
-              <span className="insight-tooltip-row">Last invoked: <b>{days} days ago</b></span>
-            )}
-            <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
-            <span className="insight-tooltip-hint">Not invoked in 90+ days</span>
-            {skill && <CopyPromptButton getPrompt={() => generateFixDormantPrompt(skill)} />}
+        <Tooltip
+          className="insight-tooltip"
+          content={
+            <>
+              <span className="insight-tooltip-title insight-tooltip-dormant">Dormant</span>
+              {days !== null && (
+                <span className="insight-tooltip-row">Last invoked: <b>{days} days ago</b></span>
+              )}
+              <span className="insight-tooltip-row">Loaded tokens: <b>{fmtTokens(loadedTokens)}</b> per turn</span>
+              <span className="insight-tooltip-hint">Not invoked in 90+ days</span>
+              {skill && <CopyPromptButton getPrompt={() => generateFixDormantPrompt(skill)} />}
+            </>
+          }
+        >
+          <span className="insight-badge insight-badge-dormant">
+            <IconZzz size={14} stroke={1.75} aria-hidden />
           </span>
-        </span>
+        </Tooltip>
         {bloatBadge}
         {mismatchBadge}
       </>

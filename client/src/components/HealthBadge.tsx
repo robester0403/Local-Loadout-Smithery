@@ -1,6 +1,7 @@
 import { IconAlertTriangle, IconCheck, IconX } from '@tabler/icons-react'
 import type { HealthResult, HealthStatus, Skill } from '../types'
 import CopyPromptButton from './CopyPromptButton'
+import Tooltip from './Tooltip'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { useSettings } from '../hooks/useSettings'
 
@@ -38,21 +39,27 @@ export default function HealthBadge({ health, skill }: Props) {
   }
 
   return (
-    <span className={`health-badge health-${status} health-has-tooltip`}>
-      <StatusIcon status={status} /> {issues.length}
-      <span className="health-tooltip">
-        {issues.map((issue, i) => (
-          <span key={i} className={`health-tooltip-item health-tooltip-${issue.severity}`}>
-            <span className="health-tooltip-icon">
-              <StatusIcon status={issue.severity === 'error' ? 'error' : 'warn'} size={12} />
+    <Tooltip
+      className="health-tooltip"
+      content={
+        <>
+          {issues.map((issue, i) => (
+            <span key={i} className={`health-tooltip-item health-tooltip-${issue.severity}`}>
+              <span className="health-tooltip-icon">
+                <StatusIcon status={issue.severity === 'error' ? 'error' : 'warn'} size={12} />
+              </span>
+              {issue.message}
             </span>
-            {issue.message}
-          </span>
-        ))}
-        {skill && (
-          <CopyPromptButton getPrompt={() => generateFixHealthPrompt(skill)} />
-        )}
+          ))}
+          {skill && (
+            <CopyPromptButton getPrompt={() => generateFixHealthPrompt(skill)} />
+          )}
+        </>
+      }
+    >
+      <span className={`health-badge health-${status}`}>
+        <StatusIcon status={status} /> {issues.length}
       </span>
-    </span>
+    </Tooltip>
   )
 }

@@ -1,5 +1,6 @@
 import { IconBulb } from '@tabler/icons-react'
 import type { Diagnostic } from '../types'
+import Tooltip from './Tooltip'
 
 interface Props {
   diagnostics: Diagnostic[]
@@ -12,26 +13,32 @@ interface Props {
 export default function DiagnosticBadge({ diagnostics }: Props) {
   if (!diagnostics || diagnostics.length === 0) return null
   return (
-    <span className="insight-badge insight-badge-bloat insight-has-tooltip">
-      <IconBulb size={14} stroke={1.75} aria-hidden /> {diagnostics.length}
-      <span className="insight-tooltip">
-        <span className="insight-tooltip-title insight-tooltip-bloat">
-          {diagnostics.length} mention {diagnostics.length === 1 ? 'diagnostic' : 'diagnostics'}
-        </span>
-        {diagnostics.slice(0, 5).map((d, i) => (
-          <span key={i} className="insight-tooltip-row">
-            <code style={{ fontSize: 11 }}>{d.matched}</code>
+    <Tooltip
+      className="insight-tooltip"
+      content={
+        <>
+          <span className="insight-tooltip-title insight-tooltip-bloat">
+            {diagnostics.length} mention {diagnostics.length === 1 ? 'diagnostic' : 'diagnostics'}
           </span>
-        ))}
-        {diagnostics.length > 5 && (
-          <span className="insight-tooltip-row">
-            +{diagnostics.length - 5} more
+          {diagnostics.slice(0, 5).map((d, i) => (
+            <span key={i} className="insight-tooltip-row">
+              <code style={{ fontSize: 11 }}>{d.matched}</code>
+            </span>
+          ))}
+          {diagnostics.length > 5 && (
+            <span className="insight-tooltip-row">
+              +{diagnostics.length - 5} more
+            </span>
+          )}
+          <span className="insight-tooltip-hint">
+            Open the relationship map for the full list and suggested fixes.
           </span>
-        )}
-        <span className="insight-tooltip-hint">
-          Open the relationship map for the full list and suggested fixes.
-        </span>
+        </>
+      }
+    >
+      <span className="insight-badge insight-badge-bloat">
+        <IconBulb size={14} stroke={1.75} aria-hidden /> {diagnostics.length}
       </span>
-    </span>
+    </Tooltip>
   )
 }
