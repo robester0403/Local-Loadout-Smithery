@@ -2,6 +2,7 @@ import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import type { Skill, SortKey, SortDir, Timeframe } from '../types'
 import HealthBadge from './HealthBadge'
 import InsightBadge from './InsightBadge'
+import DiagnosticBadge from './DiagnosticBadge'
 import ToggleSwitch from './ToggleSwitch'
 import { useSettings } from '../hooks/useSettings'
 import type { ColumnKey } from '../lib/settings'
@@ -214,6 +215,7 @@ export default function InventoryTable({
                       skill={skill}
                       onReclassify={onReclassify}
                     />
+                    <DiagnosticBadge diagnostics={skill.diagnostics} />
                   </td>
                 )}
                 {visible.name && (

@@ -1,5 +1,7 @@
 import type { SkillReference } from './references'
+import type { Diagnostic } from './diagnostics'
 export type { SkillReference } from './references'
+export type { Diagnostic, DiagnosticKind } from './diagnostics'
 
 export type SkillType = 'skill' | 'command' | 'subagent'
 
@@ -43,5 +45,9 @@ export interface Skill {
   health: HealthResult
   disabled: boolean
   references: SkillReference[]
+  /** Informational diagnostics computed during discovery (LOC-95). Distinct
+   *  from `health` — these don't affect the health score; they're hints
+   *  the user can act on or ignore. */
+  diagnostics: Diagnostic[]
   suggestedType?: ClassificationResult | null
 }
