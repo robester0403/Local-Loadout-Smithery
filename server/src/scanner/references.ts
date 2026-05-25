@@ -27,8 +27,13 @@ export function extractReferences(
     }
   }
 
-  // (b) /command-name patterns — match `/word` or `/word:subword`
-  const cmdRe = /\/([a-zA-Z][a-zA-Z0-9_-]*(?::[a-zA-Z][a-zA-Z0-9_-]*)?)/g
+  // (b) /command-name patterns — match `/word` or `/word:subword`.
+  // LOC-94: lookbehind excludes embedded slashes — paths (`gsd:planner/foo`,
+  // `path/to/foo`), URLs (`https://example.com/foo`), and namespaces never
+  // trigger a command reference. Real invocations are always at a real word
+  // boundary (start of body, after whitespace, after punctuation like `(` or
+  // backtick) so the rejected-set never includes a legit author signal.
+  const cmdRe = /(?<![\w/:-])\/([a-zA-Z][a-zA-Z0-9_-]*(?::[a-zA-Z][a-zA-Z0-9_-]*)?)/g
   let m: RegExpExecArray | null
   while ((m = cmdRe.exec(skill.body)) !== null) {
     const name = m[1]

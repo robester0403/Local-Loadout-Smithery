@@ -90,4 +90,58 @@ describe('extractReferences', () => {
     const refs = extractReferences(s, allNames)
     expect(refs.find(r => r.name === 'do-this-task')).toBeUndefined()
   })
+
+  // LOC-94: slash-prefix regex must require a real word boundary before `/`.
+  // Embedded slashes (paths, URLs, namespaces) are NOT command invocations.
+  describe('slash-prefix command boundary (LOC-94)', () => {
+    it('matches /name at start of body', () => {
+      const s = skill('helper', '/review next step')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'review' && r.source === 'command')).toBeDefined()
+    })
+
+    it('matches /name after whitespace', () => {
+      const s = skill('helper', 'Then run /plan to continue.')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'plan' && r.source === 'command')).toBeDefined()
+    })
+
+    it('matches /name after punctuation like ( and backtick', () => {
+      const s = skill('helper', 'See (/review) and `/plan` for examples.')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'review' && r.source === 'command')).toBeDefined()
+      expect(refs.find(r => r.name === 'plan' && r.source === 'command')).toBeDefined()
+    })
+
+    it('does NOT match /name inside a filesystem-like path', () => {
+      const s = skill('helper', 'See path/to/review for context.')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'review' && r.source === 'command')).toBeUndefined()
+    })
+
+    it('does NOT match /name after a namespace colon (gsd:planner/review)', () => {
+      const s = skill('helper', 'Walk through gsd:planner/review during onboarding.')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'review' && r.source === 'command')).toBeUndefined()
+    })
+
+    it('does NOT match /name inside a URL', () => {
+      const s = skill('helper', 'Read https://example.com/review for context.')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'review' && r.source === 'command')).toBeUndefined()
+    })
+
+    it('does NOT match /name when preceded by another identifier char (foo/review)', () => {
+      const s = skill('helper', 'name/review/suffix is not a command.')
+      const refs = extractReferences(s, allNames)
+      expect(refs.find(r => r.name === 'review' && r.source === 'command')).toBeUndefined()
+    })
+
+    it('matches /namespace:name correctly at a word boundary', () => {
+      const allNamesWithNs = new Set([...allNames, 'gsd:debug'])
+      const s = skill('helper', 'Use /gsd:debug to start a session.')
+      const refs = extractReferences(s, allNamesWithNs)
+      expect(refs.find(r => r.name === 'gsd:debug' && r.source === 'command')).toBeDefined()
+    })
+  })
 })
