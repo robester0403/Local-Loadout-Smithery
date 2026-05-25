@@ -45,6 +45,7 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   const [model, setModel] = useState('')
   const [lookback, setLookback] = useState(14)
 
+  const [rechecking, setRechecking] = useState(false)
   const [running, setRunning] = useState<'idle' | 'extracting' | 'digesting'>('idle')
   const [runMessage, setRunMessage] = useState('')
   const [digestProgress, setDigestProgress] = useState<DigestProgress | null>(null)
@@ -53,6 +54,25 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
 
   const [accepting, setAccepting] = useState<Candidate | null>(null)
   const [comparing, setComparing] = useState<Candidate | null>(null)
+
+  // LOC-64: re-query Ollama health + installed models without requiring the
+  // user to close & reopen the panel. Called from the install/pull banner's
+  // "recheck" button after the user runs the suggested setup commands.
+  async function recheckOllama() {
+    setRechecking(true)
+    try {
+      const modelInfo = await fetchOllamaModels()
+      setOllamaAvailable(modelInfo.available)
+      setModels(modelInfo.models)
+      if (modelInfo.available && modelInfo.models.length > 0 && !model) {
+        setModel(modelInfo.models[0].name)
+      }
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setRechecking(false)
+    }
+  }
 
   async function refreshCandidates() {
     try {
@@ -242,15 +262,13 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
           <button className="btn btn-sm modal-close" onClick={onClose}>×</button>
         </div>
 
-        {ollamaAvailable === false && (
-          <div className="form-error" style={{ marginBottom: 12 }}>
-            <strong>Ollama not detected.</strong> Install Ollama and pull a model, e.g.:
-            <pre style={{ marginTop: 6, fontSize: 11 }}>brew install ollama
-ollama serve &
-ollama pull qwen2.5:7b</pre>
-            Then reopen this panel.
-          </div>
-        )}
+        <OllamaSetup
+          available={ollamaAvailable}
+          hasModels={models.length > 0}
+          rechecking={rechecking}
+          onRecheck={recheckOllama}
+        />
+
 
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
           <div style={{ minWidth: 200 }}>
@@ -492,6 +510,101 @@ ollama pull qwen2.5:7b</pre>
           />
         )}
       </div>
+    </div>
+  )
+}
+
+// LOC-64: replaces the bare "Ollama not detected" pre-tag with a guided
+// install flow. Three states:
+//   - null      → still probing; render nothing
+//   - !available → numbered install steps + recheck button
+//   - !hasModels → "pull a model" CTA with the README's recommended default
+// Once available && hasModels, the component renders nothing and the panel's
+// own controls take over. "Recheck" re-queries /api/ollama/models so the
+// user doesn't have to close & reopen the panel after running the commands.
+function OllamaSetup({
+  available,
+  hasModels,
+  rechecking,
+  onRecheck,
+}: {
+  available: boolean | null
+  hasModels: boolean
+  rechecking: boolean
+  onRecheck: () => Promise<void>
+}) {
+  if (available === null) return null
+  if (available && hasModels) return null
+
+  if (!available) {
+    return (
+      <div className="form-error" style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 8 }}>
+          <strong>Ollama not detected.</strong> Auto Skill needs a local LLM so your conversation history never leaves your machine. Three steps:
+        </div>
+        <ol style={{ margin: '0 0 8px 18px', padding: 0, fontSize: 13, lineHeight: 1.5 }}>
+          <li style={{ marginBottom: 8 }}>
+            <strong>Install Ollama.</strong> On macOS:
+            <CmdLine cmd="brew install ollama" />
+            On Linux or Windows, grab the installer from{' '}
+            <a href="https://ollama.com" target="_blank" rel="noreferrer">ollama.com</a>.
+          </li>
+          <li style={{ marginBottom: 8 }}>
+            <strong>Start the daemon.</strong>
+            <CmdLine cmd="brew services start ollama" />
+            (Or run <code>ollama serve</code> in a separate terminal.)
+          </li>
+          <li>
+            <strong>Pull a model.</strong> The recommended default fits 8 GB+ machines:
+            <CmdLine cmd="ollama pull qwen2.5:3b" />
+          </li>
+        </ol>
+        <button className="btn btn-sm" onClick={onRecheck} disabled={rechecking}>
+          {rechecking ? 'Checking…' : "I'm ready — recheck"}
+        </button>
+      </div>
+    )
+  }
+
+  // available but no models installed
+  return (
+    <div className="form-error" style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 8 }}>
+        <strong>Ollama is running, but no models are installed.</strong> Pull the recommended default to get started:
+      </div>
+      <CmdLine cmd="ollama pull qwen2.5:3b" />
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, marginBottom: 8 }}>
+        ~2 GB on disk. For larger machines try <code>qwen2.5:7b</code> (16 GB+) or <code>qwen2.5:14b</code> (32 GB+).
+      </div>
+      <button className="btn btn-sm" onClick={onRecheck} disabled={rechecking}>
+        {rechecking ? 'Checking…' : 'I pulled it — recheck'}
+      </button>
+    </div>
+  )
+}
+
+// Compact monospace command row with a Copy button. Falls back silently if
+// the clipboard API is unavailable — the command text stays selectable.
+function CmdLine({ cmd }: { cmd: string }) {
+  async function copy() {
+    try { await navigator.clipboard.writeText(cmd) } catch { /* fall through */ }
+  }
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      background: 'rgba(0,0,0,0.18)', borderRadius: 4, padding: '4px 8px',
+      margin: '4px 0', fontFamily: 'monospace', fontSize: 12,
+    }}>
+      <code style={{ flex: 1, background: 'none', padding: 0, color: 'inherit' }}>{cmd}</code>
+      <button
+        type="button"
+        className="btn btn-sm"
+        onClick={copy}
+        title="Copy to clipboard"
+        style={{ padding: '2px 8px', fontSize: 11 }}
+      >
+        Copy
+      </button>
     </div>
   )
 }
