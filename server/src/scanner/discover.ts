@@ -4,6 +4,7 @@ import path from 'path'
 import { parseFrontmatter } from '../parser/frontmatter'
 import { computeHealth } from './health'
 import { extractReferences } from './references'
+import { extractDiagnostics } from './diagnostics'
 import { inferType } from './classification'
 import { countTokens } from '../usage/tokenizer'
 import { findCursorProjectCwds, defaultCursorUserDataDir } from './cursorProjects'
@@ -183,6 +184,7 @@ export function buildSkill(
       frontmatter: meta,
       lastModified: stat.mtime.toISOString(),
       references: [],
+      diagnostics: [],
     }
     // Initial health pass here is throwaway — discoverAllSkills runs a
     // final two-pass recompute with descriptionCounts after dedup that
@@ -451,8 +453,10 @@ export function discoverAllSkills(opts: DiscoverOptions = {}): Skill[] {
   return deduped.map(skill => {
     const { health: _health, ...base } = skill
     const health = computeHealth(base, { descriptionCounts })
-    const references = extractReferences(skill, namesByAccount.get(skill.account) ?? new Set())
+    const accountNames = namesByAccount.get(skill.account) ?? new Set()
+    const references = extractReferences(skill, accountNames)
+    const diagnostics = extractDiagnostics(skill, accountNames)
     const suggestedType = inferType(skill)
-    return { ...skill, health, references, suggestedType }
+    return { ...skill, health, references, diagnostics, suggestedType }
   })
 }

@@ -312,6 +312,8 @@ export function RelmapInfoRail({
 
       <BodyMentions skill={skill} knownNames={knownNames} onJumpToMention={onJumpToMention} />
 
+      <DiagnosticMentions skill={skill} onJumpToOffset={onJumpToMention} />
+
       <RailSection label="Stats" className="relmap-rail-stats-section">
         <dl className="relmap-rail-stats">
           <Stat label="Active $" value={fmtDollars(skill.activeDollars ?? 0)} />
@@ -436,6 +438,49 @@ function SnippetItem({
         {s.hasMoreAfter && '…'}
       </button>
     </li>
+  )
+}
+
+// LOC-95: rail section for slash-in-path and other ambiguous-mention
+// diagnostics. Distinct from BodyMentions (confirmed) — these are
+// "you might have meant to reference X" hints. Hidden when empty.
+function DiagnosticMentions({
+  skill,
+  onJumpToOffset,
+}: {
+  skill: Skill
+  onJumpToOffset?: (name: string, offset: number) => void
+}) {
+  const diagnostics = skill.diagnostics ?? []
+  if (diagnostics.length === 0) return null
+  return (
+    <RailSection
+      defaultOpen
+      className="relmap-rail-snippets"
+      label={
+        <>
+          Possibly missed mentions <span className="relmap-rail-snippets-count">· {diagnostics.length}</span>
+        </>
+      }
+    >
+      <ul className="relmap-rail-snippets-list">
+        {diagnostics.map((d, i) => (
+          <li key={i}>
+            <button
+              type="button"
+              className="relmap-rail-snippet"
+              onClick={() => onJumpToOffset?.(d.artifactName, d.offset)}
+              title={`Jump to ${d.matched}`}
+              style={{ fontStyle: 'italic', opacity: 0.85 }}
+            >
+              <span style={{ fontFamily: 'monospace', fontSize: 11 }}>…{d.matched}…</span>
+              <br />
+              <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{d.suggestion}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </RailSection>
   )
 }
 

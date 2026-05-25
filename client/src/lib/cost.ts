@@ -125,6 +125,7 @@ export function toMCPSkill(
     },
     disabled: false,
     references: [],
+    diagnostics: [],
     activeDollars: usage?.dollars ?? 0,
     loadedDollars: 0,
     totalDollars: usage?.dollars ?? 0,

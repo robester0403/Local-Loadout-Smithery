@@ -41,6 +41,18 @@ export interface HealthResult {
   issues: HealthIssue[]
 }
 
+// LOC-95: informational diagnostics distinct from health. Hints the user
+// can act on or ignore; no score impact.
+export type DiagnosticKind = 'slash-in-path'
+
+export interface Diagnostic {
+  kind: DiagnosticKind
+  offset: number
+  matched: string
+  artifactName: string
+  suggestion: string
+}
+
 export interface SkillCostAxes {
   tokens: number
   dollars: number
@@ -73,6 +85,8 @@ export interface Skill {
   health: HealthResult
   disabled: boolean
   references: { name: string; source: 'body' | 'command' | 'frontmatter' }[]
+  /** LOC-95: informational diagnostics computed during scan. May be empty. */
+  diagnostics: Diagnostic[]
   activeDollars: number
   loadedDollars: number
   totalDollars: number
