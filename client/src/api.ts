@@ -456,13 +456,29 @@ export async function updateBundleApi(id: string, input: BundleInput): Promise<B
   return (await parseResponse<{ bundle: Bundle }>(res)).bundle
 }
 
-export async function toggleBundleApi(id: string, enabled: boolean): Promise<Bundle> {
+// LOC-87: Reapply (toggle enabled=true on an already-enabled bundle)
+// reconciles stale skill IDs against the live inventory. Healed entries
+// are renames/moves/reclassifies/symlink-swaps that we auto-followed.
+// Missing entries are skills truly gone from the inventory — preserved
+// in the bundle store so the user doesn't silently lose intent.
+export interface ReapplyHealed { from: string; to: string; name: string }
+export interface ReapplyMissing { id: string; name: string; decodedPath: string }
+export interface ReapplyAmbiguous { id: string; name: string; decodedPath: string; matchCount: number }
+
+export interface ToggleBundleResult {
+  bundle: Bundle
+  healed?: ReapplyHealed[]
+  missing?: ReapplyMissing[]
+  ambiguous?: ReapplyAmbiguous[]
+}
+
+export async function toggleBundleApi(id: string, enabled: boolean): Promise<ToggleBundleResult> {
   const res = await fetch(`/api/super-router/bundles/${encodeURIComponent(id)}/toggle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
   })
-  return (await parseResponse<{ bundle: Bundle }>(res)).bundle
+  return await parseResponse<ToggleBundleResult>(res)
 }
 
 export async function deleteBundleApi(id: string): Promise<void> {
