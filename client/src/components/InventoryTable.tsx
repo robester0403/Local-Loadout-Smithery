@@ -53,6 +53,7 @@ const TYPE_LABELS: Record<string, string> = {
   skill: 'skill',
   command: 'cmd',
   subagent: 'subagent',
+  rule: 'rule',
   mcp: 'mcp',
 }
 

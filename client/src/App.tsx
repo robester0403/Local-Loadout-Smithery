@@ -410,17 +410,24 @@ export default function App() {
   }
 
   async function handleUninstall(skill: Skill) {
-    if (!window.confirm(
-      `Uninstall "${skill.name}"?\n\nThe skill will be moved to Trash and can be restored from there.`,
-    )) return
+    const isRule = skill.type === 'rule'
+    const confirmMsg = isRule
+      ? `Remove this rule from ${(skill.frontmatter?.['ls-rule-file'] as string | undefined) ?? 'its host file'}?\n\nThe marker block will be excised. This cannot be undone from the Trash (re-accept the rule to restore it).`
+      : `Uninstall "${skill.name}"?\n\nThe skill will be moved to Trash and can be restored from there.`
+    if (!window.confirm(confirmMsg)) return
     try {
       await uninstallSkillApi(skill.id)
       setSelected(null)
-      if (uninstallTimerRef.current) clearTimeout(uninstallTimerRef.current)
-      setLastUninstall({ id: skill.id, name: skill.name })
-      uninstallTimerRef.current = setTimeout(() => setLastUninstall(null), 60_000)
-      setTrashCount(c => c + 1)
-      showToast(`${skill.name} uninstalled`)
+      if (!isRule) {
+        // Rules aren't routed through the Trash staging — restoring them
+        // would mean re-inserting the marker block, which the undo toast
+        // doesn't know how to do. Skip the undo affordance for rules.
+        if (uninstallTimerRef.current) clearTimeout(uninstallTimerRef.current)
+        setLastUninstall({ id: skill.id, name: skill.name })
+        uninstallTimerRef.current = setTimeout(() => setLastUninstall(null), 60_000)
+        setTrashCount(c => c + 1)
+      }
+      showToast(isRule ? `Rule removed` : `${skill.name} uninstalled`)
       await load()
     } catch (e) {
       showToast((e as Error).message)
@@ -516,6 +523,7 @@ export default function App() {
     skill: tabSkills.filter(s => s.type === 'skill').length,
     command: tabSkills.filter(s => s.type === 'command').length,
     subagent: tabSkills.filter(s => s.type === 'subagent').length,
+    rule: tabSkills.filter(s => s.type === 'rule').length,
     mcp: tabSkills.filter(s => s.type === 'mcp').length,
   }
 
@@ -687,6 +695,12 @@ export default function App() {
             <div className="stat-row">
               <span className="type-badge type-subagent">subagent</span>
               <span>{counts.subagent}</span>
+            </div>
+          )}
+          {counts.rule > 0 && (
+            <div className="stat-row">
+              <span className="type-badge type-rule">rule</span>
+              <span>{counts.rule}</span>
             </div>
           )}
           {counts.mcp > 0 && (
