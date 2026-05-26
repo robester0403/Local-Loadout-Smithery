@@ -175,8 +175,15 @@ export function ruleArtifactToSkill(a: RuleArtifact): Skill {
     : `Rule in ${path.basename(a.file)}`
   const health: HealthResult = { status: 'ok', issues: [] }
   let lastModified = new Date().toISOString()
+  // LOC-12 added `installedAt` to Skill; use the host md file's birthtime
+  // (mtime fallback) so a freshly-accepted rule can light up the NEW badge
+  // alongside file-backed skills.
+  let installedAt = lastModified
   try {
-    lastModified = fs.statSync(a.file).mtime.toISOString()
+    const stat = fs.statSync(a.file)
+    lastModified = stat.mtime.toISOString()
+    const birthMs = stat.birthtimeMs || stat.ctimeMs || stat.mtimeMs
+    installedAt = new Date(birthMs).toISOString()
   } catch {
     // Fallthrough — synthetic timestamp is fine if the file moves under us.
   }
@@ -204,6 +211,7 @@ export function ruleArtifactToSkill(a: RuleArtifact): Skill {
       'ls-rule-line-end': a.lineEnd,
     },
     lastModified,
+    installedAt,
     health,
     disabled: false,
     references: [],
