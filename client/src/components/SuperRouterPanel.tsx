@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Bundle, BundleTarget, DriftResult, DriftStatus } from '../api'
+import type { Bundle, BundleTarget, DriftResult, DriftStatus, ToggleBundleResult } from '../api'
 import {
   deleteBundleApi,
   fetchBundleDrift,
@@ -7,6 +7,26 @@ import {
   openBundleFileApi,
   toggleBundleApi,
 } from '../api'
+
+// Server-side validation errors (HTTP 422) carry a `details` array with
+// field-level messages. Render those instead of the useless "Validation
+// failed" message — LOC-87 Bug B.
+interface ValidationErrorDetail {
+  field: string
+  message: string
+  offendingSkillIds?: string[]
+}
+
+function formatBundleError(e: unknown): string {
+  const err = e as Error & { details?: unknown }
+  if (Array.isArray(err.details)) {
+    const lines = (err.details as ValidationErrorDetail[])
+      .filter(d => typeof d?.message === 'string')
+      .map(d => `• ${d.field}: ${d.message}`)
+    if (lines.length > 0) return `${err.message}\n${lines.join('\n')}`
+  }
+  return err.message
+}
 import type { Skill } from '../types'
 import BundleEditorModal from './BundleEditorModal'
 
@@ -50,6 +70,9 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Bundle | null>(null)
+  /** LOC-87: positive notice from a successful Reapply that involved
+   *  reconciliation — distinct from `error` because nothing failed. */
+  const [notice, setNotice] = useState<string | null>(null)
 
   async function refreshDrift() {
     try {
@@ -82,15 +105,17 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
   async function handleToggle(b: Bundle, next: boolean) {
     setBusyId(b.id)
     setError(null)
+    setNotice(null)
     // Optimistic flip; revert on failure.
     setBundles(prev => prev.map(x => x.id === b.id ? { ...x, enabled: next } : x))
     try {
-      const updated = await toggleBundleApi(b.id, next)
-      setBundles(prev => prev.map(x => x.id === b.id ? updated : x))
+      const result = await toggleBundleApi(b.id, next)
+      setBundles(prev => prev.map(x => x.id === b.id ? result.bundle : x))
+      surfaceReconciledNotice(result)
       await refreshDrift()
     } catch (e) {
       setBundles(prev => prev.map(x => x.id === b.id ? b : x))
-      setError((e as Error).message)
+      setError(formatBundleError(e))
     } finally {
       setBusyId(null)
     }
@@ -99,17 +124,37 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
   async function handleReapply(b: Bundle) {
     setBusyId(b.id)
     setError(null)
+    setNotice(null)
     try {
-      // Re-running toggle with enabled=true rewrites both files from canonical
-      // content, which is exactly what we want.
-      const updated = await toggleBundleApi(b.id, true)
-      setBundles(prev => prev.map(x => x.id === b.id ? updated : x))
+      // Re-running toggle with enabled=true reconciles any stale skill IDs
+      // (renames / moves / reclassifies / symlink swaps, LOC-87) and rewrites
+      // both on-disk files from the canonical content.
+      const result = await toggleBundleApi(b.id, true)
+      setBundles(prev => prev.map(x => x.id === b.id ? result.bundle : x))
+      surfaceReconciledNotice(result)
       await refreshDrift()
     } catch (e) {
-      setError((e as Error).message)
+      setError(formatBundleError(e))
     } finally {
       setBusyId(null)
     }
+  }
+
+  function surfaceReconciledNotice(result: ToggleBundleResult): void {
+    const parts: string[] = []
+    if (result.healed && result.healed.length > 0) {
+      const names = result.healed.map(h => h.name).filter(Boolean).join(', ')
+      parts.push(`Reconciled ${result.healed.length} skill${result.healed.length === 1 ? '' : 's'}${names ? `: ${names}` : ''}.`)
+    }
+    if (result.missing && result.missing.length > 0) {
+      const names = result.missing.map(m => m.name || m.decodedPath).filter(Boolean).join(', ')
+      parts.push(`${result.missing.length} skill${result.missing.length === 1 ? '' : 's'} no longer installed${names ? ` (${names})` : ''} — open the bundle to remove or restore.`)
+    }
+    if (result.ambiguous && result.ambiguous.length > 0) {
+      const names = result.ambiguous.map(a => a.name || a.decodedPath).filter(Boolean).join(', ')
+      parts.push(`${result.ambiguous.length} skill${result.ambiguous.length === 1 ? '' : 's'} ambiguous${names ? ` (${names})` : ''} — pick one in the bundle editor.`)
+    }
+    setNotice(parts.length > 0 ? parts.join(' ') : null)
   }
 
   async function handleOpen(b: Bundle, which: 'top' | 'map') {
@@ -160,7 +205,27 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
           <button className="btn btn-sm modal-close" onClick={onClose}>×</button>
         </div>
 
-        {error && <div className="form-error" style={{ marginBottom: 12 }}>{error}</div>}
+        {error && (
+          <div className="form-error" style={{ marginBottom: 12, whiteSpace: 'pre-line' }}>
+            {error}
+          </div>
+        )}
+        {notice && !error && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: '8px 10px',
+              border: '1px solid var(--c-success, #7DDED8)',
+              background: 'var(--c-success-bg, rgba(125, 222, 216, .12))',
+              color: 'var(--c-success, #7DDED8)',
+              borderRadius: 4,
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            {notice}
+          </div>
+        )}
 
         {loading ? (
           <div className="empty-state" style={{ minHeight: 120 }}>
