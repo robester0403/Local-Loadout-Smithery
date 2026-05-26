@@ -10,7 +10,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { generate, isAvailable } from '../../ollama/client'
+import { generate, isAvailable, isEmbedModelAvailable } from '../../ollama/client'
 import type { ConversationRecord } from '../../extractors/types'
 import { upsertGenerated } from '../store'
 import * as progress from '../progress'
@@ -65,6 +65,14 @@ export interface SignalPipelineOptions {
   summaryCache?: SummaryCache
   /** Skip the Ollama availability check (tests). */
   skipOllamaCheck?: boolean
+  /**
+   * LOC-84: override the embedding-model probe (tests). When `false`, the
+   * pipeline degrades — skipping clustering, skill/subagent detection, and
+   * semantic dedup. When omitted in production, a real probe runs.
+   */
+  embedModelAvailableOverride?: boolean
+  /** Embedding model name to probe / use. Default 'nomic-embed-text'. */
+  embedModel?: string
 }
 
 export interface SignalPipelineResult extends DigestResult {
@@ -91,6 +99,24 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
     if (!opts.model) throw new Error('No model selected — set autoSkill.model in settings.')
     if (!opts.skipOllamaCheck && !(await isAvailable())) {
       throw new Error('Ollama is not reachable on http://localhost:11434')
+    }
+
+    // LOC-84: probe the embedding model BEFORE we burn a multi-minute
+    // summarize pass on conversations we'll be unable to cluster. If the
+    // model isn't pulled, degrade to command-only output and emit a
+    // structured warning carrying the install instruction.
+    //
+    // When `embedFn` is injected (tests) we skip the probe entirely — the
+    // injected embedder stands in for a real model, and CI machines don't
+    // have Ollama running.
+    const embedModel = opts.embedModel ?? 'nomic-embed-text'
+    const embedAvailable = opts.embedModelAvailableOverride
+      ?? (opts.embedFn ? true : await isEmbedModelAvailable(embedModel))
+    if (!embedAvailable) {
+      warnings.push(
+        `Embedding model '${embedModel}' is not pulled — clustering, skill / subagent detection, and semantic dedup are disabled. ` +
+        `Run: ollama pull ${embedModel}`,
+      )
     }
 
     // 1. Load + filter conversations.
@@ -128,16 +154,24 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
       progress.tick()
     }
 
-    // 4. Phase 2 — cluster.
-    progress.setPhase('chunking', `Clustering ${summaries.length} summaries…`)
+    // 4. Phase 2 — cluster. Skipped when the embedding model is unavailable
+    //    (LOC-84): no embeddings ⇒ no centroid clustering ⇒ no skill /
+    //    subagent candidates. We still produce commands + rules from the
+    //    raw summaries via their non-embedding paths.
     clearEmbedCache()
     const embedFn = opts.embedFn ?? ((t: string) => embedText(t))
-    const clusters: IntentCluster[] = await clusterSummaries(summaries, {
-      embedFn,
-      preserveEmbedCache: true,
-      nowMs: Date.now(),
-    })
-    progress.setPhase('chunking', `Detected ${clusters.length} intent cluster(s).`)
+    let clusters: IntentCluster[] = []
+    if (embedAvailable) {
+      progress.setPhase('chunking', `Clustering ${summaries.length} summaries…`)
+      clusters = await clusterSummaries(summaries, {
+        embedFn,
+        preserveEmbedCache: true,
+        nowMs: Date.now(),
+      })
+      progress.setPhase('chunking', `Detected ${clusters.length} intent cluster(s).`)
+    } else {
+      progress.setPhase('chunking', `Skipping clustering — embedding model unavailable.`)
+    }
 
     // 5. Phase 3 — four detectors. Skill detector runs FIRST so the subagent
     //    detector can consume its candidates; the other three are independent
@@ -154,22 +188,38 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
     // subagent detector either misses orchestration patterns involving
     // newly-proposed skills, or (the previous bug) calls detectSkills
     // a SECOND time, doubling LLM cost per surviving cluster.
-    const skillResult = await detectSkills(clusters, summaries, {
-      llmSynthFn: opts.skillSynthFn,
-      llmConsistencyFn: opts.skillConsistencyFn,
-      model: opts.model,
-    })
+    //
+    // LOC-84: when the embedding model is unavailable, skip the skill and
+    // subagent detectors entirely (both rely on clusters and embeddings).
+    // The rules detector still runs but without an embedFn — exact marker
+    // dedup is preserved; semantic dedup against existing prose is lost,
+    // which is the correct degraded behavior.
+    const skillResult: Awaited<ReturnType<typeof detectSkills>> = embedAvailable
+      ? await detectSkills(clusters, summaries, {
+          llmSynthFn: opts.skillSynthFn,
+          llmConsistencyFn: opts.skillConsistencyFn,
+          model: opts.model,
+        })
+      : { candidates: [], warnings: [] }
 
     const subagentAvailableSkills: SkillRef[] = [
       ...existingInventory.filter(a => a.kind === 'skill').map(a => ({ name: a.name, description: a.description })),
       ...skillResult.candidates.map(c => ({ name: c.name, description: c.description })),
     ]
 
+    const subagentPromise: Promise<Awaited<ReturnType<typeof detectSubagents>>> = embedAvailable
+      ? detectSubagents(summaries, subagentAvailableSkills, {
+          embedFn,
+          llmSynthFn: opts.subagentSynthFn,
+          model: opts.model,
+        })
+      : Promise.resolve({ candidates: [], warnings: [] })
+
     const [ruleResult, commandList, subagentResult] = await Promise.all([
       detectRules(summaries, clusters, {
         existingRuleFiles: existingRules,
         llmClassifier: opts.ruleClassifierFn ?? defaultRuleClassifier(opts.model),
-        embedFn,
+        ...(embedAvailable ? { embedFn } : {}),
         model: opts.model,
       }),
       Promise.resolve(detectCommands(summaries, {
@@ -178,11 +228,7 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
           .map(a => `${a.name}\n${a.description}`),
         model: opts.model,
       })),
-      detectSubagents(summaries, subagentAvailableSkills, {
-        embedFn,
-        llmSynthFn: opts.subagentSynthFn,
-        model: opts.model,
-      }),
+      subagentPromise,
     ])
 
     for (const w of skillResult.warnings) detectorWarnings.push(`skill[${w.clusterId}]: ${w.reason} — ${w.detail}`)
@@ -200,15 +246,27 @@ export async function runSignalPipeline(opts: SignalPipelineOptions): Promise<Si
     //     drop any candidate whose slug collides with another candidate or
     //     an existing artifact of any type. Both passes surface their drops
     //     as detectorWarnings so the user can see what was suppressed.
+    //
+    //     LOC-84: cross-dedup's collapse step calls embedFn, so when the
+    //     embedding model is unavailable we skip it. Name-collision rejection
+    //     is pure-text and always runs.
     progress.setPhase('finalizing', `Collapsing ${allCandidates.length} candidates across detectors…`)
-    const collapsed = await collapseCrossDetector(allCandidates, { embedFn })
-    for (const d of collapsed.dropped) detectorWarnings.push(`crossDedup: ${d.reason}`)
-    const uniqueByName = rejectNameCollisions(collapsed.kept, existingInventory)
+    let crossKept: GeneratedCandidate[] = allCandidates
+    if (embedAvailable) {
+      const collapsed = await collapseCrossDetector(allCandidates, { embedFn })
+      for (const d of collapsed.dropped) detectorWarnings.push(`crossDedup: ${d.reason}`)
+      crossKept = collapsed.kept
+    }
+    const uniqueByName = rejectNameCollisions(crossKept, existingInventory)
     for (const d of uniqueByName.dropped) detectorWarnings.push(`crossDedup: ${d.reason}`)
 
     // 6b. Phase 4 — dedup against existing library (now cross-type).
+    //     Same LOC-84 fallback: without embeddings, semantic dedup is skipped
+    //     and candidates pass through unchanged.
     progress.setPhase('finalizing', `Deduplicating ${uniqueByName.kept.length} candidates…`)
-    const deduped = await deduplicateCandidates(uniqueByName.kept, existingInventory, { embedFn })
+    const deduped = embedAvailable
+      ? await deduplicateCandidates(uniqueByName.kept, existingInventory, { embedFn })
+      : uniqueByName.kept
 
     // 7. Phase 5 — rank.
     const clusterById = new Map(clusters.map(c => [c.clusterId, c]))

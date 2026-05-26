@@ -28,6 +28,36 @@ export async function isAvailable(timeoutMs = 1500): Promise<boolean> {
   }
 }
 
+/**
+ * LOC-84: cheap probe for an embedding model. Returns true if a single short
+ * embeddings call against `model` succeeds, false if Ollama answers 404
+ * (model not pulled) or any other error (including timeout). Tight timeout
+ * by default so a fresh user doesn't sit through a multi-minute model pull
+ * before we tell them what to do.
+ */
+export async function isEmbedModelAvailable(
+  model = 'nomic-embed-text',
+  timeoutMs = 2000,
+): Promise<boolean> {
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(`${host()}/api/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, prompt: 'probe' }),
+      signal: ctrl.signal,
+    })
+    if (!res.ok) return false
+    const body = await res.json().catch(() => ({})) as { embedding?: number[] }
+    return Array.isArray(body.embedding) && body.embedding.length > 0
+  } catch {
+    return false
+  } finally {
+    clearTimeout(t)
+  }
+}
+
 // The single model name we've most recently called generate() with this
 // process. Used to keep at most ONE model in RAM at a time: before any
 // generate() that targets a different model, we proactively drop the
