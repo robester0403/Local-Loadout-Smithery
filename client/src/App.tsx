@@ -25,6 +25,7 @@ import BundleEditorModal from './components/BundleEditorModal'
 import SuperRouterPanel from './components/SuperRouterPanel'
 import AutoSkillPanel from './components/AutoSkillPanel'
 import SettingsPanel from './components/SettingsPanel'
+import { useConfirm } from './components/ConfirmDialog'
 import { useSettings } from './hooks/useSettings'
 import { fetchBundles, type Bundle } from './api'
 import { fetchCursorUsage, fetchCursorRecentUsage, rescanCursorProjects, type CursorUsageReport, type CursorRecentUsageReport } from './api'
@@ -63,6 +64,7 @@ function dedupById(skills: Skill[]): Skill[] {
 
 export default function App() {
   const settings = useSettings()
+  const confirm = useConfirm()
   const [skills, setSkills] = useState<Skill[]>([])
   const [loading, setLoading] = useState(true)
   const [rescanning, setRescanning] = useState(false)
@@ -335,7 +337,14 @@ export default function App() {
     const targets = filtered.filter(s => selectedIds.has(s.id) && !s.disabled)
     if (targets.length === 0) return
     if (targets.length > 5) {
-      if (!window.confirm(`Disable ${targets.length} skills? This can be undone one by one via the toggle.`)) return
+      const ok = await confirm({
+        title: 'Disable skills?',
+        message: `Disable ${targets.length} skills?`,
+        detail: 'You can undo this one by one via the toggle.',
+        confirmLabel: 'Disable',
+        destructive: true,
+      })
+      if (!ok) return
     }
     setSkills(prev => prev.map(s => selectedIds.has(s.id) ? { ...s, disabled: true } : s))
     setSelectedIds(new Set())
@@ -381,9 +390,13 @@ export default function App() {
   async function handleReclassify(skill: Skill) {
     if (!skill.suggestedType) return
     const { suggested } = skill.suggestedType
-    if (!window.confirm(
-      `Move "${skill.name}" from ${skill.type} → ${suggested}?\n\nThe file will be moved to the ${suggested}s directory. You can undo this for 60 seconds.`,
-    )) return
+    const ok = await confirm({
+      title: 'Reclassify skill?',
+      message: `Move "${skill.name}" from ${skill.type} → ${suggested}?`,
+      detail: `The file will be moved to the ${suggested}s directory. You can undo this for 60 seconds.`,
+      confirmLabel: `Move to ${suggested}s`,
+    })
+    if (!ok) return
     try {
       const result = await reclassifySkill(skill.id, suggested)
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
@@ -411,10 +424,22 @@ export default function App() {
 
   async function handleUninstall(skill: Skill) {
     const isRule = skill.type === 'rule'
-    const confirmMsg = isRule
-      ? `Remove this rule from ${(skill.frontmatter?.['ls-rule-file'] as string | undefined) ?? 'its host file'}?\n\nThe marker block will be excised. This cannot be undone from the Trash (re-accept the rule to restore it).`
-      : `Uninstall "${skill.name}"?\n\nThe skill will be moved to Trash and can be restored from there.`
-    if (!window.confirm(confirmMsg)) return
+    const ok = isRule
+      ? await confirm({
+          title: 'Remove rule?',
+          message: `Remove this rule from ${(skill.frontmatter?.['ls-rule-file'] as string | undefined) ?? 'its host file'}?`,
+          detail: 'The marker block will be excised. This cannot be undone from the Trash (re-accept the rule to restore it).',
+          confirmLabel: 'Remove rule',
+          destructive: true,
+        })
+      : await confirm({
+          title: 'Uninstall skill?',
+          message: `Uninstall "${skill.name}"?`,
+          detail: 'The skill will be moved to Trash and can be restored from there.',
+          confirmLabel: 'Uninstall',
+          destructive: true,
+        })
+    if (!ok) return
     try {
       await uninstallSkillApi(skill.id)
       setSelected(null)

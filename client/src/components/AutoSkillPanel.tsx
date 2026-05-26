@@ -15,6 +15,7 @@ import {
 import type { Skill } from '../types'
 import AcceptCandidateModal from './AcceptCandidateModal'
 import CompareCandidateModal from './CompareCandidateModal'
+import { useConfirm } from './ConfirmDialog'
 
 interface Props {
   allSkills: Skill[]
@@ -34,6 +35,7 @@ function fmtScore(s: number): string {
 }
 
 export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: Props) {
+  const confirm = useConfirm()
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [statusFilter, setStatusFilter] = useState<CandidateStatus | 'all-active'>('all-active')
   const [loading, setLoading] = useState(true)
@@ -245,7 +247,13 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   }
 
   async function handleDelete(c: Candidate) {
-    if (!window.confirm(`Permanently delete candidate "${c.name}"?`)) return
+    const ok = await confirm({
+      title: 'Delete candidate?',
+      message: `Permanently delete candidate "${c.name}"?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     setBusy(c.id)
     try {
       await deleteCandidate(c.id)
@@ -265,7 +273,14 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   async function handleClearPending() {
     const pendingCount = candidates.filter(c => c.status === 'pending').length
     if (pendingCount === 0) return
-    if (!window.confirm(`Permanently delete all ${pendingCount} pending candidate${pendingCount === 1 ? '' : 's'}? Accepted skills are not affected. The next digest will re-surface any patterns still recurring in your conversation history.`)) return
+    const ok = await confirm({
+      title: 'Clear pending candidates?',
+      message: `Permanently delete all ${pendingCount} pending candidate${pendingCount === 1 ? '' : 's'}?`,
+      detail: 'Accepted skills are not affected. The next digest will re-surface any patterns still recurring in your conversation history.',
+      confirmLabel: 'Clear pending',
+      destructive: true,
+    })
+    if (!ok) return
     setBusy('__clear_pending__')
     try {
       await clearCandidates('pending')

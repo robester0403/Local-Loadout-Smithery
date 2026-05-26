@@ -6,6 +6,7 @@ import { acceptSkillBaseline, fetchSkillVersions, restoreSkillVersion, scanSkill
 import CopyPromptButton from './CopyPromptButton'
 import DiffModal from './DiffModal'
 import EditableText from './EditableText'
+import { useConfirm } from './ConfirmDialog'
 import { generateFixHealthPrompt } from '../prompts/fixHealthPrompt'
 import { generateReclassifyPrompt } from '../prompts/reclassifyPrompt'
 import RelationshipMap from './RelationshipMap'
@@ -94,6 +95,7 @@ function Section({
 }
 
 export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBreakdown, onSelect, onReclassify, onUninstall, onSkillChanged, mcpUsageMap, mcpRelationships, cursorUsage, cursorRecent }: Props) {
+  const confirm = useConfirm()
   const [showMap, setShowMap] = useState(false)
   const [showDiffModal, setShowDiffModal] = useState(false)
   const [security, setSecurity] = useState<SecurityScanResult | null>(null)
@@ -129,8 +131,14 @@ export default function DetailDrawer({ skill, allSkills, onClose, onOpen, onBrea
     return () => { cancelled = true }
   }, [skill.id, skill.type])
 
-  function handleOpenScannedUrl(url: string) {
-    if (window.confirm(`Open ${url} in your browser?\n\nThis link was found inside the skill body. Only open it if you trust the source.`)) {
+  async function handleOpenScannedUrl(url: string) {
+    const ok = await confirm({
+      title: 'Open external URL?',
+      message: `Open ${url} in your browser?`,
+      detail: 'This link was found inside the skill body. Only open it if you trust the source.',
+      confirmLabel: 'Open',
+    })
+    if (ok) {
       window.open(url, '_blank', 'noopener,noreferrer')
     }
   }

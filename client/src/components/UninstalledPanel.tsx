@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { UninstalledEntry } from '../api'
 import { fetchUninstalled, restoreSkillApi, permanentDeleteApi } from '../api'
+import { useConfirm } from './ConfirmDialog'
 
 interface Props {
   onClose: () => void
@@ -15,6 +16,7 @@ function formatDate(iso: string): string {
 }
 
 export default function UninstalledPanel({ onClose, onRestored, onCountChange }: Props) {
+  const confirm = useConfirm()
   const [entries, setEntries] = useState<UninstalledEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState<string | null>(null)
@@ -51,7 +53,14 @@ export default function UninstalledPanel({ onClose, onRestored, onCountChange }:
   }
 
   async function handleDelete(entry: UninstalledEntry) {
-    if (!window.confirm(`Permanently delete "${entry.name}"? This cannot be undone.`)) return
+    const ok = await confirm({
+      title: 'Delete permanently?',
+      message: `Permanently delete "${entry.name}"?`,
+      detail: 'This cannot be undone.',
+      confirmLabel: 'Delete forever',
+      destructive: true,
+    })
+    if (!ok) return
     setWorking(entry.id)
     try {
       await permanentDeleteApi(entry.id)
