@@ -40,6 +40,9 @@
   --c-mcp: #7DDED8;
   /* EUI success teal */
   --c-mcp-bg: rgba(125, 222, 216, .15);
+  --c-rule: #C792E5;
+  /* EUI violet — distinct from skill/cmd/agent/mcp */
+  --c-rule-bg: rgba(199, 146, 229, .15);
   --c-global: #7DDED8;
   /* same as mcp/success */
   --c-project: #F68FBE;
@@ -1079,6 +1082,11 @@ body {
 .type-mcp {
   color: var(--c-mcp);
   background: var(--c-mcp-bg);
+}
+
+.type-rule {
+  color: var(--c-rule);
+  background: var(--c-rule-bg);
 }
 
 .scope-badge {

@@ -1,4 +1,4 @@
-export type SkillType = 'skill' | 'command' | 'subagent' | 'mcp'
+export type SkillType = 'skill' | 'command' | 'subagent' | 'mcp' | 'rule'
 
 export interface MCPTool {
   name: string

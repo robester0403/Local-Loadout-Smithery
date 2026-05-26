@@ -10,6 +10,7 @@ import { countTokens } from '../usage/tokenizer'
 import { findCursorProjectCwds, defaultCursorUserDataDir } from './cursorProjects'
 import { CURSOR_SEEN_LOG_PATH } from '../lib/paths'
 import { discoverCodexSkills } from '../codex/discover'
+import { scanRuleArtifacts, defaultRuleTargets, ruleArtifactToSkill } from './ruleScanner'
 import type { Skill, SkillType, SkillScope, HealthResult } from './types'
 
 // Mirrors the listing budget constraints from loaded.ts.
@@ -450,7 +451,7 @@ export function discoverAllSkills(opts: DiscoverOptions = {}): Skill[] {
     if (!set) { set = new Set(); namesByAccount.set(s.account, set) }
     set.add(s.name)
   }
-  return deduped.map(skill => {
+  const finalized = deduped.map(skill => {
     const { health: _health, ...base } = skill
     const health = computeHealth(base, { descriptionCounts })
     const accountNames = namesByAccount.get(skill.account) ?? new Set()
@@ -459,4 +460,13 @@ export function discoverAllSkills(opts: DiscoverOptions = {}): Skill[] {
     const suggestedType = inferType(skill)
     return { ...skill, health, references, diagnostics, suggestedType }
   })
+
+  // Rule artifacts (LOC-86): parse `<!-- LS-rule:* -->` markers out of each
+  // ecosystem's global instructions file (CLAUDE.md / AGENTS.md) and surface
+  // them as Skill rows with type='rule' so the inventory + uninstall flow
+  // works through the same plumbing as file-backed artifacts.
+  const accountLabels = accounts.map(accountLabel)
+  const ruleSkills = scanRuleArtifacts(defaultRuleTargets(accountLabels)).map(ruleArtifactToSkill)
+
+  return [...finalized, ...ruleSkills]
 }

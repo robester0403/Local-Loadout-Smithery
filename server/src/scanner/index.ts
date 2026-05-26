@@ -3,3 +3,15 @@
 // types should be imported via their concrete module instead.
 export { discoverAllSkills } from './discover'
 export type { Skill, SkillType } from './types'
+export {
+  scanRuleArtifacts,
+  parseRulesFromBody,
+  parseRulesFromFile,
+  defaultRuleTargets,
+  ruleArtifactToSkill,
+  ruleLogicalPath,
+  isRuleLogicalPath,
+  parseRuleLogicalPath,
+  exciseRuleBlock,
+} from './ruleScanner'
+export type { RuleArtifact, RuleScanTarget } from './ruleScanner'

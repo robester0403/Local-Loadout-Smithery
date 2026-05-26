@@ -3,6 +3,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { findAccounts, accountLabel, discoverAllSkills } from '../scanner/discover'
+import { ruleMarkerStart, ruleMarkerEnd } from '../autoSkill/signals/lib/ruleMarkers'
 
 let tmp: string
 
@@ -285,5 +286,67 @@ describe('findAccounts (Codex modern layout)', () => {
     process.env['HOME'] = orig
 
     expect(accounts.map(a => path.basename(a))).toContain('.codex')
+  })
+})
+
+describe('discoverAllSkills — rule artifacts (LOC-86)', () => {
+  it('surfaces LS-rule markers as Skill rows with type=rule across ecosystems', () => {
+    const ruleHome = path.join(tmp, 'rule-home')
+    // Three ecosystems, each with a marker block in its global rules file.
+    write(path.join(ruleHome, '.claude', 'settings.json'), '{}')
+    write(
+      path.join(ruleHome, '.claude', 'CLAUDE.md'),
+      ['## Conventions', '', ruleMarkerStart('claudeId'), 'always rebase', ruleMarkerEnd('claudeId'), ''].join('\n'),
+    )
+    // Cursor: needs at least one loadout subdir to register as an account
+    fs.mkdirSync(path.join(ruleHome, '.cursor', 'skills'), { recursive: true })
+    write(
+      path.join(ruleHome, '.cursor', 'AGENTS.md'),
+      ['## Conventions', '', ruleMarkerStart('cursorId'), 'use tabs', ruleMarkerEnd('cursorId'), ''].join('\n'),
+    )
+    // Codex: AGENTS.md is itself a recognized loadout signal
+    write(
+      path.join(ruleHome, '.codex', 'AGENTS.md'),
+      ['## Conventions', '', ruleMarkerStart('codexId'), 'no force push', ruleMarkerEnd('codexId'), ''].join('\n'),
+    )
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = ruleHome
+    const skills = discoverAllSkills()
+    process.env['HOME'] = orig
+
+    const rules = skills.filter(s => s.type === 'rule')
+    expect(rules.length).toBeGreaterThanOrEqual(3)
+    expect(rules.find(r => r.body === 'always rebase')).toBeDefined()
+    expect(rules.find(r => r.body === 'use tabs')).toBeDefined()
+    expect(rules.find(r => r.body === 'no force push')).toBeDefined()
+
+    // Each rule's id round-trips to a synthetic path that survives base64
+    // decode + the #LS-rule: split.
+    for (const r of rules) {
+      const decoded = Buffer.from(r.id, 'base64').toString('utf-8')
+      expect(decoded).toContain('#LS-rule:')
+    }
+
+    // Non-rule artifacts unaffected — neither Claude's skills/commands/agents
+    // nor anything else picks up a 'rule' badge.
+    const nonRules = skills.filter(s => s.type !== 'rule')
+    for (const s of nonRules) expect(s.type).not.toBe('rule')
+  })
+
+  it('is a no-op when no marker files exist', () => {
+    const cleanHome = path.join(tmp, 'rule-home-clean')
+    write(path.join(cleanHome, '.claude', 'settings.json'), '{}')
+    write(
+      path.join(cleanHome, '.claude', 'CLAUDE.md'),
+      '## Conventions\n\nNo markers here, just prose.\n',
+    )
+
+    const orig = process.env['HOME']
+    process.env['HOME'] = cleanHome
+    const skills = discoverAllSkills()
+    process.env['HOME'] = orig
+
+    expect(skills.filter(s => s.type === 'rule')).toEqual([])
   })
 })

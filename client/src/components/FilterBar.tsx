@@ -13,7 +13,7 @@ type FilterGroup = {
 }
 
 const GROUPS: FilterGroup[] = [
-  { label: 'Type', key: 'type', options: ['skill', 'command', 'subagent', 'mcp'] },
+  { label: 'Type', key: 'type', options: ['skill', 'command', 'subagent', 'rule', 'mcp'] },
   { label: 'Context', key: 'scope', options: ['global', 'project'] },
 ]
 

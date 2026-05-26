@@ -3,7 +3,7 @@ import type { Diagnostic } from './diagnostics'
 export type { SkillReference } from './references'
 export type { Diagnostic, DiagnosticKind } from './diagnostics'
 
-export type SkillType = 'skill' | 'command' | 'subagent'
+export type SkillType = 'skill' | 'command' | 'subagent' | 'rule'
 
 export interface ClassificationResult {
   suggested: SkillType

@@ -15,6 +15,7 @@ import { listVersions, prepareRestore, snapshot } from '../state/skillVersions'
 import { diffAgainstBaseline, writeBaseline } from '../state/skillBaselines'
 import { stripSuperRouterBlocks } from '../superRouter/writer'
 import { atomicWrite } from '../lib/atomicWrite'
+import { isRuleLogicalPath, parseRuleLogicalPath, exciseRuleBlock } from '../scanner/ruleScanner'
 
 // Refresh the shadow-edit baseline after one of our own writes. Stores the
 // frontmatter-stripped body and parsed frontmatter so both are compared on
@@ -50,6 +51,9 @@ router.post('/skills/:id/reclassify', asyncHandler((req, res) => {
 
   const logicalPath = decodeSkillId(req.params.id)
   assertWithinHome(logicalPath)
+  if (isRuleLogicalPath(logicalPath)) {
+    throw new HttpError(400, 'Reclassify does not apply to rule artifacts')
+  }
 
   const isDisabled = !fs.existsSync(logicalPath) && fs.existsSync(logicalPath + '.disabled')
   const sourcePath = isDisabled ? logicalPath + '.disabled' : logicalPath
@@ -86,7 +90,13 @@ router.post('/skills/:id/reclassify', asyncHandler((req, res) => {
 }))
 
 router.post('/skills/:id/open', asyncHandler(async (req, res) => {
-  const filePath = decodeSkillId(req.params.id)
+  const decoded = decodeSkillId(req.params.id)
+  // Rules don't have files of their own; "Open in editor" should open the
+  // host md file (CLAUDE.md / AGENTS.md) so the user sees the rule in
+  // context.
+  const filePath = isRuleLogicalPath(decoded)
+    ? (parseRuleLogicalPath(decoded)?.file ?? decoded)
+    : decoded
   assertWithinHome(filePath)
   await openInSystem(filePath)
   res.json({ ok: true })
@@ -109,6 +119,9 @@ router.patch('/skills/:id', asyncHandler((req, res) => {
 
   const logicalPath = decodeSkillId(req.params.id)
   assertWithinHome(logicalPath)
+  if (isRuleLogicalPath(logicalPath)) {
+    throw new HttpError(400, 'Editing rule artifacts is not supported — uninstall and re-accept instead')
+  }
 
   // Pick whichever file actually exists (enabled vs. .disabled suffix). The
   // logical path is what the scanner used to derive the id, so following
@@ -226,6 +239,32 @@ router.get('/skills/:id/baseline/diff', asyncHandler((req, res) => {
 router.post('/skills/:id/uninstall', asyncHandler((req, res) => {
   const logicalPath = decodeSkillId(req.params.id)
   assertWithinHome(logicalPath)
+
+  // Rule artifacts (LOC-86) live as marker-wrapped blocks inside an md file
+  // rather than as standalone files. Decode the synthetic id, excise the
+  // block atomically, and bail before the file-existence branch below.
+  if (isRuleLogicalPath(logicalPath)) {
+    const parsed = parseRuleLogicalPath(logicalPath)
+    if (!parsed) throw new HttpError(400, 'Malformed rule id')
+    assertWithinHome(parsed.file)
+    let body: string
+    try {
+      body = fs.readFileSync(parsed.file, 'utf-8')
+    } catch {
+      // Source md file already gone — treat as idempotent no-op.
+      res.json({ ok: true, alreadyRemoved: true })
+      return
+    }
+    const next = exciseRuleBlock(body, parsed.markerId)
+    if (next === null) {
+      // Marker not present — idempotent.
+      res.json({ ok: true, alreadyRemoved: true })
+      return
+    }
+    atomicWrite(parsed.file, next)
+    res.json({ ok: true })
+    return
+  }
 
   const actualPath = fs.existsSync(logicalPath)
     ? logicalPath
