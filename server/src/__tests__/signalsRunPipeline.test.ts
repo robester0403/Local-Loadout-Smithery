@@ -219,4 +219,83 @@ describe('runSignalPipeline', () => {
     expect(result.skillCandidates).toBe(0)
     expect(result.detectorWarnings.some(w => w.startsWith('skill['))).toBe(true)
   })
+
+  describe('LOC-84 — embedding model unavailable', () => {
+    it('emits a structured warning carrying the install instruction', async () => {
+      const cache = openSummaryCache(path.join(tmpHome, 'cache-degrade-1.json'))
+      const result = await runSignalPipeline({
+        model: 'test-model',
+        sinceIso: '2026-05-01T00:00:00.000Z',
+        conversationsOverride: [vitestConvo(1), vitestConvo(2), vitestConvo(3)],
+        existingSkillsOverride: [],
+        existingRuleFilesOverride: [],
+        summaryCache: cache,
+        summarizeFn: async () => VALID_SUMMARY,
+        skillSynthFn: async () => VALID_SKILL_SYNTH,
+        skillConsistencyFn: async () => VALID_CONSISTENCY,
+        ruleClassifierFn: async (xs) => xs.map(() => true),
+        subagentSynthFn: async () => '{}',
+        skipOllamaCheck: true,
+        embedModelAvailableOverride: false,
+      })
+
+      const embedWarn = result.warnings.find(w => w.includes("Embedding model 'nomic-embed-text'"))
+      expect(embedWarn).toBeDefined()
+      expect(embedWarn).toMatch(/ollama pull nomic-embed-text/)
+    })
+
+    it('skips clustering, skill, and subagent detection (but still runs commands)', async () => {
+      const cache = openSummaryCache(path.join(tmpHome, 'cache-degrade-2.json'))
+      // Spy: skill/subagent synth functions must NOT be called.
+      let skillSynthCalls = 0
+      let subagentSynthCalls = 0
+      const result = await runSignalPipeline({
+        model: 'test-model',
+        sinceIso: '2026-05-01T00:00:00.000Z',
+        conversationsOverride: [vitestConvo(1), vitestConvo(2), vitestConvo(3)],
+        existingSkillsOverride: [],
+        existingRuleFilesOverride: [],
+        summaryCache: cache,
+        summarizeFn: async () => VALID_SUMMARY,
+        skillSynthFn: async () => { skillSynthCalls += 1; return VALID_SKILL_SYNTH },
+        skillConsistencyFn: async () => VALID_CONSISTENCY,
+        ruleClassifierFn: async (xs) => xs.map(() => true),
+        subagentSynthFn: async () => { subagentSynthCalls += 1; return '{}' },
+        skipOllamaCheck: true,
+        embedModelAvailableOverride: false,
+      })
+
+      expect(result.clustersProduced).toBe(0)
+      expect(result.skillCandidates).toBe(0)
+      expect(result.subagentCandidates).toBe(0)
+      expect(skillSynthCalls).toBe(0)
+      expect(subagentSynthCalls).toBe(0)
+      // Summaries still produced — the per-arc summarizer doesn't need
+      // embeddings. Commands detector also runs (no embedding required).
+      expect(result.summariesProduced).toBeGreaterThan(0)
+    })
+
+    it('falls through to full pipeline when override is true', async () => {
+      const cache = openSummaryCache(path.join(tmpHome, 'cache-degrade-3.json'))
+      const result = await runSignalPipeline({
+        model: 'test-model',
+        sinceIso: '2026-05-01T00:00:00.000Z',
+        conversationsOverride: [vitestConvo(1), vitestConvo(2), vitestConvo(3)],
+        existingSkillsOverride: [],
+        existingRuleFilesOverride: [],
+        summaryCache: cache,
+        summarizeFn: async () => VALID_SUMMARY,
+        skillSynthFn: async () => VALID_SKILL_SYNTH,
+        skillConsistencyFn: async () => VALID_CONSISTENCY,
+        ruleClassifierFn: async (xs) => xs.map(() => true),
+        subagentSynthFn: async () => '{}',
+        embedFn: async () => [1, 0, 0],
+        skipOllamaCheck: true,
+        embedModelAvailableOverride: true,
+      })
+
+      expect(result.warnings.find(w => w.includes("Embedding model"))).toBeUndefined()
+      expect(result.clustersProduced).toBeGreaterThanOrEqual(1)
+    })
+  })
 })

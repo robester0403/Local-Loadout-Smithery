@@ -48,6 +48,7 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
   const [rechecking, setRechecking] = useState(false)
   const [running, setRunning] = useState<'idle' | 'extracting' | 'digesting'>('idle')
   const [runMessage, setRunMessage] = useState('')
+  const [runWarnings, setRunWarnings] = useState<string[]>([])
   const [digestProgress, setDigestProgress] = useState<DigestProgress | null>(null)
   const [forceReextract, setForceReextract] = useState(false)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -192,6 +193,7 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
       // Final snapshot so the bar shows 100% before vanishing.
       try { setDigestProgress(await fetchDigestProgress()) } catch { /* ignore */ }
       setRunMessage(`Done. ${digest.candidatesCreated} new, ${digest.candidatesUpdated} updated. ${digest.warnings.length} warnings.`)
+      setRunWarnings(digest.warnings)
       await refreshCandidates()
     } catch (e) {
       stopPolling()
@@ -391,6 +393,43 @@ export default function AutoSkillPanel({ allSkills, onClose, onSkillsChanged }: 
         {runMessage && running === 'idle' && !digestProgress && (
           <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>{runMessage}</div>
         )}
+        {runWarnings.length > 0 && running === 'idle' && (() => {
+          // LOC-84: bubble the embed-model-missing warning to the top of the
+          // list with a brighter color — it carries a copy/paste install
+          // instruction the user almost certainly needs to act on.
+          const embedWarn = runWarnings.find(w => w.startsWith("Embedding model '"))
+          const rest = runWarnings.filter(w => w !== embedWarn)
+          return (
+            <div style={{ marginBottom: 12 }}>
+              {embedWarn && (
+                <div
+                  className="form-error"
+                  style={{
+                    marginBottom: 8,
+                    background: 'var(--c-warning-bg, rgba(243, 211, 113, .12))',
+                    color: 'var(--c-warning, #F3D371)',
+                    border: '1px solid var(--c-warning, #F3D371)',
+                    padding: '8px 10px',
+                    borderRadius: 4,
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <strong>Embedding model missing.</strong> {embedWarn.replace(/^Embedding model '[^']+' is not pulled — /, '')}
+                </div>
+              )}
+              {rest.length > 0 && (
+                <details style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                  <summary>{rest.length} other warning{rest.length === 1 ? '' : 's'}</summary>
+                  <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+                    {rest.slice(0, 30).map((w, i) => <li key={i}>{w}</li>)}
+                    {rest.length > 30 && <li>… and {rest.length - 30} more</li>}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )
+        })()}
 
         {digestProgress && digestProgress.phase !== 'idle' && (() => {
           const total = digestProgress.total
