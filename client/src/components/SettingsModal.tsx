@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useForm, Controller, type Control, type UseFormRegister, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react'
+import { useConfirm } from './ConfirmDialog'
 import {
   COLUMN_KEYS,
   COLUMN_LABELS,
@@ -136,6 +137,7 @@ const DIAGNOSTIC_CARDS: IdentifierCardSpec[] = [
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function SettingsModal({ onClose }: Props) {
+  const confirm = useConfirm()
   const {
     register, handleSubmit, control, watch, reset, getValues, formState: { isDirty },
   } = useForm<Settings>({
@@ -146,8 +148,17 @@ export default function SettingsModal({ onClose }: Props) {
 
   const flags = watch('flags')
 
-  function attemptClose() {
-    if (isDirty && !window.confirm('Discard your changes?')) return
+  async function attemptClose() {
+    if (isDirty) {
+      const ok = await confirm({
+        title: 'Discard changes?',
+        message: 'You have unsaved settings changes.',
+        confirmLabel: 'Discard',
+        cancelLabel: 'Keep editing',
+        destructive: true,
+      })
+      if (!ok) return
+    }
     onClose()
   }
 

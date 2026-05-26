@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { IconBolt, IconCheck, IconChevronDown, IconChevronUp, IconX } from '@tabler/icons-react'
 import type { ProfilesData } from '../api'
+import { useConfirm } from './ConfirmDialog'
 
 interface Props {
   profilesData: ProfilesData
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function ProfileSwitcher({ profilesData, allSkillIds, onActivate, onCreate, onDelete }: Props) {
+  const confirm = useConfirm()
   const { profiles, activeProfile } = profilesData
   const profileNames = Object.keys(profiles)
   const [open, setOpen] = useState(false)
@@ -45,7 +47,13 @@ export default function ProfileSwitcher({ profilesData, allSkillIds, onActivate,
 
   async function handleDelete(name: string, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!window.confirm(`Delete profile "${name}"?`)) return
+    const ok = await confirm({
+      title: 'Delete profile?',
+      message: `Delete profile "${name}"?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     await onDelete(name)
   }
 

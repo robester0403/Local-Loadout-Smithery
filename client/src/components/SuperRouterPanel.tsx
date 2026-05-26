@@ -29,6 +29,7 @@ function formatBundleError(e: unknown): string {
 }
 import type { Skill } from '../types'
 import BundleEditorModal from './BundleEditorModal'
+import { useConfirm } from './ConfirmDialog'
 
 const DRIFT_LABEL: Record<Exclude<DriftStatus, 'ok'>, string> = {
   'file-missing': 'CLAUDE.md missing',
@@ -64,6 +65,7 @@ function scopeLabel(b: Bundle): string {
 }
 
 export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: Props) {
+  const confirm = useConfirm()
   const [bundles, setBundles] = useState<Bundle[]>([])
   const [drift, setDrift] = useState<Record<string, DriftResult>>({})
   const [loading, setLoading] = useState(true)
@@ -167,7 +169,14 @@ export default function SuperRouterPanel({ allSkills, onClose, onCountChange }: 
   }
 
   async function handleDelete(b: Bundle) {
-    if (!window.confirm(`Delete bundle "${b.name}"? ${b.enabled ? 'This will also remove the injected CLAUDE.md block and map file.' : ''}`)) return
+    const ok = await confirm({
+      title: 'Delete bundle?',
+      message: `Delete bundle "${b.name}"?`,
+      ...(b.enabled ? { detail: 'This will also remove the injected CLAUDE.md block and map file.' } : {}),
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     setBusyId(b.id)
     try {
       await deleteBundleApi(b.id)
