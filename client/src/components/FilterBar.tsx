@@ -1,4 +1,4 @@
-import { IconAlertOctagonFilled, IconAlertTriangle, IconX } from '@tabler/icons-react'
+import { IconAlertOctagonFilled, IconAlertTriangle, IconSparkles, IconX } from '@tabler/icons-react'
 import type { Filters } from '../types'
 
 interface Props {
@@ -27,10 +27,10 @@ export default function FilterBar({ filters, setFilters }: Props) {
   }
 
   function clearAll() {
-    setFilters({ type: [], scope: [], issuesOnly: false, reviewOnly: false })
+    setFilters({ type: [], scope: [], issuesOnly: false, reviewOnly: false, newOnly: false })
   }
 
-  const hasActive = filters.type.length > 0 || filters.scope.length > 0 || filters.issuesOnly || filters.reviewOnly
+  const hasActive = filters.type.length > 0 || filters.scope.length > 0 || filters.issuesOnly || filters.reviewOnly || filters.newOnly
 
   return (
     <div className="filter-bar">
@@ -71,6 +71,13 @@ export default function FilterBar({ filters, setFilters }: Props) {
             onClick={() => setFilters({ ...filters, reviewOnly: !filters.reviewOnly })}
           >
             <IconAlertOctagonFilled size={12} aria-hidden /> Needs review
+          </button>
+          <button
+            className={`pill pill-new ${filters.newOnly ? 'active' : ''}`}
+            onClick={() => setFilters({ ...filters, newOnly: !filters.newOnly })}
+            title="Show only skills installed within the grace window (default 10 days)"
+          >
+            <IconSparkles size={12} stroke={1.75} aria-hidden /> New only
           </button>
         </div>
       </div>

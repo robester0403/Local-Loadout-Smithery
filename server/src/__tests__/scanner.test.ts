@@ -127,6 +127,29 @@ describe('discoverAllSkills (fixture)', () => {
     expect(byName['proj-skill'].projectId).toContain('proj-abc')
   })
 
+  it('populates installedAt for every discovered skill', () => {
+    // LOC-12: installedAt drives the client-side "NEW" badge. Birthtime is
+    // ideal but Linux ext4 reports it as 0 — buildSkill falls back to mtime
+    // in that case. Either way, the field must be a parseable ISO string for
+    // every skill, never empty.
+    const orig = process.env['HOME']
+    process.env['HOME'] = fixtureHome
+    const skills = discoverAllSkills()
+    process.env['HOME'] = orig
+
+    expect(skills.length).toBeGreaterThan(0)
+    for (const s of skills) {
+      expect(s.installedAt).toBeTruthy()
+      const parsed = new Date(s.installedAt)
+      expect(Number.isNaN(parsed.getTime())).toBe(false)
+      // The fixture files were just written — installedAt should be recent
+      // and never in the future.
+      const age = Date.now() - parsed.getTime()
+      expect(age).toBeGreaterThanOrEqual(0)
+      expect(age).toBeLessThan(60_000)
+    }
+  })
+
   it('deduplicates symlinked skills', () => {
     const dedupeHome = path.join(tmp, 'dedupe-home')
     write(path.join(dedupeHome, '.claude', 'settings.json'), '{}')

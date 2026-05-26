@@ -72,6 +72,12 @@ const TF: Record<ThresholdKey, ThresholdFieldSpec> = {
     hint: 'Descriptions longer than this many characters get a bloat warning.',
     step: 1, unit: 'chars',
   },
+  newSkillGraceDays: {
+    key: 'newSkillGraceDays',
+    label: '"New" badge window',
+    hint: 'Skills installed within this many days display a NEW badge.',
+    step: 1, unit: 'days',
+  },
 }
 
 interface IdentifierCardSpec {
@@ -119,6 +125,11 @@ const DIAGNOSTIC_CARDS: IdentifierCardSpec[] = [
     flag: 'mismatch',
     description: 'Server suggests this artifact is misclassified (e.g. a command shaped like a skill).',
     thresholds: [],
+  },
+  {
+    flag: 'newSkill',
+    description: 'Recently installed — file birthtime (or mtime fallback) within the grace window.',
+    thresholds: ['newSkillGraceDays'],
   },
 ]
 

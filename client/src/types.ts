@@ -82,6 +82,11 @@ export interface Skill {
   body: string
   frontmatter: Record<string, unknown>
   lastModified: string
+  /** File birthtime (or mtime fallback) from the server. Drives the
+   *  client-derived `isNew` flag via the `newSkillGraceDays` threshold. */
+  installedAt: string
+  /** LOC-12: derived field — `installedAt > now - newSkillGraceDays`. */
+  isNew: boolean
   health: HealthResult
   disabled: boolean
   references: { name: string; source: 'body' | 'command' | 'frontmatter' }[]
@@ -109,4 +114,5 @@ export interface Filters {
   scope: string[]
   issuesOnly: boolean
   reviewOnly: boolean
+  newOnly: boolean
 }

@@ -29,6 +29,20 @@ function computeListingTokens(name: string, description: string): number {
   return countTokens(`${name} ${truncated}`.trimEnd())
 }
 
+/**
+ * Resolve the "installed at" timestamp from an fs.Stats. Prefers birthtime
+ * (the file's true creation time), but Linux ext4 reports birthtime as 0 /
+ * epoch when the filesystem can't track it. In that case fall back to mtime,
+ * which at worst overestimates how recently a skill was installed (a
+ * modified-in-place old skill briefly looks "new") — acceptable for the
+ * 10-day grace window this powers.
+ */
+function resolveInstalledAt(stat: fs.Stats): Date {
+  const birth = stat.birthtimeMs
+  if (Number.isFinite(birth) && birth > 0) return stat.birthtime
+  return stat.mtime
+}
+
 function listDir(dir: string): string[] {
   try {
     return fs.readdirSync(dir)
@@ -183,6 +197,7 @@ export function buildSkill(
       listingTokens: computeListingTokens(name, description),
       frontmatter: meta,
       lastModified: stat.mtime.toISOString(),
+      installedAt: resolveInstalledAt(stat).toISOString(),
       references: [],
       diagnostics: [],
     }
